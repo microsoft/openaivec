@@ -1,0 +1,178 @@
+site_name: openaivec - AI-Powered Data Processing for Pandas & Spark
+site_url: https://openaivec.anareg.design
+site_description: Transform your data analysis with OpenAI's language models. Comprehensive task domains including NLP, customer support, and future business domains. Seamlessly integrate structured AI processing, multilingual analysis, and automated workflows into pandas DataFrames and Apache Spark for scalable enterprise insights.
+site_author: Hiroki Mizukami
+repo_url: https://github.com/microsoft/openaivec
+repo_name: microsoft/openaivec
+edit_uri: edit/main/docs/
+theme:
+  name: material
+  language: en
+  palette:
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - announce.dismiss
+    - content.action.edit
+    - content.action.view
+    - content.code.annotate
+    - content.code.copy
+    - content.tooltips
+    - navigation.expand
+    - navigation.footer
+    - navigation.indexes
+    - navigation.sections
+    - navigation.tabs
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
+
+nav:
+  - Home: index.md
+  - PyPI: https://pypi.org/project/openaivec/
+  - GitHub: https://github.com/microsoft/openaivec
+  - Examples:
+      - Getting Started: examples/pandas.ipynb
+      - Customer Analysis: examples/customer_analysis.ipynb
+      - Survey Transformation: examples/survey_transformation.ipynb
+      - Spark Processing: examples/spark.ipynb
+      - Async Workflows: examples/aio.ipynb
+      - Prompt Engineering: examples/prompt.ipynb
+      - FAQ Generation: examples/generate_faq.ipynb
+  - API Reference:
+      - pandas_ext: api/pandas_ext.md
+      - spark: api/spark.md
+      - prompt: api/prompt.md
+      - util: api/util.md
+      - responses: api/responses.md
+      - embeddings: api/embeddings.md
+      - task: api/task.md
+  - Task Domains:
+      - Natural Language Processing:
+          - Translation: api/tasks/nlp/translation.md
+          - Sentiment Analysis: api/tasks/nlp/sentiment_analysis.md
+          - Named Entity Recognition: api/tasks/nlp/named_entity_recognition.md
+          - Morphological Analysis: api/tasks/nlp/morphological_analysis.md
+          - Dependency Parsing: api/tasks/nlp/dependency_parsing.md
+          - Keyword Extraction: api/tasks/nlp/keyword_extraction.md
+      - Customer Support:
+          - Intent Analysis: api/tasks/customer_support/intent_analysis.md
+          - Customer Sentiment: api/tasks/customer_support/customer_sentiment.md
+          - Urgency Analysis: api/tasks/customer_support/urgency_analysis.md
+          - Inquiry Classification: api/tasks/customer_support/inquiry_classification.md
+          - Inquiry Summary: api/tasks/customer_support/inquiry_summary.md
+          - Response Suggestion: api/tasks/customer_support/response_suggestion.md
+
+extra:
+  tags:
+    - Python
+    - OpenAI
+    - Pandas
+    - Apache Spark
+    - vectorization
+    - embeddings
+    - NLP
+    - customer support
+    - task domains
+    - data science
+    - machine learning
+    - AI
+    - text processing
+    - sentiment analysis
+    - named entity recognition
+    - translation
+    - intent analysis
+    - urgency analysis
+    - inquiry classification
+    - response automation
+    - multilingual support
+    - batch processing
+    - structured outputs
+    - data analysis
+    - business automation
+    - scalable AI
+  analytics:
+    provider: google
+    property: G-J7N4M1XMRZ
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/microsoft/openaivec
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/openaivec/
+    - icon: fontawesome/brands/discord
+      link: https://discord.gg/vbb83Pgn
+
+plugins:
+  - search:
+      separator: '[\s\-,:!=\[\]()"/]+|(?!\b)(?=[A-Z][a-z])|\.(?!\d)|&[lg]t;'
+  - mkdocs-jupyter
+  - mkdocstrings:
+      handlers:
+        python:
+          paths:
+            - src
+          docstring_style: google
+          show_submodules: true
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - toc:
+      permalink: true
+      title: On this page
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink:
+      repo_url_shorthand: true
+      user: microsoft
+      repo: openaivec
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde

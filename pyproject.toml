@@ -1,0 +1,79 @@
+[project]
+name = "openaivec"
+dynamic = ["version"]
+description = "Generative mutation for tabular calculation"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "Hiroki Mizukami", email = "hmizukami@microsoft.com" }
+]
+keywords = [
+    "openai",
+    "openai-api",
+    "openai-python",
+    "llm",
+    "pandas",
+    "pyspark",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+requires-python = ">=3.10"
+dependencies = [
+    "openai>=1.74.0",
+    "pandas>=2.2.3",
+    "tiktoken>=0.9.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx[http2]>=0.28.1",
+    "ipykernel>=6.29.5",
+    "langdetect>=1.0.9",
+    "pyarrow>=19.0.1",
+    "pyspark>=3.5.5",
+    "pytest>=8.3.5",
+    "pytest-asyncio",
+    "python-dotenv>=1.1.0",
+    "ruff>=0.11.5",
+    "tabulate>=0.9.0",
+]
+docs = [
+    "mkdocs>=1.6.1",
+    "mkdocs-autorefs>=1.4.1",
+    "mkdocs-jupyter>=0.25.1",
+    "mkdocs-material>=9.6.12",
+    "mkdocstrings[python]>=0.29.1",
+    "myst-parser>=4.0.1",
+]
+
+[project.optional-dependencies]
+spark = [
+    "pyspark>=3.5.5",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[project.urls]
+Homepage = "https://openaivec.anareg.design/"
+Repository = "https://github.com/microsoft/openaivec"
+
+[build-system]
+requires = ["hatchling", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.uv-dynamic-versioning]
+vcs = "git"
+style = "pep440"
+bump = true
