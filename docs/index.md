@@ -1,0 +1,183 @@
+# AI-Powered Data Processing for Pandas & Spark
+
+Welcome to **openaivec** - Transform your data analysis with OpenAI's language models! This library enables seamless integration of AI text processing, sentiment analysis, NLP tasks, and embeddings into your [**Pandas**](https://pandas.pydata.org/) DataFrames and [**Apache Spark**](https://spark.apache.org/) workflows for scalable data insights.
+
+## 🚀 Quick Start Example
+
+Transform your data with AI in just one line:
+
+```python
+import pandas as pd
+from openaivec import pandas_ext
+
+# AI-powered data processing
+fruits = pd.Series(["apple", "banana", "orange", "grape", "kiwi"])
+fruits.ai.responses("Translate this fruit name into French.")
+# Result: ['pomme', 'banane', 'orange', 'raisin', 'kiwi']
+```
+
+Perfect for **data scientists**, **analysts**, and **ML engineers** who want to leverage AI for text processing at scale.
+
+## 📦 Installation
+
+=== "pip"
+    ```bash
+    pip install openaivec
+    ```
+
+=== "uv"
+    ```bash
+    uv add openaivec
+    ```
+
+=== "With Spark Support"
+    ```bash
+    pip install "openaivec[spark]"
+    # or
+    uv add "openaivec[spark]"
+    ```
+
+## 🎯 Key Features
+
+- **🚀 Vectorized Processing**: Handle thousands of records in minutes, not hours
+- **💰 Cost Efficient**: Automatic deduplication reduces API costs by 50-90%
+- **🔗 Seamless Integration**: Works within existing pandas/Spark workflows
+- **📈 Enterprise Scale**: From 100s to millions of records
+- **🤖 Advanced NLP**: Pre-built tasks for sentiment analysis, translation, NER, and more
+
+## Links
+- [GitHub Repository](https://github.com/microsoft/openaivec/)
+- [PyPI Package](https://pypi.org/project/openaivec/)
+- [Complete Documentation](https://openaivec.anareg.design/)
+
+## 📚 Examples & Tutorials
+
+Get started with these comprehensive examples:
+
+📓 **[Getting Started](examples/pandas.ipynb)** - Basic pandas integration and usage  
+📓 **[Customer Feedback Analysis](examples/customer_analysis.ipynb)** - Sentiment analysis & prioritization  
+📓 **[Survey Data Transformation](examples/survey_transformation.ipynb)** - Unstructured to structured data  
+📓 **[Spark Processing](examples/spark.ipynb)** - Enterprise-scale distributed processing  
+📓 **[Async Workflows](examples/aio.ipynb)** - High-performance async processing  
+📓 **[Prompt Engineering](examples/prompt.ipynb)** - Advanced prompting techniques  
+📓 **[FAQ Generation](examples/generate_faq.ipynb)** - Auto-generate FAQs from documents
+
+## 📖 API Reference
+
+Detailed documentation for all components:
+
+🔗 **[pandas_ext](api/pandas_ext.md)** - Pandas Series and DataFrame extensions  
+🔗 **[spark](api/spark.md)** - Apache Spark UDF builders  
+🔗 **[responses](api/responses.md)** - Batch response processing  
+🔗 **[embeddings](api/embeddings.md)** - Batch embedding generation  
+🔗 **[prompt](api/prompt.md)** - Few-shot prompt building  
+🔗 **[util](api/util.md)** - Utility functions and helpers
+
+## Quick Start
+
+Here is a simple example of how to use `openaivec` with `pandas`:
+
+```python
+import pandas as pd
+from openai import OpenAI
+from openaivec import pandas_ext
+
+from typing import List
+
+# Set OpenAI Client (optional: this is default client if environment "OPENAI_API_KEY" is set)
+pandas_ext.use(OpenAI())
+
+# Set models for responses and embeddings(optional: these are default models)
+pandas_ext.responses_model("gpt-4.1-nano")
+pandas_ext.embeddings_model("text-embedding-3-small")
+
+
+fruits: List[str] = ["apple", "banana", "orange", "grape", "kiwi", "mango", "peach", "pear", "pineapple", "strawberry"]
+fruits_df = pd.DataFrame({"name": fruits})
+```
+
+`frults_df` is a `pandas` DataFrame with a single column `name` containing the names of fruits. We can mutate the Field `name` with the accessor `ai` to add a new column `color` with the color of each fruit.:
+
+```python
+fruits_df.assign(
+    color=lambda df: df["name"].ai.responses("What is the color of this fruit?")
+)
+```
+
+The result is a new DataFrame with the same number of rows as `fruits_df`, but with an additional column `color` containing the color of each fruit. The `ai` accessor uses the OpenAI API to generate the responses for each fruit name in the `name` column.
+
+
+| name       | color   |
+|------------|---------|
+| apple      | red     |
+| banana     | yellow  |
+| orange     | orange  |
+| grape      | purple  |
+| kiwi       | brown   |
+| mango      | orange  |
+| peach      | orange  |
+| pear       | green   |
+| pineapple  | brown   |
+| strawberry | red     |
+
+
+Structured Output is also supported. For example, we will translate the name of each fruit into multiple languages. We can use the `ai` accessor to generate a new column `translation` with the translation of each fruit name into English, French, Japanese, Spanish, German, Italian, Portuguese and Russian:
+
+```python
+from pydantic import BaseModel
+
+class Translation(BaseModel):
+    en: str  # English
+    fr: str  # French
+    ja: str  # Japanese
+    es: str  # Spanish
+    de: str  # German
+    it: str  # Italian
+    pt: str  # Portuguese
+    ru: str  # Russian
+
+fruits_df.assign(
+    translation=lambda df: df["name"].ai.responses(
+        instructions="Translate this fruit name into English, French, Japanese, Spanish, German, Italian, Portuguese and Russian.",
+        response_format=Translation,
+    )
+)
+```
+
+| name       | translation                                                               |
+|------------|----------------------------------------------------------------------------|
+| apple      | en='Apple' fr='Pomme' ja='リンゴ' es='Manzana' de...                       |
+| banana     | en='Banana' fr='Banane' ja='バナナ' es='Banana' de...                      |
+| orange     | en='Orange' fr='Orange' ja='オレンジ' es='Naranja' de...                   |
+| grape      | en='Grape' fr='Raisin' ja='ブドウ' es='Uva' de='T...                       |
+| kiwi       | en='Kiwi' fr='Kiwi' ja='キウイ' es='Kiwi' de='Kiw...                       |
+| mango      | en='Mango' fr='Mangue' ja='マンゴー' es='Mango' de...                      |
+| peach      | en='Peach' fr='Pêche' ja='モモ' es='Durazno' de...                         |
+| pear       | en='Pear' fr='Poire' ja='梨' es='Pera' de='Birn...                         |
+| pineapple  | en='Pineapple' fr='Ananas' ja='パイナップル' es='Piñ...                    |
+| strawberry | en='Strawberry' fr='Fraise' ja='イチゴ' es='Fresa...                       |
+
+
+Structured output can be extracted into separate columns using the `extract` method. For example, we can extract the translations into separate columns for each language:
+
+```python
+fruits_df.assign(
+    translation=lambda df: df["name"].ai.responses(
+        instructions="Translate this fruit name into English, French, Japanese, Spanish, German, Italian, Portuguese and Russian.",
+        response_format=Translation,
+    )
+).ai.extract("translation")
+```
+
+| name       | translation_en | translation_fr | translation_ja | translation_es | translation_de | translation_it | translation_pt | translation_ru |
+|------------|----------------|----------------|----------------|----------------|----------------|----------------|----------------|----------------|
+| apple      | Apple          | Pomme          | リンゴ         | Manzana        | Apfel          | Mela           | Maçã           | Яблоко         |
+| banana     | Banana         | Banane         | バナナ         | Banana         | Banane         | Banana         | Banana         | Банан          |
+| orange     | Orange         | Orange         | オレンジ       | Naranja        | Orange         | Arancia        | Laranja        | Апельсин       |
+| grape      | Grape          | Raisin         | ブドウ         | Uva            | Traube         | Uva            | Uva            | Виноград       |
+| kiwi       | Kiwi           | Kiwi           | キウイ         | Kiwi           | Kiwi           | Kiwi           | Kiwi           | Киви           |
+| mango      | Mango          | Mangue         | マンゴー       | Mango          | Mango          | Mango          | Manga          | Манго          |
+| peach      | Peach          | Pêche          | モモ           | Durazno        | Pfirsich       | Pesca          | Pêssego        | Персик         |
+| pear       | Pear           | Poire          | 梨             | Pera           | Birne          | Pera           | Pêra           | Груша          |
+| pineapple  | Pineapple      | Ananas         | パイナップル   | Piña           | Ananas         | Ananas         | Abacaxi        | Ананас         |
+| strawberry | Strawberry     | Fraise         | イチゴ         | Fresa          | Erdbeere       | Fragola        | Morango        | Клубника       |
