@@ -1,5 +1,5 @@
 site_name: openaivec - AI-Powered Data Processing for Pandas & Spark
-site_url: https://openaivec.anareg.design
+site_url: https://microsoft.github.io/openaivec/
 site_description: Transform your data analysis with OpenAI's language models. Comprehensive task domains including NLP, customer support, and future business domains. Seamlessly integrate structured AI processing, multilingual analysis, and automated workflows into pandas DataFrames and Apache Spark for scalable enterprise insights.
 site_author: Hiroki Mizukami
 repo_url: https://github.com/microsoft/openaivec

@@ -27,7 +27,7 @@ results = reviews.assign(
 
 **Result**: Thousands of reviews classified and analyzed in minutes, not days.
 
-📓 **[Try it yourself →](https://openaivec.anareg.design/examples/pandas/)**
+📓 **[Try it yourself →](https://microsoft.github.io/openaivec/examples/pandas/)**
 
 ## 💡 Real-World Impact
 
@@ -69,7 +69,7 @@ survey_responses.assign(
 ).ai.extract("structured")  # Auto-expands to columns
 ```
 
-📓 **[See more examples →](https://openaivec.anareg.design/examples/)**
+📓 **[See more examples →](https://microsoft.github.io/openaivec/examples/)**
 
 # Overview
 
@@ -135,7 +135,7 @@ result = client.parse(["panda", "rabbit", "koala"], batch_size=32)
 print(result)  # Expected output: ['bear family', 'rabbit family', 'koala family']
 ```
 
-📓 **[Complete tutorial →](https://openaivec.anareg.design/examples/pandas/)**
+📓 **[Complete tutorial →](https://microsoft.github.io/openaivec/examples/pandas/)**
 
 ### Pandas Integration (Recommended)
 
@@ -165,13 +165,13 @@ result = df.assign(
 | rabbit | rabbit family | meadow  | Can see nearly 360 degrees  |
 | koala  | marsupial family | tree   | Sleeps 22 hours per day    |
 
-📓 **[Interactive pandas examples →](https://openaivec.anareg.design/examples/pandas/)**
+📓 **[Interactive pandas examples →](https://microsoft.github.io/openaivec/examples/pandas/)**
 
 ## Using with Apache Spark UDFs
 
 Scale to enterprise datasets with distributed processing:
 
-📓 **[Complete Spark tutorial →](https://openaivec.anareg.design/examples/spark/)**
+📓 **[Complete Spark tutorial →](https://microsoft.github.io/openaivec/examples/spark/)**
 
 First, obtain a Spark session:
 
@@ -283,7 +283,7 @@ In particular, providing a few examples in a prompt can significantly improve an
 a technique known as "few-shot learning." Typically, a few-shot prompt consists of a purpose, cautions,
 and examples.
 
-📓 **[Advanced prompting techniques →](https://openaivec.anareg.design/examples/prompt/)**
+📓 **[Advanced prompting techniques →](https://microsoft.github.io/openaivec/examples/prompt/)**
 
 The `FewShotPromptBuilder` helps you create structured, high-quality prompts with examples, cautions, and automatic improvement.
 
@@ -511,11 +511,11 @@ uv run ruff check . --fix
 
 ## Additional Resources
 
-📓 **[Customer feedback analysis →](https://openaivec.anareg.design/examples/customer_analysis/)** - Sentiment analysis & prioritization  
-📓 **[Survey data transformation →](https://openaivec.anareg.design/examples/survey_transformation/)** - Unstructured to structured data  
-📓 **[Asynchronous processing examples →](https://openaivec.anareg.design/examples/aio/)** - High-performance async workflows  
-📓 **[Auto-generate FAQs from documents →](https://openaivec.anareg.design/examples/generate_faq/)** - Create FAQs using AI  
-📓 **[All examples →](https://openaivec.anareg.design/examples/)** - Complete collection of tutorials and use cases
+📓 **[Customer feedback analysis →](https://microsoft.github.io/openaivec/examples/customer_analysis/)** - Sentiment analysis & prioritization  
+📓 **[Survey data transformation →](https://microsoft.github.io/openaivec/examples/survey_transformation/)** - Unstructured to structured data  
+📓 **[Asynchronous processing examples →](https://microsoft.github.io/openaivec/examples/aio/)** - High-performance async workflows  
+📓 **[Auto-generate FAQs from documents →](https://microsoft.github.io/openaivec/examples/generate_faq/)** - Create FAQs using AI  
+📓 **[All examples →](https://microsoft.github.io/openaivec/examples/)** - Complete collection of tutorials and use cases
 
 ## Community
 

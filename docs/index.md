@@ -48,7 +48,7 @@ Perfect for **data scientists**, **analysts**, and **ML engineers** who want to 
 ## Links
 - [GitHub Repository](https://github.com/microsoft/openaivec/)
 - [PyPI Package](https://pypi.org/project/openaivec/)
-- [Complete Documentation](https://openaivec.anareg.design/)
+- [Complete Documentation](https://microsoft.github.io/openaivec/)
 
 ## 📚 Examples & Tutorials
 
