@@ -80,8 +80,6 @@ def get_examples(df: pd.DataFrame, target_column_name: str) -> List[Dict]:
 
     samples: pd.DataFrame = df.sample(frac=1)
     samples = samples.dropna(subset=[target_column_name])
-    samples = samples[samples[target_column_name].notna()]
-    samples = samples[samples[target_column_name] is not None]
 
 
     for i, row in samples.head(500).iterrows():
