@@ -1,0 +1,175 @@
+"""Missing value imputation task for DataFrame columns.
+
+This module provides functionality to intelligently fill missing values in DataFrame
+columns using AI-powered analysis. The task analyzes existing data patterns to
+generate contextually appropriate values for missing entries.
+
+Example:
+    Basic usage with pandas DataFrame:
+    
+    ```python
+    import pandas as pd
+    from openaivec import pandas_ext  # Required for .ai accessor
+    from openaivec.task.table import fillna
+    
+    # Create DataFrame with missing values
+    df = pd.DataFrame({
+        "name": ["Alice", "Bob", None, "David"],
+        "age": [25, 30, 35, None],
+        "city": ["New York", "London", "Tokyo", "Paris"],
+        "salary": [50000, 60000, 70000, None]
+    })
+    
+    # Fill missing values in the 'salary' column
+    task = fillna(df, "salary")
+    filled_salaries = df[df["salary"].isna()].ai.task(task)
+    
+    # Apply filled values back to DataFrame
+    for result in filled_salaries:
+        df.loc[result.index, "salary"] = result.output
+    ```
+
+    With BatchResponses for more control:
+    
+    ```python
+    from openai import OpenAI
+    from openaivec.responses import BatchResponses
+    from openaivec.task.table import fillna
+    
+    client = OpenAI()
+    df = pd.DataFrame({...})  # Your DataFrame with missing values
+    
+    # Create fillna task for target column
+    task = fillna(df, "target_column")
+    
+    # Get rows with missing values in target column
+    missing_rows = df[df["target_column"].isna()]
+    
+    # Process with BatchResponses
+    filler = BatchResponses.of_task(
+        client=client,
+        model_name="gpt-4o-mini",
+        task=task
+    )
+    
+    # Generate inputs for missing rows
+    inputs = []
+    for idx, row in missing_rows.iterrows():
+        inputs.append({
+            "index": idx,
+            "input": {k: v for k, v in row.items() if k != "target_column"}
+        })
+    
+    filled_values = filler.parse(inputs)
+    ```
+"""
+
+from typing import Any, Dict, List
+import pandas as pd
+from pydantic import BaseModel, Field
+
+from ...prompt import FewShotPromptBuilder
+from ..model import PreparedTask
+
+__all__ = ["fillna", "FillNaResponse"]
+
+
+def get_examples(df: pd.DataFrame, target_column_name: str) -> List[Dict]:
+
+    examples: List[Dict] = []
+
+    samples: pd.DataFrame = df.sample(frac=1)
+    samples = samples.dropna(subset=[target_column_name])
+    samples = samples[samples[target_column_name].notna()]
+    samples = samples[samples[target_column_name] is not None]
+
+
+    for i, row in samples.head(500).iterrows():
+        examples.append(
+            {
+                "index": i,
+                "input": {k: v for k, v in row.items() if k != target_column_name},
+                "output": row[target_column_name]
+            }
+        )
+
+    return examples
+
+
+def get_instructions(df: pd.DataFrame, target_column_name: str) -> str:
+    examples = get_examples(df, target_column_name)
+
+    builder = (
+        FewShotPromptBuilder()
+        .purpose("Fill missing values in the target column based on the context provided by other columns.")
+        .caution("Ensure that the filled values are consistent with the data in other columns.")
+    )
+
+    for row in examples:
+        builder.example(
+            input_value={"index": row["index"], "input": row["input"]},
+            output_value={"index": row["index"], "output": row["output"]}
+        )
+
+    return builder.build()
+
+
+class FillNaResponse(BaseModel):
+    """Response model for missing value imputation results.
+    
+    Contains the row index and the imputed value for a specific missing
+    entry in the target column.
+    """
+    index: int = Field(description="Index of the row in the original DataFrame")
+    output: Any = Field(description="Filled value for the target column. This value has same type as the target column in the original DataFrame.")
+
+
+def fillna(df: pd.DataFrame, target_column_name: str) -> PreparedTask:
+    """Create a prepared task for filling missing values in a DataFrame column.
+    
+    Analyzes the provided DataFrame to understand data patterns and creates
+    a configured task that can intelligently fill missing values in the
+    specified target column. The task uses few-shot learning with examples
+    extracted from non-null rows in the DataFrame.
+    
+    Args:
+        df: Source DataFrame containing the data with missing values.
+        target_column_name: Name of the column to fill missing values for.
+            This column should exist in the DataFrame and contain some
+            non-null values to serve as training examples.
+            
+    Returns:
+        PreparedTask configured for missing value imputation with:
+        - Instructions based on DataFrame patterns
+        - FillNaResponse format for structured output
+        - Temperature=0.0 and top_p=1.0 for deterministic results
+        
+    Raises:
+        ValueError: If target_column_name doesn't exist in DataFrame or
+            contains no non-null values for training examples.
+            
+    Example:
+        ```python
+        import pandas as pd
+        from openaivec.task.table import fillna
+        
+        df = pd.DataFrame({
+            "product": ["laptop", "phone", "tablet", "laptop"],
+            "brand": ["Apple", "Samsung", None, "Dell"],
+            "price": [1200, 800, 600, 1000]
+        })
+        
+        # Create task to fill missing brand values
+        task = fillna(df, "brand")
+        
+        # Use with pandas AI accessor
+        missing_brands = df[df["brand"].isna()].ai.task(task)
+        ```
+    """
+    instructions = get_instructions(df, target_column_name)
+    return PreparedTask(
+        instructions=instructions,
+        response_format=FillNaResponse,
+        temperature=0.0,
+        top_p=1.0
+    )
