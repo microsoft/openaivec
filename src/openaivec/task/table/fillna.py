@@ -164,6 +164,10 @@ def fillna(df: pd.DataFrame, target_column_name: str) -> PreparedTask:
         missing_brands = df[df["brand"].isna()].ai.task(task)
         ```
     """
+    if target_column_name not in df.columns:
+        raise ValueError(f"Column '{target_column_name}' does not exist in the DataFrame.")
+    if df[target_column_name].notna().sum() == 0:
+        raise ValueError(f"Column '{target_column_name}' contains no non-null values for training examples.")
     instructions = get_instructions(df, target_column_name)
     return PreparedTask(
         instructions=instructions,
