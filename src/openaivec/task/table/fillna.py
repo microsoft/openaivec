@@ -64,6 +64,7 @@ Example:
     ```
 """
 
+import json
 from typing import Any, Dict, List
 import pandas as pd
 from pydantic import BaseModel, Field
@@ -75,13 +76,11 @@ __all__ = ["fillna", "FillNaResponse"]
 
 
 def get_examples(df: pd.DataFrame, target_column_name: str, max_examples: int) -> List[Dict]:
-
     examples: List[Dict] = []
-
+    
     samples: pd.DataFrame = df.sample(frac=1)
     samples = samples.dropna(subset=[target_column_name])
-
-
+    
     for i, row in samples.head(max_examples).iterrows():
         examples.append(
             {
@@ -105,8 +104,8 @@ def get_instructions(df: pd.DataFrame, target_column_name: str, max_examples: in
 
     for row in examples:
         builder.example(
-            input_value={"index": row["index"], "input": row["input"]},
-            output_value={"index": row["index"], "output": row["output"]}
+            input_value=json.dumps({"index": row["index"], "input": row["input"]}, ensure_ascii=False),
+            output_value=json.dumps({"index": row["index"], "output": row["output"]}, ensure_ascii=False)
         )
 
     return builder.build()
@@ -146,8 +145,9 @@ def fillna(df: pd.DataFrame, target_column_name: str, max_examples: int = 500) -
         - Temperature=0.0 and top_p=1.0 for deterministic results
         
     Raises:
-        ValueError: If target_column_name doesn't exist in DataFrame or
-            contains no non-null values for training examples.
+        ValueError: If target_column_name doesn't exist in DataFrame,
+            contains no non-null values for training examples, DataFrame is empty,
+            or max_examples is not a positive integer.
             
     Example:
         ```python
@@ -167,6 +167,10 @@ def fillna(df: pd.DataFrame, target_column_name: str, max_examples: int = 500) -
         missing_brands = df[df["brand"].isna()].ai.task(task)
         ```
     """
+    if df.empty:
+        raise ValueError("DataFrame is empty.")
+    if not isinstance(max_examples, int) or max_examples <= 0:
+        raise ValueError("max_examples must be a positive integer.")
     if target_column_name not in df.columns:
         raise ValueError(f"Column '{target_column_name}' does not exist in the DataFrame.")
     if df[target_column_name].notna().sum() == 0:
