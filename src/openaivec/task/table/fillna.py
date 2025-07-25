@@ -74,7 +74,7 @@ from ..model import PreparedTask
 __all__ = ["fillna", "FillNaResponse"]
 
 
-def get_examples(df: pd.DataFrame, target_column_name: str) -> List[Dict]:
+def get_examples(df: pd.DataFrame, target_column_name: str, max_examples: int) -> List[Dict]:
 
     examples: List[Dict] = []
 
@@ -82,7 +82,7 @@ def get_examples(df: pd.DataFrame, target_column_name: str) -> List[Dict]:
     samples = samples.dropna(subset=[target_column_name])
 
 
-    for i, row in samples.head(500).iterrows():
+    for i, row in samples.head(max_examples).iterrows():
         examples.append(
             {
                 "index": i,
@@ -94,8 +94,8 @@ def get_examples(df: pd.DataFrame, target_column_name: str) -> List[Dict]:
     return examples
 
 
-def get_instructions(df: pd.DataFrame, target_column_name: str) -> str:
-    examples = get_examples(df, target_column_name)
+def get_instructions(df: pd.DataFrame, target_column_name: str, max_examples: int) -> str:
+    examples = get_examples(df, target_column_name, max_examples)
 
     builder = (
         FewShotPromptBuilder()
@@ -122,7 +122,7 @@ class FillNaResponse(BaseModel):
     output: Any = Field(description="Filled value for the target column. This value has same type as the target column in the original DataFrame.")
 
 
-def fillna(df: pd.DataFrame, target_column_name: str) -> PreparedTask:
+def fillna(df: pd.DataFrame, target_column_name: str, max_examples: int = 500) -> PreparedTask:
     """Create a prepared task for filling missing values in a DataFrame column.
     
     Analyzes the provided DataFrame to understand data patterns and creates
@@ -135,6 +135,9 @@ def fillna(df: pd.DataFrame, target_column_name: str) -> PreparedTask:
         target_column_name: Name of the column to fill missing values for.
             This column should exist in the DataFrame and contain some
             non-null values to serve as training examples.
+        max_examples: Maximum number of example rows to use for few-shot
+            learning. Defaults to 500. Higher values provide more context
+            but increase token usage and processing time.
             
     Returns:
         PreparedTask configured for missing value imputation with:
@@ -168,7 +171,7 @@ def fillna(df: pd.DataFrame, target_column_name: str) -> PreparedTask:
         raise ValueError(f"Column '{target_column_name}' does not exist in the DataFrame.")
     if df[target_column_name].notna().sum() == 0:
         raise ValueError(f"Column '{target_column_name}' contains no non-null values for training examples.")
-    instructions = get_instructions(df, target_column_name)
+    instructions = get_instructions(df, target_column_name, max_examples)
     return PreparedTask(
         instructions=instructions,
         response_format=FillNaResponse,
