@@ -590,7 +590,7 @@ class OpenAIVecDataFrameAccessor:
         if missing_rows.empty:
             return self._obj
 
-        filled_values: List[FillNaResponse] = missing_rows.ai.task(task=task)
+        filled_values: List[FillNaResponse] = missing_rows.ai.task(task=task, batch_size=batch_size)
 
         # get deep copy of the DataFrame to avoid modifying the original
         df = self._obj.copy()
