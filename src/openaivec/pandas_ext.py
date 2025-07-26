@@ -549,7 +549,7 @@ class OpenAIVecDataFrameAccessor:
             )
         )
 
-    def fillna(self, target_column_name: str, max_examples: int = 500) -> pd.DataFrame:
+    def fillna(self, target_column_name: str, max_examples: int = 500, batch_size: int = 128) -> pd.DataFrame:
         """Fill missing values in a DataFrame column using AI-powered inference.
 
         This method uses machine learning to intelligently fill missing (NaN) values
@@ -563,6 +563,8 @@ class OpenAIVecDataFrameAccessor:
             max_examples (int, optional): The maximum number of example rows to use
                 for context when predicting missing values. Higher values may improve
                 accuracy but increase API costs and processing time. Defaults to 500.
+            batch_size (int, optional): Number of requests sent in one batch
+                to optimize API usage. Defaults to 128.
 
         Returns:
             pandas.DataFrame: A new DataFrame with missing values filled in the target
@@ -978,7 +980,9 @@ class AsyncOpenAIVecDataFrameAccessor:
 
         return df_current
 
-    async def fillna(self, target_column_name: str, max_examples: int = 500, max_concurrency: int = 8) -> pd.DataFrame:
+    async def fillna(
+        self, target_column_name: str, max_examples: int = 500, batch_size: int = 128, max_concurrency: int = 8
+    ) -> pd.DataFrame:
         """Fill missing values in a DataFrame column using AI-powered inference (asynchronously).
 
         This method uses machine learning to intelligently fill missing (NaN) values
@@ -992,6 +996,8 @@ class AsyncOpenAIVecDataFrameAccessor:
             max_examples (int, optional): The maximum number of example rows to use
                 for context when predicting missing values. Higher values may improve
                 accuracy but increase API costs and processing time. Defaults to 500.
+            batch_size (int, optional): Number of requests sent in one batch
+                to optimize API usage. Defaults to 128.
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to 8.
 
@@ -1022,7 +1028,9 @@ class AsyncOpenAIVecDataFrameAccessor:
         if missing_rows.empty:
             return self._obj
 
-        filled_values: List[FillNaResponse] = await missing_rows.aio.task(task=task, max_concurrency=max_concurrency)
+        filled_values: List[FillNaResponse] = await missing_rows.aio.task(
+            task=task, batch_size=batch_size, max_concurrency=max_concurrency
+        )
 
         # get deep copy of the DataFrame to avoid modifying the original
         df = self._obj.copy()
