@@ -54,6 +54,7 @@ nav:
   - GitHub: https://github.com/microsoft/openaivec
   - Examples:
       - Getting Started: examples/pandas.ipynb
+      - Intelligent Fill: examples/intelligent_fill.ipynb
       - Customer Analysis: examples/customer_analysis.ipynb
       - Survey Transformation: examples/survey_transformation.ipynb
       - Spark Processing: examples/spark.ipynb

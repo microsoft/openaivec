@@ -33,19 +33,20 @@ to easily interact with OpenAI APIs for tasks like generating responses or embed
 
 import inspect
 import json
-import os
 import logging
-from typing import Any, Awaitable, Callable, Type, TypeVar
+import os
+from typing import Any, Awaitable, Callable, List, Type, TypeVar
 
 import numpy as np
 import pandas as pd
+import tiktoken
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
 from pydantic import BaseModel
-import tiktoken
 
 from .embeddings import AsyncBatchEmbeddings, BatchEmbeddings
 from .responses import AsyncBatchResponses, BatchResponses
 from .task.model import PreparedTask
+from .task.table import FillNaResponse, fillna
 
 __all__ = [
     "use",
@@ -298,7 +299,7 @@ class OpenAIVecSeriesAccessor:
             index=self._obj.index,
             name=self._obj.name,
         )
-    
+
     def task(self, task: PreparedTask, batch_size: int = 128) -> pd.Series:
         """Execute a prepared task on every Series element.
 
@@ -309,10 +310,10 @@ class OpenAIVecSeriesAccessor:
         Example:
             ```python
             from openaivec.task.model import PreparedTask
-            
+
             # Assume you have a prepared task for sentiment analysis
             sentiment_task = PreparedTask(...)
-            
+
             reviews = pd.Series(["Great product!", "Not satisfied", "Amazing quality"])
             results = reviews.ai.task(sentiment_task)
             ```
@@ -329,11 +330,7 @@ class OpenAIVecSeriesAccessor:
             pandas.Series: Series whose values are instances of the task's
                 response format, aligned with the original Series index.
         """
-        client = BatchResponses.of_task(
-            client=_get_openai_client(),
-            model_name=_RESPONSES_MODEL_NAME,
-            task=task
-        )
+        client = BatchResponses.of_task(client=_get_openai_client(), model_name=_RESPONSES_MODEL_NAME, task=task)
 
         return pd.Series(
             client.parse(self._obj.tolist(), batch_size=batch_size),
@@ -520,10 +517,10 @@ class OpenAIVecDataFrameAccessor:
         Example:
             ```python
             from openaivec.task.model import PreparedTask
-            
+
             # Assume you have a prepared task for data analysis
             analysis_task = PreparedTask(...)
-            
+
             df = pd.DataFrame([
                 {"name": "cat", "legs": 4},
                 {"name": "dog", "legs": 4},
@@ -551,6 +548,65 @@ class OpenAIVecDataFrameAccessor:
                 .ai.task(task=task, batch_size=batch_size)
             )
         )
+
+    def fillna(self, target_column_name: str, max_examples: int = 500, batch_size: int = 128) -> pd.DataFrame:
+        """Fill missing values in a DataFrame column using AI-powered inference.
+
+        This method uses machine learning to intelligently fill missing (NaN) values
+        in a specified column by analyzing patterns from non-missing rows in the DataFrame.
+        It creates a prepared task that provides examples of similar rows to help the AI
+        model predict appropriate values for the missing entries.
+
+        Args:
+            target_column_name (str): The name of the column containing missing values
+                that need to be filled.
+            max_examples (int, optional): The maximum number of example rows to use
+                for context when predicting missing values. Higher values may improve
+                accuracy but increase API costs and processing time. Defaults to 500.
+            batch_size (int, optional): Number of requests sent in one batch
+                to optimize API usage. Defaults to 128.
+
+        Returns:
+            pandas.DataFrame: A new DataFrame with missing values filled in the target
+                column. The original DataFrame is not modified.
+
+        Example:
+            ```python
+            df = pd.DataFrame({
+                'name': ['Alice', 'Bob', None, 'David'],
+                'age': [25, 30, 35, None],
+                'city': ['Tokyo', 'Osaka', 'Kyoto', 'Tokyo']
+            })
+
+            # Fill missing values in the 'name' column
+            filled_df = df.ai.fillna('name')
+            ```
+
+        Note:
+            If the target column has no missing values, the original DataFrame
+            is returned unchanged.
+        """
+
+        task: PreparedTask = fillna(self._obj, target_column_name, max_examples)
+        missing_rows = self._obj[self._obj[target_column_name].isna()]
+        if missing_rows.empty:
+            return self._obj
+
+        filled_values: List[FillNaResponse] = missing_rows.ai.task(task=task, batch_size=batch_size)
+
+        # get deep copy of the DataFrame to avoid modifying the original
+        df = self._obj.copy()
+
+        # Get the actual indices of missing rows to map the results correctly
+        missing_indices = missing_rows.index.tolist()
+
+        for i, result in enumerate(filled_values):
+            if result.output is not None:
+                # Use the actual index from the original DataFrame, not the relative index from result
+                actual_index = missing_indices[i]
+                df.at[actual_index, target_column_name] = result.output
+
+        return df
 
     def similarity(self, col1: str, col2: str) -> pd.Series:
         return self._obj.apply(
@@ -676,10 +732,10 @@ class AsyncOpenAIVecSeriesAccessor:
         Example:
             ```python
             from openaivec.task.model import PreparedTask
-            
+
             # Assume you have a prepared task for sentiment analysis
             sentiment_task = PreparedTask(...)
-            
+
             reviews = pd.Series(["Great product!", "Not satisfied", "Amazing quality"])
             # Must be awaited
             results = await reviews.aio.task(sentiment_task)
@@ -798,10 +854,10 @@ class AsyncOpenAIVecDataFrameAccessor:
         Example:
             ```python
             from openaivec.task.model import PreparedTask
-            
+
             # Assume you have a prepared task for data analysis
             analysis_task = PreparedTask(...)
-            
+
             df = pd.DataFrame([
                 {"name": "cat", "legs": 4},
                 {"name": "dog", "legs": 4},
@@ -923,3 +979,69 @@ class AsyncOpenAIVecDataFrameAccessor:
             df_current[key] = column_data
 
         return df_current
+
+    async def fillna(
+        self, target_column_name: str, max_examples: int = 500, batch_size: int = 128, max_concurrency: int = 8
+    ) -> pd.DataFrame:
+        """Fill missing values in a DataFrame column using AI-powered inference (asynchronously).
+
+        This method uses machine learning to intelligently fill missing (NaN) values
+        in a specified column by analyzing patterns from non-missing rows in the DataFrame.
+        It creates a prepared task that provides examples of similar rows to help the AI
+        model predict appropriate values for the missing entries.
+
+        Args:
+            target_column_name (str): The name of the column containing missing values
+                that need to be filled.
+            max_examples (int, optional): The maximum number of example rows to use
+                for context when predicting missing values. Higher values may improve
+                accuracy but increase API costs and processing time. Defaults to 500.
+            batch_size (int, optional): Number of requests sent in one batch
+                to optimize API usage. Defaults to 128.
+            max_concurrency (int, optional): Maximum number of concurrent
+                requests. Defaults to 8.
+
+        Returns:
+            pandas.DataFrame: A new DataFrame with missing values filled in the target
+                column. The original DataFrame is not modified.
+
+        Example:
+            ```python
+            df = pd.DataFrame({
+                'name': ['Alice', 'Bob', None, 'David'],
+                'age': [25, 30, 35, None],
+                'city': ['Tokyo', 'Osaka', 'Kyoto', 'Tokyo']
+            })
+
+            # Fill missing values in the 'name' column (must be awaited)
+            filled_df = await df.aio.fillna('name')
+            ```
+
+        Note:
+            This is an asynchronous method and must be awaited.
+            If the target column has no missing values, the original DataFrame
+            is returned unchanged.
+        """
+
+        task: PreparedTask = fillna(self._obj, target_column_name, max_examples)
+        missing_rows = self._obj[self._obj[target_column_name].isna()]
+        if missing_rows.empty:
+            return self._obj
+
+        filled_values: List[FillNaResponse] = await missing_rows.aio.task(
+            task=task, batch_size=batch_size, max_concurrency=max_concurrency
+        )
+
+        # get deep copy of the DataFrame to avoid modifying the original
+        df = self._obj.copy()
+
+        # Get the actual indices of missing rows to map the results correctly
+        missing_indices = missing_rows.index.tolist()
+
+        for i, result in enumerate(filled_values):
+            if result.output is not None:
+                # Use the actual index from the original DataFrame, not the relative index from result
+                actual_index = missing_indices[i]
+                df.at[actual_index, target_column_name] = result.output
+
+        return df
