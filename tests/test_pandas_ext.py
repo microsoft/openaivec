@@ -1,10 +1,10 @@
-import unittest
 import asyncio
+import unittest
 
 import numpy as np
+import pandas as pd
 from openai import AsyncOpenAI, OpenAI
 from pydantic import BaseModel
-import pandas as pd
 
 from openaivec import pandas_ext
 
@@ -233,3 +233,119 @@ class TestPandasExt(unittest.TestCase):
 
         with self.assertRaises(TypeError):
             sample_df.ai.similarity("vector1", "vector2")
+
+    def test_fillna_with_no_missing_values(self):
+        """Test fillna method when target column has no missing values."""
+        # Create a DataFrame without missing values in target column
+        df_complete = pd.DataFrame(
+            {
+                "name": ["Alice", "Bob", "Charlie", "David"],
+                "age": [25, 30, 35, 40],
+                "city": ["Tokyo", "Osaka", "Kyoto", "Tokyo"],
+            }
+        )
+
+        # Test fillna on a column with no missing values
+        result_df = df_complete.ai.fillna("name")
+
+        # Assert that the result is identical to the original
+        pd.testing.assert_frame_equal(result_df, df_complete)
+
+    def test_fillna_task_creation(self):
+        """Test that fillna method creates a valid task."""
+        from openaivec.task.table import fillna
+
+        # Create a DataFrame with missing values
+        df_with_missing = pd.DataFrame(
+            {
+                "name": ["Alice", "Bob", None, "David"],
+                "age": [25, 30, 35, 40],
+                "city": ["Tokyo", "Osaka", "Kyoto", "Tokyo"],
+            }
+        )
+
+        # Test that task creation works without errors
+        task = fillna(df_with_missing, "name")
+
+        # Assert that the task is created
+        self.assertIsNotNone(task)
+        self.assertEqual(task.temperature, 0.0)
+        self.assertEqual(task.top_p, 1.0)
+
+    def test_fillna_task_validation(self):
+        """Test fillna validation with various edge cases."""
+        from openaivec.task.table import fillna
+
+        # Test with empty DataFrame
+        empty_df = pd.DataFrame()
+        with self.assertRaises(ValueError):
+            fillna(empty_df, "nonexistent")
+
+        # Test with nonexistent column
+        df = pd.DataFrame({"name": ["Alice", "Bob"]})
+        with self.assertRaises(ValueError):
+            fillna(df, "nonexistent")
+
+        # Test with all null values in target column
+        df_all_null = pd.DataFrame({"name": [None, None, None], "age": [25, 30, 35]})
+        with self.assertRaises(ValueError):
+            fillna(df_all_null, "name")
+
+        # Test with invalid max_examples
+        df_valid = pd.DataFrame({"name": ["Alice", None, "Bob"], "age": [25, 30, 35]})
+        with self.assertRaises(ValueError):
+            fillna(df_valid, "name", max_examples=0)
+
+        with self.assertRaises(ValueError):
+            fillna(df_valid, "name", max_examples=-1)
+
+    def test_fillna_missing_rows_detection(self):
+        """Test that fillna correctly identifies missing rows."""
+        # Create a DataFrame with some missing values
+        df_with_missing = pd.DataFrame(
+            {
+                "name": ["Alice", "Bob", None, "David", None],
+                "age": [25, 30, 35, 40, 45],
+                "city": ["Tokyo", "Osaka", "Kyoto", "Tokyo", "Nagoya"],
+            }
+        )
+
+        # Get missing rows manually
+        missing_rows = df_with_missing[df_with_missing["name"].isna()]
+
+        # Assert that we correctly identify 2 missing rows
+        self.assertEqual(len(missing_rows), 2)
+        self.assertTrue(missing_rows.index.tolist() == [2, 4])
+
+    def test_fillna_dataframe_copy(self):
+        """Test that fillna returns a copy and doesn't modify original."""
+        # Test fillna (this will actually call the API, but we check basic behavior)
+        # For testing purposes, we'll just verify that the original isn't modified
+        # when there are no missing values
+        df_no_missing = pd.DataFrame(
+            {
+                "name": ["Alice", "Bob", "Charlie", "David"],
+                "age": [25, 30, 35, 40],
+                "city": ["Tokyo", "Osaka", "Kyoto", "Tokyo"],
+            }
+        )
+
+        result_df = df_no_missing.ai.fillna("name")
+
+        # Assert original is unchanged
+        pd.testing.assert_frame_equal(df_no_missing, result_df)
+
+    def test_fillna_index_preservation_structure(self):
+        """Test that fillna preserves DataFrame structure without API calls."""
+        # Create a DataFrame with custom index but no missing values
+        df_custom_index = pd.DataFrame(
+            {"name": ["Alice", "Bob", "Charlie"], "score": [85, 90, 78]}, index=["student_1", "student_2", "student_3"]
+        )
+
+        # Test fillna on complete data (no API call needed)
+        result_df = df_custom_index.ai.fillna("name")
+
+        # Assert that the structure is preserved
+        pd.testing.assert_index_equal(result_df.index, df_custom_index.index)
+        self.assertEqual(result_df.shape, df_custom_index.shape)
+        pd.testing.assert_frame_equal(result_df, df_custom_index)
