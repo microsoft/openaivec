@@ -977,3 +977,63 @@ class AsyncOpenAIVecDataFrameAccessor:
             df_current[key] = column_data
 
         return df_current
+
+    async def fillna(self, target_column_name: str, max_examples: int = 500, max_concurrency: int = 8) -> pd.DataFrame:
+        """Fill missing values in a DataFrame column using AI-powered inference (asynchronously).
+
+        This method uses machine learning to intelligently fill missing (NaN) values
+        in a specified column by analyzing patterns from non-missing rows in the DataFrame.
+        It creates a prepared task that provides examples of similar rows to help the AI
+        model predict appropriate values for the missing entries.
+
+        Args:
+            target_column_name (str): The name of the column containing missing values
+                that need to be filled.
+            max_examples (int, optional): The maximum number of example rows to use
+                for context when predicting missing values. Higher values may improve
+                accuracy but increase API costs and processing time. Defaults to 500.
+            max_concurrency (int, optional): Maximum number of concurrent
+                requests. Defaults to 8.
+
+        Returns:
+            pandas.DataFrame: A new DataFrame with missing values filled in the target
+                column. The original DataFrame is not modified.
+
+        Example:
+            ```python
+            df = pd.DataFrame({
+                'name': ['Alice', 'Bob', None, 'David'],
+                'age': [25, 30, 35, None],
+                'city': ['Tokyo', 'Osaka', 'Kyoto', 'Tokyo']
+            })
+
+            # Fill missing values in the 'name' column (must be awaited)
+            filled_df = await df.aio.fillna('name')
+            ```
+
+        Note:
+            This is an asynchronous method and must be awaited.
+            If the target column has no missing values, the original DataFrame
+            is returned unchanged.
+        """
+
+        task: PreparedTask = fillna(self._obj, target_column_name, max_examples)
+        missing_rows = self._obj[self._obj[target_column_name].isna()]
+        if missing_rows.empty:
+            return self._obj
+
+        filled_values: List[FillNaResponse] = await missing_rows.aio.task(task=task, max_concurrency=max_concurrency)
+
+        # get deep copy of the DataFrame to avoid modifying the original
+        df = self._obj.copy()
+
+        # Get the actual indices of missing rows to map the results correctly
+        missing_indices = missing_rows.index.tolist()
+
+        for i, result in enumerate(filled_values):
+            if result.output is not None:
+                # Use the actual index from the original DataFrame, not the relative index from result
+                actual_index = missing_indices[i]
+                df.at[actual_index, target_column_name] = result.output
+
+        return df
