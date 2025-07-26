@@ -595,9 +595,14 @@ class OpenAIVecDataFrameAccessor:
         # get deep copy of the DataFrame to avoid modifying the original
         df = self._obj.copy()
 
-        for result in filled_values:
+        # Get the actual indices of missing rows to map the results correctly
+        missing_indices = missing_rows.index.tolist()
+
+        for i, result in enumerate(filled_values):
             if result.output is not None:
-                df.at[result.index, target_column_name] = result.output
+                # Use the actual index from the original DataFrame, not the relative index from result
+                actual_index = missing_indices[i]
+                df.at[actual_index, target_column_name] = result.output
 
         return df
 
