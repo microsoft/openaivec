@@ -55,12 +55,14 @@ class Translation(BaseModel):
     fr: str
     # ... other languages
 
-# Register the asynchronous responses UDF
+# Register the asynchronous responses UDF with performance tuning
 spark.udf.register(
     "translate_async",
     resp_builder.build(
         instructions="Translate the text to multiple languages.",
         response_format=Translation,
+        batch_size=64,        # Rows per API request within partition
+        max_concurrency=8     # Concurrent requests PER EXECUTOR
     ),
 )
 
@@ -71,10 +73,13 @@ spark.udf.register(
     resp_builder.build_from_task(nlp.SENTIMENT_ANALYSIS),
 )
 
-# Register the asynchronous embeddings UDF
+# Register the asynchronous embeddings UDF with performance tuning
 spark.udf.register(
     "embed_async",
-    emb_builder.build(),
+    emb_builder.build(
+        batch_size=128,       # Larger batches for embeddings
+        max_concurrency=8     # Concurrent requests PER EXECUTOR
+    ),
 )
 ```
 
@@ -88,6 +93,23 @@ SELECT
     embed_async(text) AS embedding
 FROM your_table;
 ```
+
+## Performance Considerations
+
+When using these UDFs in distributed Spark environments:
+
+- **`batch_size`**: Controls rows processed per API request within each partition.
+  Recommended: 32-128 for responses, 64-256 for embeddings.
+
+- **`max_concurrency`**: Sets concurrent API requests **PER EXECUTOR**, not per cluster.
+  Total cluster concurrency = max_concurrency × number_of_executors.
+  Recommended: 4-12 per executor to avoid overwhelming OpenAI rate limits.
+
+- **Rate Limit Management**: Monitor OpenAI API usage when scaling executors.
+  Consider your OpenAI tier limits and adjust max_concurrency accordingly.
+
+Example for a 5-executor cluster with max_concurrency=8:
+Total concurrent requests = 8 × 5 = 40 simultaneous API calls.
 
 Note: This module provides asynchronous support through the pandas extensions.
 """
@@ -293,10 +315,15 @@ class ResponsesUDFBuilder:
             instructions (str): The system prompt or instructions for the model.
             response_format (Type[T]): The desired output format. Either `str` for plain text
                 or a Pydantic `BaseModel` for structured JSON output. Defaults to `str`.
-            batch_size (int): Number of rows per async batch request passed to the underlying
-                `pandas_ext` function. Defaults to 128.
+            batch_size (int): Number of rows per async batch request within each partition.
+                Larger values reduce API call overhead but increase memory usage.
+                Recommended: 32-128 depending on data complexity. Defaults to 128.
             temperature (float): Sampling temperature (0.0 to 2.0). Defaults to 0.0.
             top_p (float): Nucleus sampling parameter. Defaults to 1.0.
+            max_concurrency (int): Maximum number of concurrent API requests **PER EXECUTOR**.
+                Total cluster concurrency = max_concurrency × number_of_executors.
+                Higher values increase throughput but may hit OpenAI rate limits.
+                Recommended: 4-12 per executor. Defaults to 8.
 
         Returns:
             UserDefinedFunction: A Spark pandas UDF configured to generate responses asynchronously.
@@ -304,6 +331,12 @@ class ResponsesUDFBuilder:
 
         Raises:
             ValueError: If `response_format` is not `str` or a Pydantic `BaseModel`.
+            
+        Note:
+            For optimal performance in distributed environments:
+            - Monitor OpenAI API rate limits when scaling executor count
+            - Consider your OpenAI tier limits: total_requests = max_concurrency × executors
+            - Use Spark UI to optimize partition sizes relative to batch_size
         """
         if issubclass(response_format, BaseModel):
             spark_schema = _pydantic_to_spark_schema(response_format)
@@ -368,9 +401,13 @@ class ResponsesUDFBuilder:
         Args:
             task (PreparedTask): A predefined task configuration containing instructions,
                 response format, temperature, and top_p settings.
-            batch_size (int): Number of rows per async batch request passed to the underlying
-                `pandas_ext` function. Defaults to 128.
-            max_concurrency (int): Maximum number of concurrent requests. Defaults to 8.
+            batch_size (int): Number of rows per async batch request within each partition.
+                Larger values reduce API call overhead but increase memory usage.
+                Recommended: 32-128 depending on task complexity. Defaults to 128.
+            max_concurrency (int): Maximum number of concurrent API requests **PER EXECUTOR**.
+                Total cluster concurrency = max_concurrency × number_of_executors.
+                Higher values increase throughput but may hit OpenAI rate limits.
+                Recommended: 4-12 per executor. Defaults to 8.
 
         Returns:
             UserDefinedFunction: A Spark pandas UDF configured to execute the specified task
@@ -476,12 +513,25 @@ class EmbeddingsUDFBuilder:
         """Builds the asynchronous pandas UDF for generating embeddings.
 
         Args:
-            batch_size (int): Number of rows per async batch request passed to the underlying
-                `pandas_ext` function. Defaults to 128.
+            batch_size (int): Number of rows per async batch request within each partition.
+                Larger values reduce API call overhead but increase memory usage.
+                Embeddings typically handle larger batches efficiently.
+                Recommended: 64-256 depending on text length. Defaults to 128.
+            max_concurrency (int): Maximum number of concurrent API requests **PER EXECUTOR**.
+                Total cluster concurrency = max_concurrency × number_of_executors.
+                Higher values increase throughput but may hit OpenAI rate limits.
+                Recommended: 4-12 per executor. Defaults to 8.
 
         Returns:
             UserDefinedFunction: A Spark pandas UDF configured to generate embeddings asynchronously,
                 returning an `ArrayType(FloatType())` column.
+                
+        Note:
+            For optimal performance in distributed environments:
+            - Monitor OpenAI API rate limits when scaling executor count
+            - Consider your OpenAI tier limits: total_requests = max_concurrency × executors
+            - Embeddings API typically has higher throughput than chat completions
+            - Use larger batch_size for embeddings compared to response generation
         """
 
         @pandas_udf(returnType=ArrayType(FloatType()))
