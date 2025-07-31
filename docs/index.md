@@ -14,16 +14,6 @@ from openaivec import pandas_ext
 fruits = pd.Series(["apple", "banana", "orange", "grape", "kiwi"])
 fruits.ai.responses("Translate this fruit name into French.")
 # Result: ['pomme', 'banane', 'orange', 'raisin', 'kiwi']
-
-# For high-performance async processing
-async def process_async():
-    return await fruits.aio.responses(
-        "Translate this fruit name into French.",
-        batch_size=32,        # Optimize batch size for your use case
-        max_concurrency=10    # Control concurrent API requests
-    )
-
-sentiments = asyncio.run(process_async())
 ```
 
 Perfect for **data scientists**, **analysts**, and **ML engineers** who want to leverage AI for text processing at scale.
