@@ -192,8 +192,13 @@ results = text_df.assign(
     urgency=lambda df: df.text.ai.task(customer_support.URGENCY_ANALYSIS)
 )
 
-# Extract structured results into separate columns
-final_results = results.ai.extract("sentiment", "entities", "intent", "urgency")
+# Extract structured results into separate columns (one at a time)
+extracted_results = (results
+    .ai.extract("sentiment")
+    .ai.extract("entities") 
+    .ai.extract("intent")
+    .ai.extract("urgency")
+)
 ```
 
 **Available Task Categories:**

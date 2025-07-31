@@ -158,6 +158,30 @@ fruits_df.assign(
 | pineapple  | en='Pineapple' fr='Ananas' ja='パイナップル' es='Piñ...                    |
 | strawberry | en='Strawberry' fr='Fraise' ja='イチゴ' es='Fresa...                       |
 
+Structured output can be extracted into separate columns using the `extract` method. For example, we can extract the translations into separate columns for each language:
+
+```python
+fruits_df.assign(
+    translation=lambda df: df["name"].ai.responses(
+        instructions="Translate this fruit name into English, French, Japanese, Spanish, German, Italian, Portuguese and Russian.",
+        response_format=Translation,
+    )
+).ai.extract("translation")
+```
+
+| name       | translation_en | translation_fr | translation_ja | translation_es | translation_de | translation_it | translation_pt | translation_ru |
+|------------|----------------|----------------|----------------|----------------|----------------|----------------|----------------|----------------|
+| apple      | Apple          | Pomme          | リンゴ         | Manzana        | Apfel          | Mela           | Maçã           | Яблоко         |
+| banana     | Banana         | Banane         | バナナ         | Banana         | Banane         | Banana         | Banana         | Банан          |
+| orange     | Orange         | Orange         | オレンジ       | Naranja        | Orange         | Arancia        | Laranja        | Апельсин       |
+| grape      | Grape          | Raisin         | ブドウ         | Uva            | Traube         | Uva            | Uva            | Виноград       |
+| kiwi       | Kiwi           | Kiwi           | キウイ         | Kiwi           | Kiwi           | Kiwi           | Kiwi           | Киви           |
+| mango      | Mango          | Mangue         | マンゴー       | Mango          | Mango          | Mango          | Manga          | Манго          |
+| peach      | Peach          | Pêche          | モモ           | Durazno        | Pfirsich       | Pesca          | Pêssego        | Персик         |
+| pear       | Pear           | Poire          | 梨             | Pera           | Birne          | Pera           | Pêra           | Груша          |
+| pineapple  | Pineapple      | Ananas         | パイナップル   | Piña           | Ananas         | Ananas         | Abacaxi        | Ананас         |
+| strawberry | Strawberry     | Fraise         | イチゴ         | Fresa          | Erdbeere       | Fragola        | Morango        | Клубника       |
+
 ## Asynchronous Processing for High Performance
 
 For processing large datasets efficiently, openaivec provides the `.aio` accessor that enables asynchronous, concurrent processing:
@@ -215,28 +239,3 @@ results = asyncio.run(analyze_feedback())
 
 - **Use `.aio`** for: Large datasets (1000+ rows), time-sensitive processing, concurrent workflows
 - **Use `.ai`** for: Small datasets, interactive analysis, simple one-off operations
-
-
-Structured output can be extracted into separate columns using the `extract` method. For example, we can extract the translations into separate columns for each language:
-
-```python
-fruits_df.assign(
-    translation=lambda df: df["name"].ai.responses(
-        instructions="Translate this fruit name into English, French, Japanese, Spanish, German, Italian, Portuguese and Russian.",
-        response_format=Translation,
-    )
-).ai.extract("translation")
-```
-
-| name       | translation_en | translation_fr | translation_ja | translation_es | translation_de | translation_it | translation_pt | translation_ru |
-|------------|----------------|----------------|----------------|----------------|----------------|----------------|----------------|----------------|
-| apple      | Apple          | Pomme          | リンゴ         | Manzana        | Apfel          | Mela           | Maçã           | Яблоко         |
-| banana     | Banana         | Banane         | バナナ         | Banana         | Banane         | Banana         | Banana         | Банан          |
-| orange     | Orange         | Orange         | オレンジ       | Naranja        | Orange         | Arancia        | Laranja        | Апельсин       |
-| grape      | Grape          | Raisin         | ブドウ         | Uva            | Traube         | Uva            | Uva            | Виноград       |
-| kiwi       | Kiwi           | Kiwi           | キウイ         | Kiwi           | Kiwi           | Kiwi           | Kiwi           | Киви           |
-| mango      | Mango          | Mangue         | マンゴー       | Mango          | Mango          | Mango          | Manga          | Манго          |
-| peach      | Peach          | Pêche          | モモ           | Durazno        | Pfirsich       | Pesca          | Pêssego        | Персик         |
-| pear       | Pear           | Poire          | 梨             | Pera           | Birne          | Pera           | Pêra           | Груша          |
-| pineapple  | Pineapple      | Ananas         | パイナップル   | Piña           | Ananas         | Ananas         | Abacaxi        | Ананас         |
-| strawberry | Strawberry     | Fraise         | イチゴ         | Fresa          | Erdbeere       | Fragola        | Morango        | Клубника       |
