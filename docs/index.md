@@ -40,7 +40,7 @@ Perfect for **data scientists**, **analysts**, and **ML engineers** who want to 
 ## 🎯 Key Features
 
 - **🚀 Vectorized Processing**: Handle thousands of records in minutes, not hours
-- **💰 Cost Efficient**: Automatic deduplication reduces API costs by 50-90%
+- **💰 Cost Efficient**: Automatic deduplication significantly reduces API costs
 - **🔗 Seamless Integration**: Works within existing pandas/Spark workflows
 - **📈 Enterprise Scale**: From 100s to millions of records
 - **🤖 Advanced NLP**: Pre-built tasks for sentiment analysis, translation, NER, and more

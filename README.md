@@ -90,7 +90,7 @@ into your data processing pipelines.
 ## Key Benefits
 
 - **🚀 Performance**: Vectorized processing handles thousands of records in minutes, not hours
-- **💰 Cost Efficiency**: Automatic deduplication reduces API costs by 50-90% on typical datasets  
+- **💰 Cost Efficiency**: Automatic deduplication significantly reduces API costs on typical datasets  
 - **🔗 Integration**: Works within existing pandas/Spark workflows without architectural changes
 - **📈 Scalability**: Same API scales from exploratory analysis (100s of records) to production systems (millions of records)
 - **🏢 Enterprise Ready**: Microsoft Fabric integration, Apache Spark UDFs, Azure OpenAI compatibility
