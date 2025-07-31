@@ -262,6 +262,8 @@ spark.udf.register(
     resp_builder_openai.build( # or resp_builder_azure.build(...)
         instructions="Extract flavor-related information. Return only the concise flavor name.",
         response_format=str, # Specify string output
+        batch_size=64,      # Optimize for Spark partition sizes
+        max_concurrency=4   # Conservative for distributed processing
     )
 )
 
@@ -276,13 +278,18 @@ spark.udf.register(
     resp_builder_openai.build( # or resp_builder_azure.build(...)
         instructions="Translate the text to English, French, and Japanese.",
         response_format=Translation, # Specify Pydantic model for structured output
+        batch_size=32,              # Smaller batches for complex structured outputs
+        max_concurrency=6           # Concurrent requests PER EXECUTOR
     )
 )
 
 # --- Register Embeddings UDF ---
 spark.udf.register(
     "embed_text",
-    emb_builder_openai.build() # or emb_builder_azure.build()
+    emb_builder_openai.build( # or emb_builder_azure.build()
+        batch_size=128,     # Larger batches for embeddings
+        max_concurrency=8   # Concurrent requests PER EXECUTOR
+    )
 )
 
 # --- Register Token Counting UDF ---
@@ -318,6 +325,41 @@ Example Output (structure might vary slightly):
 | 4414732714624 | Cafe Mocha Smoothie (Trial Size)  | Mocha     | {en: ..., fr: ..., ja: ...}    | [0.1, -0.2, ..., 0.5]          | 8           |
 | 4200162318339 | Dark Chocolate Tea (New Product)  | Chocolate | {en: ..., fr: ..., ja: ...}    | [-0.3, 0.1, ..., -0.1]         | 7           |
 | 4920122084098 | Uji Matcha Tea (New Product)      | Matcha    | {en: ..., fr: ..., ja: ...}    | [0.0, 0.4, ..., 0.2]           | 8           |
+
+### Spark Performance Tuning
+
+When using openaivec with Spark, proper configuration of `batch_size` and `max_concurrency` is crucial for optimal performance:
+
+**`batch_size`** (default: 128):
+- Controls how many rows are processed together in each API request within a partition
+- **Larger values**: Fewer API calls per partition, reduced overhead
+- **Smaller values**: More granular processing, better memory management
+- **Recommendation**: 32-128 depending on data complexity and partition size
+
+**`max_concurrency`** (default: 8):
+- **Important**: This is the number of concurrent API requests **PER EXECUTOR**
+- Total cluster concurrency = `max_concurrency × number_of_executors`
+- **Higher values**: Faster processing but may overwhelm API rate limits
+- **Lower values**: More conservative, better for shared API quotas
+- **Recommendation**: 4-12 per executor, considering your OpenAI tier limits
+
+**Example for a 10-executor cluster:**
+```python
+# With max_concurrency=8, total cluster concurrency = 8 × 10 = 80 concurrent requests
+spark.udf.register(
+    "analyze_sentiment",
+    resp_builder.build(
+        instructions="Analyze sentiment as positive/negative/neutral",
+        batch_size=64,        # Good balance for most use cases
+        max_concurrency=8     # 80 total concurrent requests across cluster
+    )
+)
+```
+
+**Monitoring and Scaling:**
+- Monitor OpenAI API rate limits and adjust `max_concurrency` accordingly
+- Use Spark UI to optimize partition sizes and executor configurations
+- Consider your OpenAI tier limits when scaling clusters
 
 ## Building Prompts
 
