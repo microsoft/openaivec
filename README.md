@@ -90,9 +90,10 @@ into your data processing pipelines.
 ## Key Benefits
 
 - **🚀 Performance**: Vectorized processing handles thousands of records in minutes, not hours
-- **💰 Cost Efficiency**: Automatic deduplication reduces API costs by 50-90% on typical datasets  
+- **💰 Cost Efficiency**: Automatic deduplication significantly reduces API costs on typical datasets  
 - **🔗 Integration**: Works within existing pandas/Spark workflows without architectural changes
 - **📈 Scalability**: Same API scales from exploratory analysis (100s of records) to production systems (millions of records)
+- **🎯 Pre-configured Tasks**: Ready-to-use task library with optimized prompts for common use cases
 - **🏢 Enterprise Ready**: Microsoft Fabric integration, Apache Spark UDFs, Azure OpenAI compatibility
 
 ## Requirements
@@ -167,6 +168,93 @@ result = df.assign(
 
 📓 **[Interactive pandas examples →](https://microsoft.github.io/openaivec/examples/pandas/)**
 
+### Using Pre-configured Tasks
+
+For common text processing operations, openaivec provides ready-to-use tasks that eliminate the need to write custom prompts:
+
+```python
+from openaivec.task import nlp, customer_support
+
+# Text analysis with pre-configured tasks
+text_df = pd.DataFrame({
+    "text": [
+        "Great product, fast delivery!",
+        "Need help with billing issue",
+        "How do I reset my password?"
+    ]
+})
+
+# Use pre-configured tasks for consistent, optimized results
+results = text_df.assign(
+    sentiment=lambda df: df.text.ai.task(nlp.SENTIMENT_ANALYSIS),
+    entities=lambda df: df.text.ai.task(nlp.NAMED_ENTITY_RECOGNITION),
+    intent=lambda df: df.text.ai.task(customer_support.INTENT_ANALYSIS),
+    urgency=lambda df: df.text.ai.task(customer_support.URGENCY_ANALYSIS)
+)
+
+# Extract structured results into separate columns (one at a time)
+extracted_results = (results
+    .ai.extract("sentiment")
+    .ai.extract("entities") 
+    .ai.extract("intent")
+    .ai.extract("urgency")
+)
+```
+
+**Available Task Categories:**
+- **Text Analysis**: `nlp.SENTIMENT_ANALYSIS`, `nlp.TRANSLATION`, `nlp.NAMED_ENTITY_RECOGNITION`, `nlp.KEYWORD_EXTRACTION`
+- **Content Classification**: `customer_support.INTENT_ANALYSIS`, `customer_support.URGENCY_ANALYSIS`, `customer_support.INQUIRY_CLASSIFICATION`
+
+**Benefits of Pre-configured Tasks:**
+- Optimized prompts tested across diverse datasets
+- Consistent structured outputs with Pydantic validation
+- Multilingual support with standardized categorical fields
+- Extensible framework for adding domain-specific tasks
+- Direct compatibility with Spark UDFs
+
+### Asynchronous Processing with `.aio`
+
+For high-performance concurrent processing, use the `.aio` accessor which provides asynchronous versions of all AI operations:
+
+```python
+import asyncio
+import pandas as pd
+from openaivec import pandas_ext
+
+# Setup (same as synchronous version)
+pandas_ext.responses_model("gpt-4o-mini")
+
+df = pd.DataFrame({"text": [
+    "This product is amazing!",
+    "Terrible customer service",
+    "Good value for money",
+    "Not what I expected"
+] * 250})  # 1000 rows for demonstration
+
+async def process_data():
+    # Asynchronous processing with fine-tuned concurrency control
+    results = await df["text"].aio.responses(
+        "Analyze sentiment and classify as positive/negative/neutral",
+        batch_size=64,        # Process 64 items per API request
+        max_concurrency=12    # Allow up to 12 concurrent requests
+    )
+    return results
+
+# Run the async operation
+sentiments = asyncio.run(process_data())
+```
+
+**Key Parameters for Performance Tuning:**
+
+- **`batch_size`** (default: 128): Controls how many inputs are grouped into a single API request. Higher values reduce API call overhead but increase memory usage and request processing time.
+- **`max_concurrency`** (default: 8): Limits the number of concurrent API requests. Higher values increase throughput but may hit rate limits or overwhelm the API.
+
+**Performance Benefits:**
+- Process thousands of records in parallel
+- Automatic request batching and deduplication
+- Built-in rate limiting and error handling
+- Memory-efficient streaming for large datasets
+
 ## Using with Apache Spark UDFs
 
 Scale to enterprise datasets with distributed processing:
@@ -219,6 +307,8 @@ spark.udf.register(
     resp_builder_openai.build( # or resp_builder_azure.build(...)
         instructions="Extract flavor-related information. Return only the concise flavor name.",
         response_format=str, # Specify string output
+        batch_size=64,      # Optimize for Spark partition sizes
+        max_concurrency=4   # Conservative for distributed processing
     )
 )
 
@@ -233,17 +323,43 @@ spark.udf.register(
     resp_builder_openai.build( # or resp_builder_azure.build(...)
         instructions="Translate the text to English, French, and Japanese.",
         response_format=Translation, # Specify Pydantic model for structured output
+        batch_size=32,              # Smaller batches for complex structured outputs
+        max_concurrency=6           # Concurrent requests PER EXECUTOR
     )
 )
 
 # --- Register Embeddings UDF ---
 spark.udf.register(
     "embed_text",
-    emb_builder_openai.build() # or emb_builder_azure.build()
+    emb_builder_openai.build( # or emb_builder_azure.build()
+        batch_size=128,     # Larger batches for embeddings
+        max_concurrency=8   # Concurrent requests PER EXECUTOR
+    )
 )
 
 # --- Register Token Counting UDF ---
 spark.udf.register("count_tokens", count_tokens_udf("gpt-4o"))
+
+# --- Register UDFs with Pre-configured Tasks ---
+from openaivec.task import nlp, customer_support
+
+spark.udf.register(
+    "analyze_sentiment",
+    resp_builder_openai.build_from_task(
+        task=nlp.SENTIMENT_ANALYSIS,
+        batch_size=64,
+        max_concurrency=8    # Concurrent requests PER EXECUTOR
+    )
+)
+
+spark.udf.register(
+    "classify_intent",
+    resp_builder_openai.build_from_task(
+        task=customer_support.INTENT_ANALYSIS,
+        batch_size=32,       # Smaller batches for complex analysis
+        max_concurrency=6    # Conservative for customer support tasks
+    )
+)
 
 ```
 
@@ -257,12 +373,16 @@ CREATE OR REPLACE TEMP VIEW product_names AS SELECT * FROM VALUES
   ('4920122084098', 'Uji Matcha Tea (New Product)')
 AS product_names(id, product_name);
 
--- Use the registered UDFs
+-- Use the registered UDFs (including pre-configured tasks)
 SELECT
     id,
     product_name,
     parse_flavor(product_name) AS flavor,
     translate_struct(product_name) AS translation,
+    analyze_sentiment(product_name).sentiment AS sentiment,
+    analyze_sentiment(product_name).confidence AS sentiment_confidence,
+    classify_intent(product_name).primary_intent AS intent,
+    classify_intent(product_name).action_required AS action_required,
     embed_text(product_name) AS embedding,
     count_tokens(product_name) AS token_count
 FROM product_names;
@@ -270,11 +390,46 @@ FROM product_names;
 
 Example Output (structure might vary slightly):
 
-| id            | product_name                      | flavor    | translation                      | embedding                      | token_count |
-|---------------|-----------------------------------|-----------|----------------------------------|--------------------------------|-------------|
-| 4414732714624 | Cafe Mocha Smoothie (Trial Size)  | Mocha     | {en: ..., fr: ..., ja: ...}    | [0.1, -0.2, ..., 0.5]          | 8           |
-| 4200162318339 | Dark Chocolate Tea (New Product)  | Chocolate | {en: ..., fr: ..., ja: ...}    | [-0.3, 0.1, ..., -0.1]         | 7           |
-| 4920122084098 | Uji Matcha Tea (New Product)      | Matcha    | {en: ..., fr: ..., ja: ...}    | [0.0, 0.4, ..., 0.2]           | 8           |
+| id            | product_name                      | flavor    | translation              | sentiment | sentiment_confidence | intent      | action_required    | embedding           | token_count |
+|---------------|-----------------------------------|-----------|--------------------------|-----------|---------------------|-------------|--------------------|---------------------|-------------|
+| 4414732714624 | Cafe Mocha Smoothie (Trial Size)  | Mocha     | {en: ..., fr: ..., ja: ...} | positive  | 0.92               | seek_information | provide_information | [0.1, -0.2, ..., 0.5] | 8           |
+| 4200162318339 | Dark Chocolate Tea (New Product)  | Chocolate | {en: ..., fr: ..., ja: ...} | neutral   | 0.87               | seek_information | provide_information | [-0.3, 0.1, ..., -0.1] | 7           |
+| 4920122084098 | Uji Matcha Tea (New Product)      | Matcha    | {en: ..., fr: ..., ja: ...} | positive  | 0.89               | seek_information | provide_information | [0.0, 0.4, ..., 0.2] | 8           |
+
+### Spark Performance Tuning
+
+When using openaivec with Spark, proper configuration of `batch_size` and `max_concurrency` is crucial for optimal performance:
+
+**`batch_size`** (default: 128):
+- Controls how many rows are processed together in each API request within a partition
+- **Larger values**: Fewer API calls per partition, reduced overhead
+- **Smaller values**: More granular processing, better memory management
+- **Recommendation**: 32-128 depending on data complexity and partition size
+
+**`max_concurrency`** (default: 8):
+- **Important**: This is the number of concurrent API requests **PER EXECUTOR**
+- Total cluster concurrency = `max_concurrency × number_of_executors`
+- **Higher values**: Faster processing but may overwhelm API rate limits
+- **Lower values**: More conservative, better for shared API quotas
+- **Recommendation**: 4-12 per executor, considering your OpenAI tier limits
+
+**Example for a 10-executor cluster:**
+```python
+# With max_concurrency=8, total cluster concurrency = 8 × 10 = 80 concurrent requests
+spark.udf.register(
+    "analyze_sentiment",
+    resp_builder.build(
+        instructions="Analyze sentiment as positive/negative/neutral",
+        batch_size=64,        # Good balance for most use cases
+        max_concurrency=8     # 80 total concurrent requests across cluster
+    )
+)
+```
+
+**Monitoring and Scaling:**
+- Monitor OpenAI API rate limits and adjust `max_concurrency` accordingly
+- Use Spark UI to optimize partition sizes and executor configurations
+- Consider your OpenAI tier limits when scaling clusters
 
 ## Building Prompts
 
