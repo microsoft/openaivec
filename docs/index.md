@@ -14,6 +14,16 @@ from openaivec import pandas_ext
 fruits = pd.Series(["apple", "banana", "orange", "grape", "kiwi"])
 fruits.ai.responses("Translate this fruit name into French.")
 # Result: ['pomme', 'banane', 'orange', 'raisin', 'kiwi']
+
+# For high-performance async processing
+async def process_async():
+    return await fruits.aio.responses(
+        "Translate this fruit name into French.",
+        batch_size=32,        # Optimize batch size for your use case
+        max_concurrency=10    # Control concurrent API requests
+    )
+
+sentiments = asyncio.run(process_async())
 ```
 
 Perfect for **data scientists**, **analysts**, and **ML engineers** who want to leverage AI for text processing at scale.
@@ -40,6 +50,7 @@ Perfect for **data scientists**, **analysts**, and **ML engineers** who want to 
 ## 🎯 Key Features
 
 - **🚀 Vectorized Processing**: Handle thousands of records in minutes, not hours
+- **⚡ Asynchronous Interface**: `.aio` accessor with `batch_size` and `max_concurrency` control
 - **💰 Cost Efficient**: Automatic deduplication significantly reduces API costs
 - **🔗 Seamless Integration**: Works within existing pandas/Spark workflows
 - **📈 Enterprise Scale**: From 100s to millions of records
@@ -156,6 +167,64 @@ fruits_df.assign(
 | pear       | en='Pear' fr='Poire' ja='梨' es='Pera' de='Birn...                         |
 | pineapple  | en='Pineapple' fr='Ananas' ja='パイナップル' es='Piñ...                    |
 | strawberry | en='Strawberry' fr='Fraise' ja='イチゴ' es='Fresa...                       |
+
+## Asynchronous Processing for High Performance
+
+For processing large datasets efficiently, openaivec provides the `.aio` accessor that enables asynchronous, concurrent processing:
+
+```python
+import asyncio
+import pandas as pd
+from openaivec import pandas_ext
+
+# Large dataset processing
+df = pd.DataFrame({
+    "customer_feedback": [
+        "Love the new features!",
+        "App crashes frequently",
+        "Great customer support",
+        # ... thousands more rows
+    ]
+})
+
+async def analyze_feedback():
+    # Process with optimized parameters
+    sentiments = await df["customer_feedback"].aio.responses(
+        "Classify sentiment as positive, negative, or neutral",
+        batch_size=64,         # Group 64 requests per API call
+        max_concurrency=16     # Allow 16 concurrent requests
+    )
+    
+    # Also works with embeddings
+    embeddings = await df["customer_feedback"].aio.embeddings(
+        batch_size=128,        # Larger batches for embeddings
+        max_concurrency=8      # Conservative concurrency for embeddings
+    )
+    
+    return sentiments, embeddings
+
+# Execute async processing
+results = asyncio.run(analyze_feedback())
+```
+
+### Performance Tuning Parameters
+
+**`batch_size`** (default: 128 for responses, 128 for embeddings):
+- Controls how many inputs are processed in a single API request
+- **Larger values**: Fewer API calls, reduced overhead, but higher memory usage
+- **Smaller values**: More granular processing, better for rate-limited scenarios
+- **Recommended**: 32-128 for responses, 64-256 for embeddings
+
+**`max_concurrency`** (default: 8):
+- Limits the number of simultaneous API requests
+- **Higher values**: Faster processing but may hit rate limits
+- **Lower values**: More conservative, better for shared API quotas
+- **Recommended**: 4-16 depending on your OpenAI tier and usage patterns
+
+### When to Use Async vs Sync
+
+- **Use `.aio`** for: Large datasets (1000+ rows), time-sensitive processing, concurrent workflows
+- **Use `.ai`** for: Small datasets, interactive analysis, simple one-off operations
 
 
 Structured output can be extracted into separate columns using the `extract` method. For example, we can extract the translations into separate columns for each language:

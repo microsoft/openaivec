@@ -167,6 +167,49 @@ result = df.assign(
 
 📓 **[Interactive pandas examples →](https://microsoft.github.io/openaivec/examples/pandas/)**
 
+### Asynchronous Processing with `.aio`
+
+For high-performance concurrent processing, use the `.aio` accessor which provides asynchronous versions of all AI operations:
+
+```python
+import asyncio
+import pandas as pd
+from openaivec import pandas_ext
+
+# Setup (same as synchronous version)
+pandas_ext.responses_model("gpt-4o-mini")
+
+df = pd.DataFrame({"text": [
+    "This product is amazing!",
+    "Terrible customer service",
+    "Good value for money",
+    "Not what I expected"
+] * 250})  # 1000 rows for demonstration
+
+async def process_data():
+    # Asynchronous processing with fine-tuned concurrency control
+    results = await df["text"].aio.responses(
+        "Analyze sentiment and classify as positive/negative/neutral",
+        batch_size=64,        # Process 64 items per API request
+        max_concurrency=12    # Allow up to 12 concurrent requests
+    )
+    return results
+
+# Run the async operation
+sentiments = asyncio.run(process_data())
+```
+
+**Key Parameters for Performance Tuning:**
+
+- **`batch_size`** (default: 128): Controls how many inputs are grouped into a single API request. Higher values reduce API call overhead but increase memory usage and request processing time.
+- **`max_concurrency`** (default: 8): Limits the number of concurrent API requests. Higher values increase throughput but may hit rate limits or overwhelm the API.
+
+**Performance Benefits:**
+- Process thousands of records in parallel
+- Automatic request batching and deduplication
+- Built-in rate limiting and error handling
+- Memory-efficient streaming for large datasets
+
 ## Using with Apache Spark UDFs
 
 Scale to enterprise datasets with distributed processing:
