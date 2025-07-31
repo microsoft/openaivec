@@ -93,6 +93,7 @@ into your data processing pipelines.
 - **💰 Cost Efficiency**: Automatic deduplication significantly reduces API costs on typical datasets  
 - **🔗 Integration**: Works within existing pandas/Spark workflows without architectural changes
 - **📈 Scalability**: Same API scales from exploratory analysis (100s of records) to production systems (millions of records)
+- **🎯 Pre-configured Tasks**: Ready-to-use task library with optimized prompts for common use cases
 - **🏢 Enterprise Ready**: Microsoft Fabric integration, Apache Spark UDFs, Azure OpenAI compatibility
 
 ## Requirements
@@ -166,6 +167,45 @@ result = df.assign(
 | koala  | marsupial family | tree   | Sleeps 22 hours per day    |
 
 📓 **[Interactive pandas examples →](https://microsoft.github.io/openaivec/examples/pandas/)**
+
+### Using Pre-configured Tasks
+
+For common text processing operations, openaivec provides ready-to-use tasks that eliminate the need to write custom prompts:
+
+```python
+from openaivec.task import nlp, customer_support
+
+# Text analysis with pre-configured tasks
+text_df = pd.DataFrame({
+    "text": [
+        "Great product, fast delivery!",
+        "Need help with billing issue",
+        "How do I reset my password?"
+    ]
+})
+
+# Use pre-configured tasks for consistent, optimized results
+results = text_df.assign(
+    sentiment=lambda df: df.text.ai.task(nlp.SENTIMENT_ANALYSIS),
+    entities=lambda df: df.text.ai.task(nlp.NAMED_ENTITY_RECOGNITION),
+    intent=lambda df: df.text.ai.task(customer_support.INTENT_ANALYSIS),
+    urgency=lambda df: df.text.ai.task(customer_support.URGENCY_ANALYSIS)
+)
+
+# Extract structured results into separate columns
+final_results = results.ai.extract("sentiment", "entities", "intent", "urgency")
+```
+
+**Available Task Categories:**
+- **Text Analysis**: `nlp.SENTIMENT_ANALYSIS`, `nlp.TRANSLATION`, `nlp.NAMED_ENTITY_RECOGNITION`, `nlp.KEYWORD_EXTRACTION`
+- **Content Classification**: `customer_support.INTENT_ANALYSIS`, `customer_support.URGENCY_ANALYSIS`, `customer_support.INQUIRY_CLASSIFICATION`
+
+**Benefits of Pre-configured Tasks:**
+- Optimized prompts tested across diverse datasets
+- Consistent structured outputs with Pydantic validation
+- Multilingual support with standardized categorical fields
+- Extensible framework for adding domain-specific tasks
+- Direct compatibility with Spark UDFs
 
 ### Asynchronous Processing with `.aio`
 
@@ -295,6 +335,27 @@ spark.udf.register(
 # --- Register Token Counting UDF ---
 spark.udf.register("count_tokens", count_tokens_udf("gpt-4o"))
 
+# --- Register UDFs with Pre-configured Tasks ---
+from openaivec.task import nlp, customer_support
+
+spark.udf.register(
+    "analyze_sentiment",
+    resp_builder_openai.build_from_task(
+        task=nlp.SENTIMENT_ANALYSIS,
+        batch_size=64,
+        max_concurrency=8    # Concurrent requests PER EXECUTOR
+    )
+)
+
+spark.udf.register(
+    "classify_intent",
+    resp_builder_openai.build_from_task(
+        task=customer_support.INTENT_ANALYSIS,
+        batch_size=32,       # Smaller batches for complex analysis
+        max_concurrency=6    # Conservative for customer support tasks
+    )
+)
+
 ```
 
 You can now use these UDFs in Spark SQL:
@@ -307,12 +368,16 @@ CREATE OR REPLACE TEMP VIEW product_names AS SELECT * FROM VALUES
   ('4920122084098', 'Uji Matcha Tea (New Product)')
 AS product_names(id, product_name);
 
--- Use the registered UDFs
+-- Use the registered UDFs (including pre-configured tasks)
 SELECT
     id,
     product_name,
     parse_flavor(product_name) AS flavor,
     translate_struct(product_name) AS translation,
+    analyze_sentiment(product_name).sentiment AS sentiment,
+    analyze_sentiment(product_name).confidence AS sentiment_confidence,
+    classify_intent(product_name).primary_intent AS intent,
+    classify_intent(product_name).action_required AS action_required,
     embed_text(product_name) AS embedding,
     count_tokens(product_name) AS token_count
 FROM product_names;
@@ -320,11 +385,11 @@ FROM product_names;
 
 Example Output (structure might vary slightly):
 
-| id            | product_name                      | flavor    | translation                      | embedding                      | token_count |
-|---------------|-----------------------------------|-----------|----------------------------------|--------------------------------|-------------|
-| 4414732714624 | Cafe Mocha Smoothie (Trial Size)  | Mocha     | {en: ..., fr: ..., ja: ...}    | [0.1, -0.2, ..., 0.5]          | 8           |
-| 4200162318339 | Dark Chocolate Tea (New Product)  | Chocolate | {en: ..., fr: ..., ja: ...}    | [-0.3, 0.1, ..., -0.1]         | 7           |
-| 4920122084098 | Uji Matcha Tea (New Product)      | Matcha    | {en: ..., fr: ..., ja: ...}    | [0.0, 0.4, ..., 0.2]           | 8           |
+| id            | product_name                      | flavor    | translation              | sentiment | sentiment_confidence | intent      | action_required    | embedding           | token_count |
+|---------------|-----------------------------------|-----------|--------------------------|-----------|---------------------|-------------|--------------------|---------------------|-------------|
+| 4414732714624 | Cafe Mocha Smoothie (Trial Size)  | Mocha     | {en: ..., fr: ..., ja: ...} | positive  | 0.92               | seek_information | provide_information | [0.1, -0.2, ..., 0.5] | 8           |
+| 4200162318339 | Dark Chocolate Tea (New Product)  | Chocolate | {en: ..., fr: ..., ja: ...} | neutral   | 0.87               | seek_information | provide_information | [-0.3, 0.1, ..., -0.1] | 7           |
+| 4920122084098 | Uji Matcha Tea (New Product)      | Matcha    | {en: ..., fr: ..., ja: ...} | positive  | 0.89               | seek_information | provide_information | [0.0, 0.4, ..., 0.2] | 8           |
 
 ### Spark Performance Tuning
 
