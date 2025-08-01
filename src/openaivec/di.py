@@ -9,21 +9,20 @@ service instances with singleton lifecycle semantics. All registered services
 are created once and reused across multiple resolve calls.
 
 Example:
-    Basic usage of the DI container:
+    ```python
+    from openaivec.di import Container
     
-    >>> from openaivec.di import Container
-    >>> 
-    >>> class DatabaseService:
-    ...     def __init__(self):
-    ...         self.connection = "database://localhost"
-    >>> 
-    >>> container = Container()
-    >>> container.register(DatabaseService, lambda: DatabaseService())
-    >>> 
-    >>> db1 = container.resolve(DatabaseService)
-    >>> db2 = container.resolve(DatabaseService)
-    >>> print(db1 is db2)  # True - same instance
-    True
+    class DatabaseService:
+        def __init__(self):
+            self.connection = "database://localhost"
+    
+    container = Container()
+    container.register(DatabaseService, lambda: DatabaseService())
+    
+    db1 = container.resolve(DatabaseService)
+    db2 = container.resolve(DatabaseService)
+    print(db1 is db2)  # True - same instance
+    ```
 """
 
 __all__ = ["Container", "Provider", "CircularDependencyError", "ProviderError"]
@@ -42,11 +41,13 @@ class CircularDependencyError(Exception):
         message: A descriptive error message including the dependency chain.
 
     Example:
-        >>> # ServiceA depends on ServiceB, ServiceB depends on ServiceA
-        >>> try:
-        ...     container.resolve(ServiceA)
-        ... except CircularDependencyError as e:
-        ...     print(f"Circular dependency: {e}")
+        ```python
+        # ServiceA depends on ServiceB, ServiceB depends on ServiceA
+        try:
+            container.resolve(ServiceA)
+        except CircularDependencyError as e:
+            print(f"Circular dependency: {e}")
+        ```
     """
 
     pass
@@ -62,13 +63,15 @@ class ProviderError(Exception):
         message: A descriptive error message including the service name.
 
     Example:
-        >>> def failing_provider():
-        ...     raise ValueError("Database connection failed")
-        >>> container.register(DatabaseService, failing_provider)
-        >>> try:
-        ...     container.resolve(DatabaseService)
-        ... except ProviderError as e:
-        ...     print(f"Service creation failed: {e}")
+        ```python
+        def failing_provider():
+            raise ValueError("Database connection failed")
+        container.register(DatabaseService, failing_provider)
+        try:
+            container.resolve(DatabaseService)
+        except ProviderError as e:
+            print(f"Service creation failed: {e}")
+        ```
     """
 
     pass
@@ -90,28 +93,28 @@ class Container:
 
     Example:
         Basic container usage:
-
-        >>> container = Container()
-        >>> container.register(str, lambda: "Hello, World!")
-        >>> message = container.resolve(str)
-        >>> print(message)
-        Hello, World!
+        ```python
+        container = Container()
+        container.register(str, lambda: "Hello, World!")
+        message = container.resolve(str)
+        print(message)  # Hello, World!
+        ```
 
         Dependency injection:
+        ```python
+        class DatabaseService:
+            def __init__(self):
+                self.connected = True
 
-        >>> class DatabaseService:
-        ...     def __init__(self):
-        ...         self.connected = True
-        >>>
-        >>> class UserService:
-        ...     def __init__(self, db: DatabaseService):
-        ...         self.db = db
-        >>>
-        >>> container.register(DatabaseService, lambda: DatabaseService())
-        >>> container.register(UserService, lambda: UserService(container.resolve(DatabaseService)))
-        >>> user_service = container.resolve(UserService)
-        >>> print(user_service.db.connected)
-        True
+        class UserService:
+            def __init__(self, db: DatabaseService):
+                self.db = db
+
+        container.register(DatabaseService, lambda: DatabaseService())
+        container.register(UserService, lambda: UserService(container.resolve(DatabaseService)))
+        user_service = container.resolve(UserService)
+        print(user_service.db.connected)  # True
+        ```
     """
 
     _instances: Dict[Type[Any], Any] = field(default_factory=dict)
@@ -131,11 +134,13 @@ class Container:
             provider: A callable that creates and returns an instance of the service.
 
         Example:
-            >>> container = Container()
-            >>> container.register(str, lambda: "Hello")
-            >>> container.register(int, lambda: 42)
-            >>> # Overwrite existing registration
-            >>> container.register(str, lambda: "World")
+            ```python
+            container = Container()
+            container.register(str, lambda: "Hello")
+            container.register(int, lambda: 42)
+            # Overwrite existing registration
+            container.register(str, lambda: "World")
+            ```
         """
         with self._lock:
             if cls in self._providers and cls in self._instances:
@@ -156,15 +161,16 @@ class Container:
             instance: The pre-created instance to register.
 
         Example:
-            >>> container = Container()
-            >>> db_service = DatabaseService("production://db")
-            >>> container.register_instance(DatabaseService, db_service)
-            >>> resolved = container.resolve(DatabaseService)
-            >>> print(resolved is db_service)  # True - same instance
-            True
-            >>> # Overwrite existing registration
-            >>> new_db_service = DatabaseService("staging://db")
-            >>> container.register_instance(DatabaseService, new_db_service)
+            ```python
+            container = Container()
+            db_service = DatabaseService("production://db")
+            container.register_instance(DatabaseService, db_service)
+            resolved = container.resolve(DatabaseService)
+            print(resolved is db_service)  # True - same instance
+            # Overwrite existing registration
+            new_db_service = DatabaseService("staging://db")
+            container.register_instance(DatabaseService, new_db_service)
+            ```
         """
         with self._lock:
             self._instances[cls] = instance
@@ -189,12 +195,13 @@ class Container:
             ProviderError: If the provider function fails to create the instance.
 
         Example:
-            >>> container = Container()
-            >>> container.register(str, lambda: "Hello, World!")
-            >>> message1 = container.resolve(str)
-            >>> message2 = container.resolve(str)
-            >>> print(message1 is message2)  # Same instance
-            True
+            ```python
+            container = Container()
+            container.register(str, lambda: "Hello, World!")
+            message1 = container.resolve(str)
+            message2 = container.resolve(str)
+            print(message1 is message2)  # True - same instance
+            ```
         """
         with self._lock:
             if cls in self._resolving:
@@ -233,12 +240,12 @@ class Container:
             True if the service type has a registered provider, False otherwise.
 
         Example:
-            >>> container = Container()
-            >>> print(container.is_registered(str))
-            False
-            >>> container.register(str, lambda: "Hello")
-            >>> print(container.is_registered(str))
-            True
+            ```python
+            container = Container()
+            print(container.is_registered(str))  # False
+            container.register(str, lambda: "Hello")
+            print(container.is_registered(str))  # True
+            ```
         """
         with self._lock:
             return cls in self._providers
@@ -256,11 +263,12 @@ class Container:
             ValueError: If the service type is not registered.
 
         Example:
-            >>> container = Container()
-            >>> container.register(str, lambda: "Hello")
-            >>> container.unregister(str)
-            >>> print(container.is_registered(str))
-            False
+            ```python
+            container = Container()
+            container.register(str, lambda: "Hello")
+            container.unregister(str)
+            print(container.is_registered(str))  # False
+            ```
         """
         with self._lock:
             if cls not in self._providers:
@@ -279,14 +287,14 @@ class Container:
         new registrations.
 
         Example:
-            >>> container = Container()
-            >>> container.register(str, lambda: "Hello")
-            >>> container.register(int, lambda: 42)
-            >>> container.clear()
-            >>> print(container.is_registered(str))
-            False
-            >>> print(container.is_registered(int))
-            False
+            ```python
+            container = Container()
+            container.register(str, lambda: "Hello")
+            container.register(int, lambda: 42)
+            container.clear()
+            print(container.is_registered(str))  # False
+            print(container.is_registered(int))  # False
+            ```
         """
         with self._lock:
             self._providers.clear()
