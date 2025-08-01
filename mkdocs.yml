@@ -62,6 +62,7 @@ nav:
       - Prompt Engineering: examples/prompt.ipynb
       - FAQ Generation: examples/generate_faq.ipynb
   - API Reference:
+      - di: api/di.md
       - pandas_ext: api/pandas_ext.md
       - spark: api/spark.md
       - prompt: api/prompt.md
