@@ -48,9 +48,9 @@ from pydantic import BaseModel
 
 from .di import Container
 from .embeddings import AsyncBatchEmbeddings, BatchEmbeddings
+from .model import PreparedTask
 from .provider import provide_async_openai_client, provide_openai_client
 from .responses import AsyncBatchResponses, BatchResponses
-from .task.model import PreparedTask
 from .task.table import FillNaResponse, fillna
 
 __all__ = [
@@ -214,7 +214,7 @@ class OpenAIVecSeriesAccessor:
 
         Example:
             ```python
-            from openaivec.task.model import PreparedTask
+            from openaivec.model import PreparedTask
 
             # Assume you have a prepared task for sentiment analysis
             sentiment_task = PreparedTask(...)
@@ -421,7 +421,7 @@ class OpenAIVecDataFrameAccessor:
 
         Example:
             ```python
-            from openaivec.task.model import PreparedTask
+            from openaivec.model import PreparedTask
 
             # Assume you have a prepared task for data analysis
             analysis_task = PreparedTask(...)
@@ -636,7 +636,7 @@ class AsyncOpenAIVecSeriesAccessor:
 
         Example:
             ```python
-            from openaivec.task.model import PreparedTask
+            from openaivec.model import PreparedTask
 
             # Assume you have a prepared task for sentiment analysis
             sentiment_task = PreparedTask(...)
@@ -758,7 +758,7 @@ class AsyncOpenAIVecDataFrameAccessor:
 
         Example:
             ```python
-            from openaivec.task.model import PreparedTask
+            from openaivec.model import PreparedTask
 
             # Assume you have a prepared task for data analysis
             analysis_task = PreparedTask(...)

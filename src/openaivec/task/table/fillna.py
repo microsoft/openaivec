@@ -70,8 +70,8 @@ from typing import Dict, List, Union
 import pandas as pd
 from pydantic import BaseModel, Field
 
+from ...model import PreparedTask
 from ...prompt import FewShotPromptBuilder
-from ..model import PreparedTask
 
 __all__ = ["fillna", "FillNaResponse"]
 

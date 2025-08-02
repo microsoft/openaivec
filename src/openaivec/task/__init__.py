@@ -11,20 +11,20 @@ with openaivec's batch processing capabilities.
 Core NLP tasks for text analysis and processing:
 
 - **Translation**: Multi-language translation with 40+ language support
-- **Sentiment Analysis**: Emotion detection and sentiment scoring  
+- **Sentiment Analysis**: Emotion detection and sentiment scoring
 - **Named Entity Recognition**: Extract people, organizations, locations
 - **Morphological Analysis**: Part-of-speech tagging and lemmatization
 - **Dependency Parsing**: Syntactic structure analysis
 - **Keyword Extraction**: Important term identification
 
-### Customer Support (`customer_support`) 
+### Customer Support (`customer_support`)
 Specialized tasks for customer service operations:
 
 - **Intent Analysis**: Understand customer goals and requirements
 - **Sentiment Analysis**: Customer satisfaction and emotional state
 - **Urgency Analysis**: Priority assessment and response time recommendations
 - **Inquiry Classification**: Automatic categorization and routing
-- **Inquiry Summary**: Comprehensive issue summarization  
+- **Inquiry Summary**: Comprehensive issue summarization
 - **Response Suggestion**: AI-powered response drafting
 
 ## Usage Patterns
@@ -45,7 +45,7 @@ sentiment_analyzer = BatchResponses.of_task(
 )
 
 intent_analyzer = BatchResponses.of_task(
-    client=client, 
+    client=client,
     model_name="gpt-4o-mini",
     task=customer_support.INTENT_ANALYSIS
 )
@@ -60,7 +60,7 @@ custom_urgency = urgency_analysis(
     business_context="SaaS platform support",
     urgency_levels={
         "critical": "Service outages, security breaches",
-        "high": "Login issues, payment failures", 
+        "high": "Login issues, payment failures",
         "medium": "Feature bugs, billing questions",
         "low": "Feature requests, general feedback"
     }
@@ -68,7 +68,7 @@ custom_urgency = urgency_analysis(
 
 analyzer = BatchResponses.of_task(
     client=client,
-    model_name="gpt-4o-mini", 
+    model_name="gpt-4o-mini",
     task=custom_urgency
 )
 ```
@@ -88,7 +88,7 @@ df["intent"] = df["text"].ai.task(customer_support.INTENT_ANALYSIS)
 results_df = df.ai.extract("sentiment")
 ```
 
-### Spark Integration  
+### Spark Integration
 ```python
 from openaivec.spark import ResponsesUDFBuilder
 
@@ -103,7 +103,7 @@ spark.udf.register(
 
 # Use in Spark SQL
 df = spark.sql(\"\"\"
-    SELECT text, analyze_sentiment(text) as sentiment 
+    SELECT text, analyze_sentiment(text) as sentiment
     FROM customer_feedback
 \"\"\")
 ```
@@ -130,7 +130,7 @@ class PreparedTask:
 
 ### Design Principles
 1. **Consistency**: Uniform API across all task domains
-2. **Configurability**: Customizable parameters for different use cases  
+2. **Configurability**: Customizable parameters for different use cases
 3. **Type Safety**: Strong typing with Pydantic validation
 4. **Scalability**: Optimized for batch processing and large datasets
 5. **Extensibility**: Easy to add new domains and tasks
@@ -164,18 +164,18 @@ src/openaivec/task/finance/
 
 ## Best Practices
 
-1. **Choose Appropriate Models**: 
+1. **Choose Appropriate Models**:
    - `gpt-4o-mini`: Fast, cost-effective for most tasks
    - `gpt-4o`: Higher accuracy for complex analysis
-   
-2. **Customize When Needed**: 
+
+2. **Customize When Needed**:
    - Use default tasks for quick prototyping
    - Configure custom tasks for production use
-   
+
 3. **Handle Multilingual Input**:
    - Tasks automatically detect and respond in input language
    - Categorical fields remain in English for system compatibility
-   
+
 4. **Monitor Performance**:
    - Use batch sizes appropriate for your use case
    - Monitor token usage for cost optimization
@@ -183,7 +183,7 @@ src/openaivec/task/finance/
 See individual task modules for detailed documentation and examples.
 """
 
-from .model import PreparedTask
+from ..model import PreparedTask
 
 __all__ = [
     "PreparedTask",

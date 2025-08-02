@@ -5,26 +5,26 @@ what the customer is trying to achieve and how to best assist them.
 
 Example:
     Basic usage with BatchResponses:
-    
+
     ```python
     from openai import OpenAI
     from openaivec.responses import BatchResponses
     from openaivec.task import customer_support
-    
+
     client = OpenAI()
     analyzer = BatchResponses.of_task(
         client=client,
         model_name="gpt-4o-mini",
         task=customer_support.INTENT_ANALYSIS
     )
-    
+
     inquiries = [
         "I want to upgrade my plan to get more storage",
         "How do I delete my account? I'm not satisfied with the service",
         "Can you walk me through setting up the mobile app?"
     ]
     intents = analyzer.parse(inquiries)
-    
+
     for intent in intents:
         print(f"Primary Intent: {intent.primary_intent}")
         print(f"Action Required: {intent.action_required}")
@@ -33,67 +33,85 @@ Example:
     ```
 
     With pandas integration:
-    
+
     ```python
     import pandas as pd
     from openaivec import pandas_ext  # Required for .ai accessor
     from openaivec.task import customer_support
-    
+
     df = pd.DataFrame({"inquiry": [
         "I want to upgrade my plan to get more storage",
         "How do I delete my account? I'm not satisfied with the service",
         "Can you walk me through setting up the mobile app?"
     ]})
     df["intent"] = df["inquiry"].ai.task(customer_support.INTENT_ANALYSIS)
-    
+
     # Extract intent components
     extracted_df = df.ai.extract("intent")
     print(extracted_df[["inquiry", "intent_primary_intent", "intent_action_required", "intent_success_likelihood"]])
     ```
 
 Attributes:
-    INTENT_ANALYSIS (PreparedTask): A prepared task instance 
-        configured for intent analysis with temperature=0.0 and 
+    INTENT_ANALYSIS (PreparedTask): A prepared task instance
+        configured for intent analysis with temperature=0.0 and
         top_p=1.0 for deterministic output.
 """
 
 from typing import List, Literal
+
 from pydantic import BaseModel, Field
 
-from ..model import PreparedTask
+from ...model import PreparedTask
 
 __all__ = ["intent_analysis"]
 
 
 class IntentAnalysis(BaseModel):
-    primary_intent: Literal["get_help", "make_purchase", "cancel_service", "get_refund", "report_issue", "seek_information", "request_feature", "provide_feedback"] = Field(description="Primary customer intent (get_help, make_purchase, cancel_service, get_refund, report_issue, seek_information, request_feature, provide_feedback)")
+    primary_intent: Literal[
+        "get_help",
+        "make_purchase",
+        "cancel_service",
+        "get_refund",
+        "report_issue",
+        "seek_information",
+        "request_feature",
+        "provide_feedback",
+    ] = Field(
+        description="Primary customer intent (get_help, make_purchase, cancel_service, get_refund, report_issue, seek_information, request_feature, provide_feedback)"
+    )
     secondary_intents: List[str] = Field(description="Additional intents if multiple goals are present")
-    action_required: Literal["provide_information", "troubleshoot", "process_request", "escalate", "redirect", "schedule_callback"] = Field(description="Required action (provide_information, troubleshoot, process_request, escalate, redirect, schedule_callback)")
+    action_required: Literal[
+        "provide_information", "troubleshoot", "process_request", "escalate", "redirect", "schedule_callback"
+    ] = Field(
+        description="Required action (provide_information, troubleshoot, process_request, escalate, redirect, schedule_callback)"
+    )
     intent_confidence: float = Field(description="Confidence in intent detection (0.0-1.0)")
-    success_likelihood: Literal["very_high", "high", "medium", "low", "very_low"] = Field(description="Likelihood of successful resolution (very_high, high, medium, low, very_low)")
+    success_likelihood: Literal["very_high", "high", "medium", "low", "very_low"] = Field(
+        description="Likelihood of successful resolution (very_high, high, medium, low, very_low)"
+    )
     customer_goal: str = Field(description="What the customer ultimately wants to achieve")
     implicit_needs: List[str] = Field(description="Unstated needs or concerns that may need addressing")
     blocking_factors: List[str] = Field(description="Potential obstacles to achieving customer goal")
     next_steps: List[str] = Field(description="Recommended next steps to address customer intent")
-    resolution_complexity: Literal["simple", "moderate", "complex", "very_complex"] = Field(description="Complexity of resolution (simple, moderate, complex, very_complex)")
+    resolution_complexity: Literal["simple", "moderate", "complex", "very_complex"] = Field(
+        description="Complexity of resolution (simple, moderate, complex, very_complex)"
+    )
 
 
 def intent_analysis(
-    business_context: str = "general customer support",
-    temperature: float = 0.0,
-    top_p: float = 1.0
+    business_context: str = "general customer support", temperature: float = 0.0, top_p: float = 1.0
 ) -> PreparedTask:
     """Create a configurable intent analysis task.
-    
+
     Args:
         business_context: Business context for intent analysis.
         temperature: Sampling temperature (0.0-1.0).
         top_p: Nucleus sampling parameter (0.0-1.0).
-        
+
     Returns:
         PreparedTask configured for intent analysis.
     """
-    
+
     instructions = f"""Analyze customer intent to understand their goals, needs, and how to best assist them.
 
 Business Context: {business_context}
@@ -147,12 +165,7 @@ IMPORTANT: Provide analysis responses in the same language as the input text, ex
 
 Provide comprehensive intent analysis with actionable recommendations."""
 
-    return PreparedTask(
-        instructions=instructions,
-        response_format=IntentAnalysis,
-        temperature=temperature,
-        top_p=top_p
-    )
+    return PreparedTask(instructions=instructions, response_format=IntentAnalysis, temperature=temperature, top_p=top_p)
 
 
 # Backward compatibility - default configuration
