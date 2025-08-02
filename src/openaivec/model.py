@@ -55,3 +55,13 @@ class PreparedTask:
     response_format: Type[T]
     temperature: float = 0.0
     top_p: float = 1.0
+
+
+@dataclass(frozen=True)
+class ResponsesModelName:
+    value: str
+
+
+@dataclass(frozen=True)
+class EmbeddingsModelName:
+    value: str
