@@ -46,10 +46,9 @@ import tiktoken
 from openai import AsyncOpenAI, OpenAI
 from pydantic import BaseModel
 
-from openaivec.di import Container
-from openaivec.provider import provide_async_openai_client, provide_openai_client
-
+from .di import Container
 from .embeddings import AsyncBatchEmbeddings, BatchEmbeddings
+from .provider import provide_async_openai_client, provide_openai_client
 from .responses import AsyncBatchResponses, BatchResponses
 from .task.model import PreparedTask
 from .task.table import FillNaResponse, fillna
@@ -146,7 +145,9 @@ def _extract_value(x, series_name):
     elif isinstance(x, dict):
         return x
 
-    _LOGGER.warning(f"The value '{x}' in the series '{series_name}' is not a dict or BaseModel. Returning an empty dict.")
+    _LOGGER.warning(
+        f"The value '{x}' in the series '{series_name}' is not a dict or BaseModel. Returning an empty dict."
+    )
     return {}
 
 
