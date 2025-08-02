@@ -115,23 +115,24 @@ Note: This module provides asynchronous support through the pandas extensions.
 """
 
 import asyncio
-from dataclasses import dataclass
-from typing import Dict, Iterator, List, Type, TypeVar, Union, get_args, get_origin, Optional
-from typing_extensions import Literal
-from enum import Enum
 import logging
-from pyspark.sql.pandas.functions import pandas_udf
-from pyspark.sql.udf import UserDefinedFunction
-from pyspark.sql.types import BooleanType, IntegerType, StringType, ArrayType, FloatType, StructField, StructType
-from openai import AsyncOpenAI, AsyncAzureOpenAI
-import tiktoken
-from . import pandas_ext
-import pandas as pd
-from pydantic import BaseModel
+from dataclasses import dataclass
+from enum import Enum
+from typing import Dict, Iterator, List, Optional, Type, TypeVar, Union, get_args, get_origin
 
+import pandas as pd
+import tiktoken
+from openai import AsyncAzureOpenAI, AsyncOpenAI
+from pydantic import BaseModel
+from pyspark.sql.pandas.functions import pandas_udf
+from pyspark.sql.types import ArrayType, BooleanType, FloatType, IntegerType, StringType, StructField, StructType
+from pyspark.sql.udf import UserDefinedFunction
+from typing_extensions import Literal
+
+from . import pandas_ext
 from .serialize import deserialize_base_model, serialize_base_model
-from .util import TextChunker
 from .task.model import PreparedTask
+from .util import TextChunker
 
 __all__ = [
     "ResponsesUDFBuilder",
@@ -192,7 +193,7 @@ def _python_type_to_spark(python_type):
         return StringType()
 
     # For Enum types - also treat as StringType since Spark doesn't have enum types
-    elif hasattr(python_type, '__bases__') and Enum in python_type.__bases__:
+    elif hasattr(python_type, "__bases__") and Enum in python_type.__bases__:
         return StringType()
 
     # For nested Pydantic models (to be treated as Structs)
@@ -331,7 +332,7 @@ class ResponsesUDFBuilder:
 
         Raises:
             ValueError: If `response_format` is not `str` or a Pydantic `BaseModel`.
-            
+
         Note:
             For optimal performance in distributed environments:
             - Monitor OpenAI API rate limits when scaling executor count
@@ -416,14 +417,14 @@ class ResponsesUDFBuilder:
         Example:
             ```python
             from openaivec.task import nlp
-            
+
             builder = ResponsesUDFBuilder.of_openai(
                 api_key="your-api-key",
                 model_name="gpt-4o-mini"
             )
-            
+
             sentiment_udf = builder.build_from_task(nlp.SENTIMENT_ANALYSIS)
-            
+
             spark.udf.register("analyze_sentiment", sentiment_udf)
             ```
         """
@@ -525,7 +526,7 @@ class EmbeddingsUDFBuilder:
         Returns:
             UserDefinedFunction: A Spark pandas UDF configured to generate embeddings asynchronously,
                 returning an `ArrayType(FloatType())` column.
-                
+
         Note:
             For optimal performance in distributed environments:
             - Monitor OpenAI API rate limits when scaling executor count
@@ -546,7 +547,6 @@ class EmbeddingsUDFBuilder:
                 yield embeddings.map(lambda x: x.tolist())
 
         return embeddings_udf
-
 
 
 def split_to_chunks_udf(model_name: str, max_tokens: int, sep: List[str]) -> UserDefinedFunction:
@@ -613,7 +613,9 @@ def similarity_udf() -> UserDefinedFunction:
         Returns:
             Cosine similarity between the two vectors.
         """
-        pandas_ext._wakeup()
+        # Import pandas_ext to ensure .ai accessor is available in Spark workers
+        from . import pandas_ext  # noqa: F401
+
         return pd.DataFrame({"a": a, "b": b}).ai.similarity("a", "b")
 
     return fn

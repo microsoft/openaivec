@@ -2,27 +2,31 @@
 
 ## Setup
 ```python
-from openai import OpenAI
+from openai import OpenAI, AzureOpenAI, AsyncOpenAI, AsyncAzureOpenAI
 from openaivec import pandas_ext
 
-# Set up the OpenAI client to use with pandas_ext
-# Option 1: Use an existing client instance
-# pandas_ext.use(OpenAI())
+# Option 1: Use environment variables (automatic detection)
+# Set OPENAI_API_KEY or Azure OpenAI environment variables
+# (AZURE_OPENAI_API_KEY, AZURE_OPENAI_API_ENDPOINT, AZURE_OPENAI_API_VERSION)
+# No explicit setup needed - clients are automatically created
 
-# Option 2: Use environment variables (OPENAI_API_KEY or Azure variables)
-# (No explicit setup needed if variables are set)
+# Option 2: Use an existing OpenAI client instance
+client = OpenAI(api_key="your-api-key")
+pandas_ext.use(client)
 
-# Option 3: Provide API key directly
-pandas_ext.use_openai("YOUR_API_KEY")
+# Option 3: Use an existing Azure OpenAI client instance
+azure_client = AzureOpenAI(
+    api_key="your-azure-key",
+    azure_endpoint="https://your-resource.openai.azure.com",
+    api_version="2024-02-01"
+)
+pandas_ext.use(azure_client)
 
-# Option 4: Use Azure OpenAI credentials
-# pandas_ext.use_azure_openai(
-#     api_key="YOUR_AZURE_KEY",
-#     endpoint="YOUR_AZURE_ENDPOINT",
-#     api_version="YOUR_API_VERSION"
-# )
+# Option 4: Use async clients
+async_client = AsyncOpenAI(api_key="your-api-key")
+pandas_ext.use_async(async_client)
 
-# Set up the model_name for responses and embeddings (optional, defaults shown)
+# Set up model names (optional, defaults shown)
 pandas_ext.responses_model("gpt-4o-mini")
 pandas_ext.embeddings_model("text-embedding-3-small")
 ```
@@ -34,16 +38,17 @@ to easily interact with OpenAI APIs for tasks like generating responses or embed
 import inspect
 import json
 import logging
-import os
 from typing import Any, Awaitable, Callable, List, Type, TypeVar
 
 import numpy as np
 import pandas as pd
 import tiktoken
-from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
+from openai import AsyncOpenAI, OpenAI
 from pydantic import BaseModel
 
+from .di import Container
 from .embeddings import AsyncBatchEmbeddings, BatchEmbeddings
+from .provider import provide_async_openai_client, provide_openai_client
 from .responses import AsyncBatchResponses, BatchResponses
 from .task.model import PreparedTask
 from .task.table import FillNaResponse, fillna
@@ -53,8 +58,6 @@ __all__ = [
     "use_async",
     "responses_model",
     "embeddings_model",
-    "use_openai",
-    "use_azure_openai",
 ]
 
 _LOGGER = logging.getLogger(__name__)
@@ -62,17 +65,13 @@ _LOGGER = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-_CLIENT: OpenAI | None = None
-_ASYNC_CLIENT: AsyncOpenAI | None = None
+_DI = Container()
+_DI.register(OpenAI, provide_openai_client)
+_DI.register(AsyncOpenAI, provide_async_openai_client)
 _RESPONSES_MODEL_NAME = "gpt-4o-mini"
 _EMBEDDINGS_MODEL_NAME = "text-embedding-3-small"
 
 _TIKTOKEN_ENCODING = tiktoken.encoding_for_model(_RESPONSES_MODEL_NAME)
-
-
-# internal method for accesing .ai accessor in spark udfs
-def _wakeup() -> None:
-    pass
 
 
 def use(client: OpenAI) -> None:
@@ -83,8 +82,7 @@ def use(client: OpenAI) -> None:
             `openai.AzureOpenAI` instance.
             The same instance is reused by every helper in this module.
     """
-    global _CLIENT
-    _CLIENT = client
+    _DI.register(OpenAI, lambda: client)
 
 
 def use_async(client: AsyncOpenAI) -> None:
@@ -95,42 +93,7 @@ def use_async(client: AsyncOpenAI) -> None:
             `openai.AsyncAzureOpenAI` instance.
             The same instance is reused by every helper in this module.
     """
-    global _ASYNC_CLIENT
-    _ASYNC_CLIENT = client
-
-
-def use_openai(api_key: str) -> None:
-    """Create and register a default `openai.OpenAI` client.
-
-    Args:
-        api_key (str): Value forwarded to the ``api_key`` parameter of
-            `openai.OpenAI`.
-    """
-    global _CLIENT, _ASYNC_CLIENT
-    _CLIENT = OpenAI(api_key=api_key)
-    _ASYNC_CLIENT = AsyncOpenAI(api_key=api_key)
-
-
-def use_azure_openai(api_key: str, endpoint: str, api_version: str) -> None:
-    """Create and register an `openai.AzureOpenAI` client.
-
-    Args:
-        api_key (str): Azure OpenAI subscription key.
-        endpoint (str): Resource endpoint, e.g.
-            ``https://<resource>.openai.azure.com``.
-        api_version (str): REST API version such as ``2024‑02‑15-preview``.
-    """
-    global _CLIENT, _ASYNC_CLIENT
-    _CLIENT = AzureOpenAI(
-        api_key=api_key,
-        azure_endpoint=endpoint,
-        api_version=api_version,
-    )
-    _ASYNC_CLIENT = AsyncAzureOpenAI(
-        api_key=api_key,
-        azure_endpoint=endpoint,
-        api_version=api_version,
-    )
+    _DI.register(AsyncOpenAI, lambda: client)
 
 
 def responses_model(name: str) -> None:
@@ -164,72 +127,12 @@ def embeddings_model(name: str) -> None:
     _EMBEDDINGS_MODEL_NAME = name
 
 
-def _get_openai_client() -> OpenAI:
-    global _CLIENT
-    if _CLIENT is not None:
-        return _CLIENT
-
-    if "OPENAI_API_KEY" in os.environ:
-        _CLIENT = OpenAI()
-        return _CLIENT
-
-    aoai_param_names = [
-        "AZURE_OPENAI_API_KEY",
-        "AZURE_OPENAI_ENDPOINT",
-        "AZURE_OPENAI_API_VERSION",
-    ]
-
-    if all(param in os.environ for param in aoai_param_names):
-        _CLIENT = AzureOpenAI(
-            api_key=os.environ["AZURE_OPENAI_API_KEY"],
-            azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
-            api_version=os.environ["AZURE_OPENAI_API_VERSION"],
-        )
-
-        return _CLIENT
-
-    raise ValueError(
-        "No OpenAI API key found. Please set the OPENAI_API_KEY environment variable or provide Azure OpenAI parameters."
-        "If using Azure OpenAI, ensure AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, and AZURE_OPENAI_API_VERSION are set."
-        "If using OpenAI, ensure OPENAI_API_KEY is set."
-    )
-
-
-def _get_async_openai_client() -> AsyncOpenAI:
-    global _ASYNC_CLIENT
-    if _ASYNC_CLIENT is not None:
-        return _ASYNC_CLIENT
-
-    if "OPENAI_API_KEY" in os.environ:
-        _ASYNC_CLIENT = AsyncOpenAI()
-        return _ASYNC_CLIENT
-
-    aoai_param_names = [
-        "AZURE_OPENAI_API_KEY",
-        "AZURE_OPENAI_ENDPOINT",
-        "AZURE_OPENAI_API_VERSION",
-    ]
-    if all(param in os.environ for param in aoai_param_names):
-        _ASYNC_CLIENT = AsyncAzureOpenAI(
-            api_key=os.environ["AZURE_OPENAI_API_KEY"],
-            azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
-            api_version=os.environ["AZURE_OPENAI_API_VERSION"],
-        )
-        return _ASYNC_CLIENT
-
-    raise ValueError(
-        "No OpenAI API key found. Please set the OPENAI_API_KEY environment variable or provide Azure OpenAI parameters."
-        "If using Azure OpenAI, ensure AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, and AZURE_OPENAI_API_VERSION are set."
-        "If using OpenAI, ensure OPENAI_API_KEY is set."
-    )
-
-
 def _extract_value(x, series_name):
     """Return a homogeneous ``dict`` representation of any Series value.
 
     Args:
         x: Single element taken from the Series.
-            series_name (str): Name of the Series (only used for logging).
+        series_name (str): Name of the Series (used for logging).
 
     Returns:
         dict: A dictionary representation or an empty ``dict`` if ``x`` cannot
@@ -242,7 +145,9 @@ def _extract_value(x, series_name):
     elif isinstance(x, dict):
         return x
 
-    _LOGGER.warning(f"The value '{x}' in the series is not a dict or BaseModel. Returning an empty dict.")
+    _LOGGER.warning(
+        f"The value '{x}' in the series '{series_name}' is not a dict or BaseModel. Returning an empty dict."
+    )
     return {}
 
 
@@ -286,7 +191,7 @@ class OpenAIVecSeriesAccessor:
             pandas.Series: Series whose values are instances of ``response_format``.
         """
         client: BatchResponses = BatchResponses(
-            client=_get_openai_client(),
+            client=_DI.resolve(OpenAI),
             model_name=_RESPONSES_MODEL_NAME,
             system_message=instructions,
             response_format=response_format,
@@ -330,7 +235,7 @@ class OpenAIVecSeriesAccessor:
             pandas.Series: Series whose values are instances of the task's
                 response format, aligned with the original Series index.
         """
-        client = BatchResponses.of_task(client=_get_openai_client(), model_name=_RESPONSES_MODEL_NAME, task=task)
+        client = BatchResponses.of_task(client=_DI.resolve(OpenAI), model_name=_RESPONSES_MODEL_NAME, task=task)
 
         return pd.Series(
             client.parse(self._obj.tolist(), batch_size=batch_size),
@@ -360,7 +265,7 @@ class OpenAIVecSeriesAccessor:
                 (dtype ``float32``).
         """
         client: BatchEmbeddings = BatchEmbeddings(
-            client=_get_openai_client(),
+            client=_DI.resolve(OpenAI),
             model_name=_EMBEDDINGS_MODEL_NAME,
         )
 
@@ -662,7 +567,7 @@ class AsyncOpenAIVecSeriesAccessor:
             This is an asynchronous method and must be awaited.
         """
         client: AsyncBatchResponses = AsyncBatchResponses(
-            client=_get_async_openai_client(),
+            client=_DI.resolve(AsyncOpenAI),
             model_name=_RESPONSES_MODEL_NAME,
             system_message=instructions,
             response_format=response_format,
@@ -708,7 +613,7 @@ class AsyncOpenAIVecSeriesAccessor:
             This is an asynchronous method and must be awaited.
         """
         client: AsyncBatchEmbeddings = AsyncBatchEmbeddings(
-            client=_get_async_openai_client(),
+            client=_DI.resolve(AsyncOpenAI),
             model_name=_EMBEDDINGS_MODEL_NAME,
             max_concurrency=max_concurrency,
         )
@@ -759,7 +664,7 @@ class AsyncOpenAIVecSeriesAccessor:
             This is an asynchronous method and must be awaited.
         """
         client = AsyncBatchResponses.of_task(
-            client=_get_async_openai_client(),
+            client=_DI.resolve(AsyncOpenAI),
             model_name=_RESPONSES_MODEL_NAME,
             task=task,
             max_concurrency=max_concurrency,
