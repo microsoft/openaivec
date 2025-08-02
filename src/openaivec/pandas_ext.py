@@ -2,27 +2,31 @@
 
 ## Setup
 ```python
-from openai import OpenAI
+from openai import OpenAI, AzureOpenAI, AsyncOpenAI, AsyncAzureOpenAI
 from openaivec import pandas_ext
 
-# Set up the OpenAI client to use with pandas_ext
-# Option 1: Use an existing client instance
-# pandas_ext.use(OpenAI())
+# Option 1: Use environment variables (automatic detection)
+# Set OPENAI_API_KEY or Azure OpenAI environment variables
+# (AZURE_OPENAI_API_KEY, AZURE_OPENAI_API_ENDPOINT, AZURE_OPENAI_API_VERSION)
+# No explicit setup needed - clients are automatically created
 
-# Option 2: Use environment variables (OPENAI_API_KEY or Azure variables)
-# (No explicit setup needed if variables are set)
+# Option 2: Use an existing OpenAI client instance
+client = OpenAI(api_key="your-api-key")
+pandas_ext.use(client)
 
-# Option 3: Provide API key directly
-pandas_ext.use_openai("YOUR_API_KEY")
+# Option 3: Use an existing Azure OpenAI client instance
+azure_client = AzureOpenAI(
+    api_key="your-azure-key",
+    azure_endpoint="https://your-resource.openai.azure.com",
+    api_version="2024-02-01"
+)
+pandas_ext.use(azure_client)
 
-# Option 4: Use Azure OpenAI credentials
-# pandas_ext.use_azure_openai(
-#     api_key="YOUR_AZURE_KEY",
-#     endpoint="YOUR_AZURE_ENDPOINT",
-#     api_version="YOUR_API_VERSION"
-# )
+# Option 4: Use async clients
+async_client = AsyncOpenAI(api_key="your-api-key")
+pandas_ext.use_async(async_client)
 
-# Set up the model_name for responses and embeddings (optional, defaults shown)
+# Set up model names (optional, defaults shown)
 pandas_ext.responses_model("gpt-4o-mini")
 pandas_ext.embeddings_model("text-embedding-3-small")
 ```
@@ -129,7 +133,7 @@ def _extract_value(x, series_name):
 
     Args:
         x: Single element taken from the Series.
-            series_name (str): Name of the Series (only used for logging).
+        series_name (str): Name of the Series (used for logging).
 
     Returns:
         dict: A dictionary representation or an empty ``dict`` if ``x`` cannot
@@ -142,7 +146,7 @@ def _extract_value(x, series_name):
     elif isinstance(x, dict):
         return x
 
-    _LOGGER.warning(f"The value '{x}' in the series is not a dict or BaseModel. Returning an empty dict.")
+    _LOGGER.warning(f"The value '{x}' in the series '{series_name}' is not a dict or BaseModel. Returning an empty dict.")
     return {}
 
 
