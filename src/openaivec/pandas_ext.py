@@ -117,6 +117,7 @@ def responses_model(name: str) -> None:
             (for example, ``gpt-4o-mini``).
     """
     _DI.register(ResponsesModelName, lambda: ResponsesModelName(name))
+    _DI.register(tiktoken.Encoding, _provide_tiktoken_encoding)
 
 
 def embeddings_model(name: str) -> None:
