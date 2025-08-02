@@ -48,9 +48,9 @@ from pydantic import BaseModel
 
 from .di import Container
 from .embeddings import AsyncBatchEmbeddings, BatchEmbeddings
+from .model import EmbeddingsModelName, PreparedTask, ResponsesModelName
 from .provider import provide_async_openai_client, provide_openai_client
 from .responses import AsyncBatchResponses, BatchResponses
-from .task.model import PreparedTask
 from .task.table import FillNaResponse, fillna
 
 __all__ = [
@@ -68,10 +68,23 @@ T = TypeVar("T")
 _DI = Container()
 _DI.register(OpenAI, provide_openai_client)
 _DI.register(AsyncOpenAI, provide_async_openai_client)
-_RESPONSES_MODEL_NAME = "gpt-4o-mini"
-_EMBEDDINGS_MODEL_NAME = "text-embedding-3-small"
+_DI.register(ResponsesModelName, lambda: ResponsesModelName("gpt-4o-mini"))
+_DI.register(EmbeddingsModelName, lambda: EmbeddingsModelName("text-embedding-3-small"))
 
-_TIKTOKEN_ENCODING = tiktoken.encoding_for_model(_RESPONSES_MODEL_NAME)
+
+def _provide_tiktoken_encoding() -> tiktoken.Encoding:
+    model_name = _DI.resolve(ResponsesModelName).value
+    try:
+        return tiktoken.encoding_for_model(model_name)
+    except KeyError:
+        _LOGGER.info(
+            "The model name '%s' is not supported by tiktoken. Using 'o200k_base' encoding instead.",
+            model_name,
+        )
+        return tiktoken.get_encoding("o200k_base")
+
+
+_DI.register(tiktoken.Encoding, _provide_tiktoken_encoding)
 
 
 def use(client: OpenAI) -> None:
@@ -103,18 +116,8 @@ def responses_model(name: str) -> None:
         name (str): Model name as listed in the OpenAI API
             (for example, ``gpt-4o-mini``).
     """
-    global _RESPONSES_MODEL_NAME, _TIKTOKEN_ENCODING
-    _RESPONSES_MODEL_NAME = name
-
-    try:
-        _TIKTOKEN_ENCODING = tiktoken.encoding_for_model(name)
-
-    except KeyError:
-        _LOGGER.info(
-            "The model name '%s' is not supported by tiktoken. Instead, using the 'o200k_base' encoding.",
-            name,
-        )
-        _TIKTOKEN_ENCODING = tiktoken.get_encoding("o200k_base")
+    _DI.register(ResponsesModelName, lambda: ResponsesModelName(name))
+    _DI.register(tiktoken.Encoding, _provide_tiktoken_encoding)
 
 
 def embeddings_model(name: str) -> None:
@@ -123,8 +126,7 @@ def embeddings_model(name: str) -> None:
     Args:
         name (str): Embedding model name, e.g. ``text-embedding-3-small``.
     """
-    global _EMBEDDINGS_MODEL_NAME
-    _EMBEDDINGS_MODEL_NAME = name
+    _DI.register(EmbeddingsModelName, lambda: EmbeddingsModelName(name))
 
 
 def _extract_value(x, series_name):
@@ -192,7 +194,7 @@ class OpenAIVecSeriesAccessor:
         """
         client: BatchResponses = BatchResponses(
             client=_DI.resolve(OpenAI),
-            model_name=_RESPONSES_MODEL_NAME,
+            model_name=_DI.resolve(ResponsesModelName).value,
             system_message=instructions,
             response_format=response_format,
             temperature=temperature,
@@ -214,7 +216,7 @@ class OpenAIVecSeriesAccessor:
 
         Example:
             ```python
-            from openaivec.task.model import PreparedTask
+            from openaivec.model import PreparedTask
 
             # Assume you have a prepared task for sentiment analysis
             sentiment_task = PreparedTask(...)
@@ -235,7 +237,9 @@ class OpenAIVecSeriesAccessor:
             pandas.Series: Series whose values are instances of the task's
                 response format, aligned with the original Series index.
         """
-        client = BatchResponses.of_task(client=_DI.resolve(OpenAI), model_name=_RESPONSES_MODEL_NAME, task=task)
+        client = BatchResponses.of_task(
+            client=_DI.resolve(OpenAI), model_name=_DI.resolve(ResponsesModelName).value, task=task
+        )
 
         return pd.Series(
             client.parse(self._obj.tolist(), batch_size=batch_size),
@@ -266,7 +270,7 @@ class OpenAIVecSeriesAccessor:
         """
         client: BatchEmbeddings = BatchEmbeddings(
             client=_DI.resolve(OpenAI),
-            model_name=_EMBEDDINGS_MODEL_NAME,
+            model_name=_DI.resolve(EmbeddingsModelName).value,
         )
 
         return pd.Series(
@@ -289,7 +293,8 @@ class OpenAIVecSeriesAccessor:
         Returns:
             pandas.Series: Token counts for each element.
         """
-        return self._obj.map(_TIKTOKEN_ENCODING.encode).map(len).rename("num_tokens")
+        encoding: tiktoken.Encoding = _DI.resolve(tiktoken.Encoding)
+        return self._obj.map(encoding.encode).map(len).rename("num_tokens")
 
     def extract(self) -> pd.DataFrame:
         """Expand a Series of Pydantic models/dicts into columns.
@@ -421,7 +426,7 @@ class OpenAIVecDataFrameAccessor:
 
         Example:
             ```python
-            from openaivec.task.model import PreparedTask
+            from openaivec.model import PreparedTask
 
             # Assume you have a prepared task for data analysis
             analysis_task = PreparedTask(...)
@@ -568,7 +573,7 @@ class AsyncOpenAIVecSeriesAccessor:
         """
         client: AsyncBatchResponses = AsyncBatchResponses(
             client=_DI.resolve(AsyncOpenAI),
-            model_name=_RESPONSES_MODEL_NAME,
+            model_name=_DI.resolve(ResponsesModelName).value,
             system_message=instructions,
             response_format=response_format,
             temperature=temperature,
@@ -614,7 +619,7 @@ class AsyncOpenAIVecSeriesAccessor:
         """
         client: AsyncBatchEmbeddings = AsyncBatchEmbeddings(
             client=_DI.resolve(AsyncOpenAI),
-            model_name=_EMBEDDINGS_MODEL_NAME,
+            model_name=_DI.resolve(EmbeddingsModelName).value,
             max_concurrency=max_concurrency,
         )
 
@@ -636,7 +641,7 @@ class AsyncOpenAIVecSeriesAccessor:
 
         Example:
             ```python
-            from openaivec.task.model import PreparedTask
+            from openaivec.model import PreparedTask
 
             # Assume you have a prepared task for sentiment analysis
             sentiment_task = PreparedTask(...)
@@ -665,7 +670,7 @@ class AsyncOpenAIVecSeriesAccessor:
         """
         client = AsyncBatchResponses.of_task(
             client=_DI.resolve(AsyncOpenAI),
-            model_name=_RESPONSES_MODEL_NAME,
+            model_name=_DI.resolve(ResponsesModelName).value,
             task=task,
             max_concurrency=max_concurrency,
         )
@@ -758,7 +763,7 @@ class AsyncOpenAIVecDataFrameAccessor:
 
         Example:
             ```python
-            from openaivec.task.model import PreparedTask
+            from openaivec.model import PreparedTask
 
             # Assume you have a prepared task for data analysis
             analysis_task = PreparedTask(...)

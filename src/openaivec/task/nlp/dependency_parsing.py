@@ -5,22 +5,22 @@ syntactic dependencies between words in sentences using OpenAI's language models
 
 Example:
     Basic usage with BatchResponses:
-    
+
     ```python
     from openai import OpenAI
     from openaivec.responses import BatchResponses
     from openaivec.task import nlp
-    
+
     client = OpenAI()
     analyzer = BatchResponses.of_task(
         client=client,
         model_name="gpt-4o-mini",
         task=nlp.DEPENDENCY_PARSING
     )
-    
+
     texts = ["The cat sat on the mat.", "She quickly ran to the store."]
     analyses = analyzer.parse(texts)
-    
+
     for analysis in analyses:
         print(f"Tokens: {analysis.tokens}")
         print(f"Dependencies: {analysis.dependencies}")
@@ -28,30 +28,31 @@ Example:
     ```
 
     With pandas integration:
-    
+
     ```python
     import pandas as pd
     from openaivec import pandas_ext  # Required for .ai accessor
     from openaivec.task import nlp
-    
+
     df = pd.DataFrame({"text": ["The cat sat on the mat.", "She quickly ran to the store."]})
     df["parsing"] = df["text"].ai.task(nlp.DEPENDENCY_PARSING)
-    
+
     # Extract parsing components
     extracted_df = df.ai.extract("parsing")
     print(extracted_df[["text", "parsing_tokens", "parsing_root_word", "parsing_syntactic_structure"]])
     ```
 
 Attributes:
-    DEPENDENCY_PARSING (PreparedTask): A prepared task instance 
-        configured for dependency parsing with temperature=0.0 and 
+    DEPENDENCY_PARSING (PreparedTask): A prepared task instance
+        configured for dependency parsing with temperature=0.0 and
         top_p=1.0 for deterministic output.
 """
 
 from typing import List
+
 from pydantic import BaseModel, Field
 
-from ..model import PreparedTask
+from ...model import PreparedTask
 
 __all__ = ["DEPENDENCY_PARSING"]
 
@@ -75,5 +76,5 @@ DEPENDENCY_PARSING = PreparedTask(
     instructions="Parse the syntactic dependencies in the following text. Identify dependency relations between words, determine the root word, and provide a tree representation of the syntactic structure.",
     response_format=DependencyParsing,
     temperature=0.0,
-    top_p=1.0
+    top_p=1.0,
 )

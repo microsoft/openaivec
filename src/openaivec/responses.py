@@ -8,7 +8,7 @@ from openai.types.responses import ParsedResponse
 from pydantic import BaseModel
 
 from .log import observe
-from .task.model import PreparedTask
+from .model import PreparedTask
 from .util import backoff, backoff_async, map, map_async
 
 __all__ = [
@@ -290,7 +290,9 @@ class AsyncBatchResponses(Generic[T]):
     _semaphore: asyncio.Semaphore = field(init=False, repr=False)
 
     @classmethod
-    def of_task(cls, client: AsyncOpenAI, model_name: str, task: PreparedTask, max_concurrency: int = 8) -> "AsyncBatchResponses":
+    def of_task(
+        cls, client: AsyncOpenAI, model_name: str, task: PreparedTask, max_concurrency: int = 8
+    ) -> "AsyncBatchResponses":
         """Create an AsyncBatchResponses instance from a PreparedTask."""
         return cls(
             client=client,

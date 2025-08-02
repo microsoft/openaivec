@@ -5,26 +5,26 @@ different categories to help route them to the appropriate support team.
 
 Example:
     Basic usage with default settings:
-    
+
     ```python
     from openai import OpenAI
     from openaivec.responses import BatchResponses
     from openaivec.task import customer_support
-    
+
     client = OpenAI()
     classifier = BatchResponses.of_task(
         client=client,
         model_name="gpt-4o-mini",
         task=customer_support.inquiry_classification()
     )
-    
+
     inquiries = [
         "I can't log into my account",
         "When will my order arrive?",
         "I want to cancel my subscription"
     ]
     classifications = classifier.parse(inquiries)
-    
+
     for classification in classifications:
         print(f"Category: {classification.category}")
         print(f"Subcategory: {classification.subcategory}")
@@ -33,10 +33,10 @@ Example:
     ```
 
     Customized for e-commerce:
-    
+
     ```python
     from openaivec.task import customer_support
-    
+
     # E-commerce specific categories
     ecommerce_categories = {
         "order_management": ["order_status", "order_cancellation", "order_modification", "returns"],
@@ -46,22 +46,22 @@ Example:
         "account": ["login_issues", "account_settings", "profile_updates", "password_reset"],
         "general": ["complaints", "compliments", "feedback", "other"]
     }
-    
+
     ecommerce_routing = {
         "order_management": "order_team",
-        "payment": "billing_team", 
+        "payment": "billing_team",
         "product": "product_team",
         "shipping": "logistics_team",
         "account": "account_support",
         "general": "general_support"
     }
-    
+
     task = customer_support.inquiry_classification(
         categories=ecommerce_categories,
         routing_rules=ecommerce_routing,
         business_context="e-commerce platform"
     )
-    
+
     classifier = BatchResponses.of_task(
         client=client,
         model_name="gpt-4o-mini",
@@ -70,29 +70,30 @@ Example:
     ```
 
     With pandas integration:
-    
+
     ```python
     import pandas as pd
     from openaivec import pandas_ext  # Required for .ai accessor
     from openaivec.task import customer_support
-    
+
     df = pd.DataFrame({"inquiry": [
         "I can't log into my account",
         "When will my order arrive?",
         "I want to cancel my subscription"
     ]})
     df["classification"] = df["inquiry"].ai.task(customer_support.inquiry_classification())
-    
+
     # Extract classification components
     extracted_df = df.ai.extract("classification")
     print(extracted_df[["inquiry", "classification_category", "classification_subcategory", "classification_confidence"]])
     ```
 """
 
-from typing import List, Dict, Optional, Literal
+from typing import Dict, List, Literal, Optional
+
 from pydantic import BaseModel, Field
 
-from ..model import PreparedTask
+from ...model import PreparedTask
 
 __all__ = ["inquiry_classification"]
 
@@ -103,7 +104,9 @@ class InquiryClassification(BaseModel):
     confidence: float = Field(description="Confidence score for classification (0.0-1.0)")
     routing: str = Field(description="Recommended routing destination")
     keywords: List[str] = Field(description="Key terms that influenced the classification")
-    priority: Literal["low", "medium", "high", "urgent"] = Field(description="Suggested priority level (low, medium, high, urgent)")
+    priority: Literal["low", "medium", "high", "urgent"] = Field(
+        description="Suggested priority level (low, medium, high, urgent)"
+    )
     business_context_match: bool = Field(description="Whether the inquiry matches the business context")
 
 
@@ -114,10 +117,10 @@ def inquiry_classification(
     business_context: str = "general customer support",
     custom_keywords: Optional[Dict[str, List[str]]] = None,
     temperature: float = 0.0,
-    top_p: float = 1.0
+    top_p: float = 1.0,
 ) -> PreparedTask:
     """Create a configurable inquiry classification task.
-    
+
     Args:
         categories: Dictionary mapping category names to lists of subcategories.
             Default provides standard support categories.
@@ -129,64 +132,88 @@ def inquiry_classification(
         custom_keywords: Dictionary mapping categories to relevant keywords.
         temperature: Sampling temperature (0.0-1.0).
         top_p: Nucleus sampling parameter (0.0-1.0).
-        
+
     Returns:
         PreparedTask configured for inquiry classification.
     """
-    
+
     # Default categories
     if categories is None:
         categories = {
-            "technical": ["login_issues", "password_reset", "app_crashes", "connectivity_problems", "feature_not_working"],
-            "billing": ["payment_failed", "invoice_questions", "refund_request", "pricing_inquiry", "subscription_changes"],
-            "product": ["feature_request", "product_information", "compatibility_questions", "how_to_use", "bug_reports"],
-            "shipping": ["delivery_status", "shipping_address", "delivery_issues", "tracking_number", "expedited_shipping"],
+            "technical": [
+                "login_issues",
+                "password_reset",
+                "app_crashes",
+                "connectivity_problems",
+                "feature_not_working",
+            ],
+            "billing": [
+                "payment_failed",
+                "invoice_questions",
+                "refund_request",
+                "pricing_inquiry",
+                "subscription_changes",
+            ],
+            "product": [
+                "feature_request",
+                "product_information",
+                "compatibility_questions",
+                "how_to_use",
+                "bug_reports",
+            ],
+            "shipping": [
+                "delivery_status",
+                "shipping_address",
+                "delivery_issues",
+                "tracking_number",
+                "expedited_shipping",
+            ],
             "account": ["account_creation", "profile_updates", "account_deletion", "data_export", "privacy_settings"],
-            "general": ["compliments", "complaints", "feedback", "partnership_inquiry", "other"]
+            "general": ["compliments", "complaints", "feedback", "partnership_inquiry", "other"],
         }
-    
+
     # Default routing rules
     if routing_rules is None:
         routing_rules = {
             "technical": "tech_support",
-            "billing": "billing_team", 
+            "billing": "billing_team",
             "product": "product_team",
             "shipping": "shipping_team",
             "account": "account_management",
-            "general": "general_support"
+            "general": "general_support",
         }
-    
+
     # Default priority rules
     if priority_rules is None:
         priority_rules = {
             "urgent": "urgent, emergency, critical, down, outage, security, breach, immediate",
             "high": "login, password, payment, billing, delivery, problem, issue, error, bug",
             "medium": "feature, request, question, how, help, support, feedback",
-            "low": "information, compliment, thank, suggestion, general, other"
+            "low": "information, compliment, thank, suggestion, general, other",
         }
-    
+
     # Build categories section
     categories_text = "Categories and subcategories:\n"
     for category, subcategories in categories.items():
         categories_text += f"- {category}: {', '.join(subcategories)}\n"
-    
+
     # Build routing section
     routing_text = "Routing options:\n"
     for category, routing in routing_rules.items():
         routing_text += f"- {routing}: {category.replace('_', ' ').title()} issues\n"
-    
+
     # Build priority section
     priority_text = "Priority levels:\n"
     for priority, keywords in priority_rules.items():
         priority_text += f"- {priority}: {keywords}\n"
-    
+
     # Build custom keywords section
     keywords_text = ""
     if custom_keywords:
         keywords_text = "\nCustom keywords for classification:\n"
         for category, keywords in custom_keywords.items():
             keywords_text += f"- {category}: {', '.join(keywords)}\n"
-    
+
     instructions = f"""Classify the customer inquiry into the appropriate category and subcategory based on the configured categories and business context.
 
 Business Context: {business_context}
@@ -221,10 +248,7 @@ IMPORTANT: Provide analysis responses in the same language as the input text, ex
 Provide accurate classification with detailed reasoning."""
 
     return PreparedTask(
-        instructions=instructions,
-        response_format=InquiryClassification,
-        temperature=temperature,
-        top_p=top_p
+        instructions=instructions, response_format=InquiryClassification, temperature=temperature, top_p=top_p
     )
 
 

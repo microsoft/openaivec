@@ -6,26 +6,26 @@ and professional communication.
 
 Example:
     Basic usage with BatchResponses:
-    
+
     ```python
     from openai import OpenAI
     from openaivec.responses import BatchResponses
     from openaivec.task import customer_support
-    
+
     client = OpenAI()
     responder = BatchResponses.of_task(
         client=client,
         model_name="gpt-4o-mini",
         task=customer_support.RESPONSE_SUGGESTION
     )
-    
+
     inquiries = [
         "I can't access my account. I've tried resetting my password but the email never arrives.",
         "I'm really disappointed with your service. This is the third time I've had issues.",
         "Thank you for your help yesterday! The problem is now resolved."
     ]
     responses = responder.parse(inquiries)
-    
+
     for response in responses:
         print(f"Suggested Response: {response.suggested_response}")
         print(f"Tone: {response.tone}")
@@ -34,47 +34,56 @@ Example:
     ```
 
     With pandas integration:
-    
+
     ```python
     import pandas as pd
     from openaivec import pandas_ext  # Required for .ai accessor
     from openaivec.task import customer_support
-    
+
     df = pd.DataFrame({"inquiry": [
         "I can't access my account. I've tried resetting my password but the email never arrives.",
         "I'm really disappointed with your service. This is the third time I've had issues."
     ]})
     df["response"] = df["inquiry"].ai.task(customer_support.RESPONSE_SUGGESTION)
-    
+
     # Extract response components
     extracted_df = df.ai.extract("response")
     print(extracted_df[["inquiry", "response_suggested_response", "response_tone", "response_priority"]])
     ```
 
 Attributes:
-    RESPONSE_SUGGESTION (PreparedTask): A prepared task instance 
-        configured for response suggestion with temperature=0.0 and 
+    RESPONSE_SUGGESTION (PreparedTask): A prepared task instance
+        configured for response suggestion with temperature=0.0 and
         top_p=1.0 for deterministic output.
 """
 
 from typing import List, Literal
+
 from pydantic import BaseModel, Field
 
-from ..model import PreparedTask
+from ...model import PreparedTask
 
 __all__ = ["response_suggestion"]
 
 
 class ResponseSuggestion(BaseModel):
     suggested_response: str = Field(description="Professional response draft for the customer inquiry")
-    tone: Literal["empathetic", "professional", "friendly", "apologetic", "solution_focused"] = Field(description="Recommended tone (empathetic, professional, friendly, apologetic, solution_focused)")
-    priority: Literal["immediate", "high", "medium", "low"] = Field(description="Response priority (immediate, high, medium, low)")
-    response_type: Literal["acknowledgment", "solution", "escalation", "information_request", "closure"] = Field(description="Type of response (acknowledgment, solution, escalation, information_request, closure)")
+    tone: Literal["empathetic", "professional", "friendly", "apologetic", "solution_focused"] = Field(
+        description="Recommended tone (empathetic, professional, friendly, apologetic, solution_focused)"
+    )
+    priority: Literal["immediate", "high", "medium", "low"] = Field(
+        description="Response priority (immediate, high, medium, low)"
+    )
+    response_type: Literal["acknowledgment", "solution", "escalation", "information_request", "closure"] = Field(
+        description="Type of response (acknowledgment, solution, escalation, information_request, closure)"
+    )
     key_points: List[str] = Field(description="Main points that must be addressed in the response")
     follow_up_required: bool = Field(description="Whether follow-up communication is needed")
     escalation_suggested: bool = Field(description="Whether escalation to management is recommended")
     resources_needed: List[str] = Field(description="Additional resources or information required")
-    estimated_resolution_time: Literal["immediate", "hours", "days", "weeks"] = Field(description="Estimated time to resolution (immediate, hours, days, weeks)")
+    estimated_resolution_time: Literal["immediate", "hours", "days", "weeks"] = Field(
+        description="Estimated time to resolution (immediate, hours, days, weeks)"
+    )
     alternative_responses: List[str] = Field(description="Alternative response options for different scenarios")
     personalization_notes: str = Field(description="Suggestions for personalizing the response")
 
@@ -84,33 +93,33 @@ def response_suggestion(
     company_name: str = "our company",
     business_context: str = "general customer support",
     temperature: float = 0.0,
-    top_p: float = 1.0
+    top_p: float = 1.0,
 ) -> PreparedTask:
     """Create a configurable response suggestion task.
-    
+
     Args:
         response_style: Style of response (professional, friendly, empathetic, formal).
         company_name: Name of the company for personalization.
         business_context: Business context for responses.
         temperature: Sampling temperature (0.0-1.0).
         top_p: Nucleus sampling parameter (0.0-1.0).
-        
+
     Returns:
         PreparedTask configured for response suggestions.
     """
-    
+
     style_instructions = {
         "professional": "Maintain professional tone with clear, direct communication",
         "friendly": "Use warm, approachable language while remaining professional",
         "empathetic": "Show understanding and compassion for customer concerns",
-        "formal": "Use formal business language appropriate for official communications"
+        "formal": "Use formal business language appropriate for official communications",
     }
-    
+
     instructions = f"""Generate a professional, helpful response suggestion for the customer inquiry that addresses their needs effectively.
 
 Business Context: {business_context}
 Company Name: {company_name}
-Response Style: {style_instructions.get(response_style, style_instructions['professional'])}
+Response Style: {style_instructions.get(response_style, style_instructions["professional"])}
 
 Response Guidelines:
 1. Address the customer's main concern directly
@@ -176,10 +185,7 @@ IMPORTANT: Generate responses in the same language as the input text, except for
 Generate helpful, professional response that moves toward resolution while maintaining positive customer relationship."""
 
     return PreparedTask(
-        instructions=instructions,
-        response_format=ResponseSuggestion,
-        temperature=temperature,
-        top_p=top_p
+        instructions=instructions, response_format=ResponseSuggestion, temperature=temperature, top_p=top_p
     )
 
 

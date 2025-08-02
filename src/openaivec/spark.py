@@ -130,8 +130,8 @@ from pyspark.sql.udf import UserDefinedFunction
 from typing_extensions import Literal
 
 from . import pandas_ext
+from .model import PreparedTask
 from .serialize import deserialize_base_model, serialize_base_model
-from .task.model import PreparedTask
 from .util import TextChunker
 
 __all__ = [

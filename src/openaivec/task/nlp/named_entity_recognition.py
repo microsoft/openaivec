@@ -5,22 +5,22 @@ identifies and classifies named entities in text using OpenAI's language models.
 
 Example:
     Basic usage with BatchResponses:
-    
+
     ```python
     from openai import OpenAI
     from openaivec.responses import BatchResponses
     from openaivec.task import nlp
-    
+
     client = OpenAI()
     analyzer = BatchResponses.of_task(
         client=client,
         model_name="gpt-4o-mini",
         task=nlp.NAMED_ENTITY_RECOGNITION
     )
-    
+
     texts = ["John works at Microsoft in Seattle", "The meeting is on March 15th"]
     analyses = analyzer.parse(texts)
-    
+
     for analysis in analyses:
         print(f"Persons: {analysis.persons}")
         print(f"Organizations: {analysis.organizations}")
@@ -28,31 +28,31 @@ Example:
     ```
 
     With pandas integration:
-    
+
     ```python
     import pandas as pd
     from openaivec import pandas_ext  # Required for .ai accessor
     from openaivec.task import nlp
-    
+
     df = pd.DataFrame({"text": ["John works at Microsoft in Seattle", "The meeting is on March 15th"]})
     df["entities"] = df["text"].ai.task(nlp.NAMED_ENTITY_RECOGNITION)
-    
+
     # Extract entity components
     extracted_df = df.ai.extract("entities")
     print(extracted_df[["text", "entities_persons", "entities_organizations", "entities_locations"]])
     ```
 
 Attributes:
-    NAMED_ENTITY_RECOGNITION (PreparedTask): A prepared task instance 
-        configured for named entity recognition with temperature=0.0 and 
+    NAMED_ENTITY_RECOGNITION (PreparedTask): A prepared task instance
+        configured for named entity recognition with temperature=0.0 and
         top_p=1.0 for deterministic output.
 """
 
 from typing import List, Optional
-from pydantic import BaseModel
-from pydantic import Field
 
-from ..model import PreparedTask
+from pydantic import BaseModel, Field
+
+from ...model import PreparedTask
 
 __all__ = ["NAMED_ENTITY_RECOGNITION"]
 
@@ -79,5 +79,5 @@ NAMED_ENTITY_RECOGNITION = PreparedTask(
     instructions="Identify and classify named entities in the following text. Extract persons, organizations, locations, dates, money, percentages, and other miscellaneous entities with their positions and confidence scores.",
     response_format=NamedEntityRecognition,
     temperature=0.0,
-    top_p=1.0
+    top_p=1.0,
 )
