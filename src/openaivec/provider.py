@@ -1,15 +1,16 @@
 import os
-from typing import Union
 
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
 
 
-def provide_openai_client() -> Union[OpenAI, AzureOpenAI]:
+def provide_openai_client() -> OpenAI:
     """Provide OpenAI client based on environment variables. Prioritizes OpenAI over Azure."""
     if os.getenv("OPENAI_API_KEY"):
         return OpenAI()
 
-    if all(os.getenv(name) for name in ["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_API_ENDPOINT", "AZURE_OPENAI_API_VERSION"]):
+    if all(
+        os.getenv(name) for name in ["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_API_ENDPOINT", "AZURE_OPENAI_API_VERSION"]
+    ):
         return AzureOpenAI(
             api_key=os.getenv("AZURE_OPENAI_API_KEY"),
             azure_endpoint=os.getenv("AZURE_OPENAI_API_ENDPOINT"),
@@ -23,12 +24,14 @@ def provide_openai_client() -> Union[OpenAI, AzureOpenAI]:
     )
 
 
-def provide_async_openai_client() -> Union[AsyncOpenAI, AsyncAzureOpenAI]:
+def provide_async_openai_client() -> AsyncOpenAI:
     """Provide async OpenAI client based on environment variables. Prioritizes OpenAI over Azure."""
     if os.getenv("OPENAI_API_KEY"):
         return AsyncOpenAI()
 
-    if all(os.getenv(name) for name in ["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_API_ENDPOINT", "AZURE_OPENAI_API_VERSION"]):
+    if all(
+        os.getenv(name) for name in ["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_API_ENDPOINT", "AZURE_OPENAI_API_VERSION"]
+    ):
         return AsyncAzureOpenAI(
             api_key=os.getenv("AZURE_OPENAI_API_KEY"),
             azure_endpoint=os.getenv("AZURE_OPENAI_API_ENDPOINT"),
