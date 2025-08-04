@@ -18,14 +18,8 @@ from openaivec.task import nlp
 
 class TestUDFBuilder(TestCase):
     def setUp(self):
-        self.responses = ResponsesUDFBuilder.of_openai(
-            api_key=os.environ.get("OPENAI_API_KEY"),
-            model_name="gpt-4.1-nano",
-        )
-        self.embeddings = EmbeddingsUDFBuilder.of_openai(
-            api_key=os.environ.get("OPENAI_API_KEY"),
-            model_name="text-embedding-3-small",
-        )
+        self.responses = ResponsesUDFBuilder(model_name="gpt-4.1-nano")
+        self.embeddings = EmbeddingsUDFBuilder(model_name="text-embedding-3-small")
         self.spark: SparkSession = SparkSession.builder \
             .appName("TestSparkUDF") \
             .master("local[*]") \
