@@ -9,45 +9,34 @@ improved performance in I/O-bound operations.
 
 ## Setup
 
-First, obtain a Spark session:
-
-```python
-from pyspark.sql import SparkSession
-
-spark = SparkSession.builder.getOrCreate()
-```
-
-Next, instantiate UDF builders with your OpenAI API key (or Azure credentials)
-and model/deployment names, then register the desired UDFs:
+First, obtain a Spark session and configure authentication:
 
 ```python
 import os
+from pyspark.sql import SparkSession
+
+spark = SparkSession.builder.getOrCreate()
+sc = spark.sparkContext
+
+# Configure authentication via SparkContext environment variables
+# Option 1: Using OpenAI
+sc.environment["OPENAI_API_KEY"] = "your-openai-api-key"
+
+# Option 2: Using Azure OpenAI
+# sc.environment["AZURE_OPENAI_API_KEY"] = "your-azure-openai-api-key"
+# sc.environment["AZURE_OPENAI_API_ENDPOINT"] = "your-azure-openai-endpoint"
+# sc.environment["AZURE_OPENAI_API_VERSION"] = "your-azure-openai-api-version"
+```
+
+Next, instantiate UDF builders with model names and register the desired UDFs:
+
+```python
 from openaivec.spark import ResponsesUDFBuilder, EmbeddingsUDFBuilder
 from pydantic import BaseModel
 
-# Option 1: Using OpenAI
-resp_builder = ResponsesUDFBuilder.of_openai(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    model_name="gpt-4o-mini", # Model for responses
-)
-emb_builder = EmbeddingsUDFBuilder.of_openai(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    model_name="text-embedding-3-small", # Model for embeddings
-)
-
-# Option 2: Using Azure OpenAI
-# resp_builder = ResponsesUDFBuilder.of_azure_openai(
-#     api_key=os.getenv("AZURE_OPENAI_KEY"),
-#     endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-#     api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-#     model_name="your-resp-deployment-name", # Deployment for responses
-# )
-# emb_builder = EmbeddingsUDFBuilder.of_azure_openai(
-#     api_key=os.getenv("AZURE_OPENAI_KEY"),
-#     endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-#     api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-#     model_name="your-emb-deployment-name", # Deployment for embeddings
-# )
+# Create builders (no authentication parameters needed)
+resp_builder = ResponsesUDFBuilder(model_name="gpt-4o-mini")
+emb_builder = EmbeddingsUDFBuilder(model_name="text-embedding-3-small")
 
 # Define a Pydantic model for structured responses (optional)
 class Translation(BaseModel):
@@ -116,7 +105,6 @@ Note: This module provides asynchronous support through the pandas extensions.
 
 import asyncio
 import logging
-import os
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, Iterator, List, Optional, Type, TypeVar, Union, get_args, get_origin
@@ -148,25 +136,6 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 _TIKTOKEN_ENC: tiktoken.Encoding | None = None
 
 
-def _initialize(api_key: str, endpoint: str | None, api_version: str | None) -> None:
-    """Initializes environment variables for OpenAI client configuration.
-
-    This function sets up the required environment variables that will be used
-    by the pandas_ext module to configure the appropriate OpenAI client
-    (either OpenAI or Azure OpenAI) in Spark worker processes.
-
-    Args:
-        api_key (str): The OpenAI or Azure OpenAI API key.
-        endpoint (Optional[str]): The Azure OpenAI endpoint URL. Required for Azure.
-        api_version (Optional[str]): The Azure OpenAI API version. Required for Azure.
-    """
-    if endpoint and api_version:
-        os.environ["AZURE_OPENAI_API_KEY"] = api_key
-        os.environ["AZURE_OPENAI_API_VERSION"] = api_version
-        os.environ["AZURE_OPENAI_ENDPOINT"] = endpoint
-
-    else:
-        os.environ["OPENAI_API_KEY"] = api_key
 
 
 def _python_type_to_spark(python_type):
@@ -250,54 +219,31 @@ class ResponsesUDFBuilder:
 
     Configures and builds UDFs that leverage `pandas_ext.aio.responses`
     to generate text or structured responses from OpenAI models asynchronously.
-    An instance stores authentication parameters and the model name.
+    An instance stores the model name for API calls.
 
     This builder supports two main methods:
     - `build()`: Creates UDFs with custom instructions and response formats
     - `build_from_task()`: Creates UDFs from predefined tasks (e.g., sentiment analysis)
 
+    Note:
+        Authentication must be configured via SparkContext environment variables before using this builder.
+        Set the appropriate environment variables on the SparkContext:
+        
+        For OpenAI:
+            sc.environment["OPENAI_API_KEY"] = "your-openai-api-key"
+        
+        For Azure OpenAI:
+            sc.environment["AZURE_OPENAI_API_KEY"] = "your-azure-openai-api-key"
+            sc.environment["AZURE_OPENAI_API_ENDPOINT"] = "your-azure-openai-endpoint"
+            sc.environment["AZURE_OPENAI_API_VERSION"] = "your-azure-openai-api-version"
+
     Attributes:
-        api_key (str): OpenAI or Azure API key.
-        endpoint (Optional[str]): Azure endpoint base URL. None for public OpenAI.
-        api_version (Optional[str]): Azure API version. Ignored for public OpenAI.
         model_name (str): Deployment name (Azure) or model name (OpenAI) for responses.
     """
-
-    # Params for OpenAI SDK
-    api_key: str
-    endpoint: str | None
-    api_version: str | None
 
     # Params for Responses API
     model_name: str
 
-    @classmethod
-    def of_openai(cls, api_key: str, model_name: str) -> "ResponsesUDFBuilder":
-        """Creates a builder configured for the public OpenAI API.
-
-        Args:
-            api_key (str): The OpenAI API key.
-            model_name (str): The OpenAI model name for responses (e.g., "gpt-4o-mini").
-
-        Returns:
-            ResponsesUDFBuilder: A builder instance configured for OpenAI responses.
-        """
-        return cls(api_key=api_key, endpoint=None, api_version=None, model_name=model_name)
-
-    @classmethod
-    def of_azure_openai(cls, api_key: str, endpoint: str, api_version: str, model_name: str) -> "ResponsesUDFBuilder":
-        """Creates a builder configured for Azure OpenAI.
-
-        Args:
-            api_key (str): The Azure OpenAI API key.
-            endpoint (str): The Azure OpenAI endpoint URL.
-            api_version (str): The Azure OpenAI API version (e.g., "2024-02-01").
-            model_name (str): The Azure OpenAI deployment name for responses.
-
-        Returns:
-            ResponsesUDFBuilder: A builder instance configured for Azure OpenAI responses.
-        """
-        return cls(api_key=api_key, endpoint=endpoint, api_version=api_version, model_name=model_name)
 
     def build(
         self,
@@ -343,7 +289,6 @@ class ResponsesUDFBuilder:
 
             @pandas_udf(returnType=spark_schema)
             def structure_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
-                _initialize(self.api_key, self.endpoint, self.api_version)
                 pandas_ext.responses_model(self.model_name)
 
                 for part in col:
@@ -365,7 +310,6 @@ class ResponsesUDFBuilder:
 
             @pandas_udf(returnType=StringType())
             def string_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
-                _initialize(self.api_key, self.endpoint, self.api_version)
                 pandas_ext.responses_model(self.model_name)
 
                 for part in col:
@@ -416,10 +360,7 @@ class ResponsesUDFBuilder:
             ```python
             from openaivec.task import nlp
 
-            builder = ResponsesUDFBuilder.of_openai(
-                api_key="your-api-key",
-                model_name="gpt-4o-mini"
-            )
+            builder = ResponsesUDFBuilder(model_name="gpt-4o-mini")
 
             sentiment_udf = builder.build_from_task(nlp.SENTIMENT_ANALYSIS)
 
@@ -438,7 +379,6 @@ class ResponsesUDFBuilder:
 
         @pandas_udf(returnType=spark_schema)
         def task_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
-            _initialize(self.api_key, self.endpoint, self.api_version)
             pandas_ext.responses_model(self.model_name)
 
             for part in col:
@@ -463,50 +403,27 @@ class EmbeddingsUDFBuilder:
 
     Configures and builds UDFs that leverage `pandas_ext.aio.embeddings`
     to generate vector embeddings from OpenAI models asynchronously.
-    An instance stores authentication parameters and the model name.
+    An instance stores the model name for API calls.
+
+    Note:
+        Authentication must be configured via SparkContext environment variables before using this builder.
+        Set the appropriate environment variables on the SparkContext:
+        
+        For OpenAI:
+            sc.environment["OPENAI_API_KEY"] = "your-openai-api-key"
+        
+        For Azure OpenAI:
+            sc.environment["AZURE_OPENAI_API_KEY"] = "your-azure-openai-api-key"
+            sc.environment["AZURE_OPENAI_API_ENDPOINT"] = "your-azure-openai-endpoint"
+            sc.environment["AZURE_OPENAI_API_VERSION"] = "your-azure-openai-api-version"
 
     Attributes:
-        api_key (str): OpenAI or Azure API key.
-        endpoint (Optional[str]): Azure endpoint base URL. None for public OpenAI.
-        api_version (Optional[str]): Azure API version. Ignored for public OpenAI.
         model_name (str): Deployment name (Azure) or model name (OpenAI) for embeddings.
     """
-
-    # Params for OpenAI SDK
-    api_key: str
-    endpoint: str | None
-    api_version: str | None
 
     # Params for Embeddings API
     model_name: str
 
-    @classmethod
-    def of_openai(cls, api_key: str, model_name: str) -> "EmbeddingsUDFBuilder":
-        """Creates a builder configured for the public OpenAI API.
-
-        Args:
-            api_key (str): The OpenAI API key.
-            model_name (str): The OpenAI model name for embeddings (e.g., "text-embedding-3-small").
-
-        Returns:
-            EmbeddingsUDFBuilder: A builder instance configured for OpenAI embeddings.
-        """
-        return cls(api_key=api_key, endpoint=None, api_version=None, model_name=model_name)
-
-    @classmethod
-    def of_azure_openai(cls, api_key: str, endpoint: str, api_version: str, model_name: str) -> "EmbeddingsUDFBuilder":
-        """Creates a builder configured for Azure OpenAI.
-
-        Args:
-            api_key (str): The Azure OpenAI API key.
-            endpoint (str): The Azure OpenAI endpoint URL.
-            api_version (str): The Azure OpenAI API version (e.g., "2024-02-01").
-            model_name (str): The Azure OpenAI deployment name for embeddings.
-
-        Returns:
-            EmbeddingsUDFBuilder: A builder instance configured for Azure OpenAI embeddings.
-        """
-        return cls(api_key=api_key, endpoint=endpoint, api_version=api_version, model_name=model_name)
 
     def build(self, batch_size: int = 128, max_concurrency: int = 8) -> UserDefinedFunction:
         """Builds the asynchronous pandas UDF for generating embeddings.
@@ -535,7 +452,6 @@ class EmbeddingsUDFBuilder:
 
         @pandas_udf(returnType=ArrayType(FloatType()))
         def embeddings_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
-            _initialize(self.api_key, self.endpoint, self.api_version)
             pandas_ext.embeddings_model(self.model_name)
 
             for part in col:
