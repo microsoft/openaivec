@@ -156,9 +156,9 @@ def _initialize(api_key: str, endpoint: str | None, api_version: str | None) -> 
     (either OpenAI or Azure OpenAI) in Spark worker processes.
 
     Args:
-        api_key: The OpenAI or Azure OpenAI API key.
-        endpoint: The Azure OpenAI endpoint URL. Required for Azure.
-        api_version: The Azure OpenAI API version. Required for Azure.
+        api_key (str): The OpenAI or Azure OpenAI API key.
+        endpoint (Optional[str]): The Azure OpenAI endpoint URL. Required for Azure.
+        api_version (Optional[str]): The Azure OpenAI API version. Required for Azure.
     """
     if endpoint and api_version:
         os.environ["AZURE_OPENAI_API_KEY"] = api_key
@@ -551,9 +551,9 @@ def split_to_chunks_udf(model_name: str, max_tokens: int, sep: List[str]) -> Use
     """Create a pandas‑UDF that splits text into token‑bounded chunks.
 
     Args:
-        model_name: Model identifier passed to *tiktoken*.
-        max_tokens: Maximum tokens allowed per chunk.
-        sep: Ordered list of separator strings used by ``TextChunker``.
+        model_name (str): Model identifier passed to *tiktoken*.
+        max_tokens (int): Maximum tokens allowed per chunk.
+        sep (List[str]): Ordered list of separator strings used by ``TextChunker``.
 
     Returns:
         A pandas UDF producing an ``ArrayType(StringType())`` column whose
@@ -581,7 +581,7 @@ def count_tokens_udf(model_name: str = "gpt-4o") -> UserDefinedFunction:
     resulting ``Encoding`` object per executor.
 
     Args:
-        model_name: Model identifier understood by ``tiktoken``.
+        model_name (str): Model identifier understood by ``tiktoken``.
 
     Returns:
         A pandas UDF producing an ``IntegerType`` column with token counts.

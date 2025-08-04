@@ -30,7 +30,7 @@ def _vectorize_system_message(system_message: str) -> str:
        that contains multiple user messages and how it must shape its output.
 
     Args:
-        system_message: A single‑instance system instruction the caller would
+        system_message (str): A single‑instance system instruction the caller would
             normally send to the model.
 
     Returns:
@@ -168,7 +168,7 @@ class BatchResponses(Generic[T]):
         """Make a single call to the OpenAI *JSON mode* endpoint.
 
         Args:
-            user_messages: Sequence of `Message[str]` objects representing the
+            user_messages (List[Message[str]]): Sequence of `Message[str]` objects representing the
                 prompts for this minibatch.  Each message carries a unique `id`
                 so we can restore ordering later.
 
@@ -223,9 +223,9 @@ class BatchResponses(Generic[T]):
         """Public API: batched predict.
 
         Args:
-            inputs: All prompts that require a response.  Duplicate
+            inputs (List[str]): All prompts that require a response.  Duplicate
                 entries are de‑duplicated under the hood to save tokens.
-            batch_size: Maximum number of *unique* prompts per LLM call.
+            batch_size (int): Maximum number of *unique* prompts per LLM call.
 
         Returns:
             A list containing the assistant responses in the same order as
@@ -320,7 +320,7 @@ class AsyncBatchResponses(Generic[T]):
         """Make a single async call to the OpenAI *JSON mode* endpoint, respecting concurrency limits.
 
         Args:
-            user_messages: Sequence of `Message[str]` objects representing the
+            user_messages (List[Message[str]]): Sequence of `Message[str]` objects representing the
                 prompts for this minibatch. Each message carries a unique `id`
                 so we can restore ordering later.
 
@@ -378,9 +378,9 @@ class AsyncBatchResponses(Generic[T]):
         """Asynchronous public API: batched predict.
 
         Args:
-            inputs: All prompts that require a response. Duplicate
+            inputs (List[str]): All prompts that require a response. Duplicate
                 entries are de-duplicated under the hood to save tokens.
-            batch_size: Maximum number of *unique* prompts per LLM call.
+            batch_size (int): Maximum number of *unique* prompts per LLM call.
 
         Returns:
             A list containing the assistant responses in the same order as

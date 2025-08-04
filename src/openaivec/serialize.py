@@ -36,7 +36,7 @@ def serialize_base_model(obj: Type[BaseModel]) -> Dict[str, Any]:
     """Serialize a Pydantic BaseModel to JSON schema.
     
     Args:
-        obj: The Pydantic BaseModel class to serialize.
+        obj (Type[BaseModel]): The Pydantic BaseModel class to serialize.
         
     Returns:
         A dictionary containing the JSON schema representation of the model.
@@ -62,7 +62,7 @@ def dereference_json_schema(json_schema: Dict[str, Any]) -> Dict[str, Any]:
     them with the actual referenced definitions from the $defs section.
     
     Args:
-        json_schema: The JSON schema containing potential $ref references.
+        json_schema (Dict[str, Any]): The JSON schema containing potential $ref references.
         
     Returns:
         A dereferenced JSON schema with all $ref pointers resolved.
@@ -113,7 +113,7 @@ def parse_field(v: Dict[str, Any]) -> Any:
     for use in Pydantic model creation.
     
     Args:
-        v: A dictionary containing the JSON schema field definition.
+        v (Dict[str, Any]): A dictionary containing the JSON schema field definition.
         
     Returns:
         The corresponding Python type (str, int, float, bool, dict, List, or BaseModel).
@@ -160,7 +160,7 @@ def deserialize_base_model(json_schema: Dict[str, Any]) -> Type[BaseModel]:
     for better type safety and compatibility with systems like Apache Spark.
     
     Args:
-        json_schema: A dictionary containing the JSON schema definition.
+        json_schema (Dict[str, Any]): A dictionary containing the JSON schema definition.
         
     Returns:
         A dynamically created Pydantic BaseModel class.

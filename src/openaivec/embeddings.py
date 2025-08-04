@@ -40,7 +40,7 @@ class BatchEmbeddings:
         ``openai.RateLimitError`` is raised.
 
         Args:
-            inputs: Input strings to be embedded.  Duplicates are allowed; the
+            inputs (List[str]): Input strings to be embedded.  Duplicates are allowed; the
                 implementation may decide to de‑duplicate internally.
 
         Returns:
@@ -57,9 +57,9 @@ class BatchEmbeddings:
         its parallel counterpart depending on *is_parallel*.
 
         Args:
-            inputs: A list of input strings. Duplicates are allowed; the
+            inputs (List[str]): A list of input strings. Duplicates are allowed; the
                 implementation may decide to de‑duplicate internally.
-            batch_size: Maximum number of sentences to be sent to the underlying
+            batch_size (int): Maximum number of sentences to be sent to the underlying
                 model in one request.
 
         Returns:
@@ -137,7 +137,7 @@ class AsyncBatchEmbeddings:
         is raised.
 
         Args:
-            inputs: Input strings to be embedded. Duplicates are allowed.
+            inputs (List[str]): Input strings to be embedded. Duplicates are allowed.
 
         Returns:
             List of embedding vectors (``np.ndarray`` with dtype ``float32``)
@@ -158,8 +158,8 @@ class AsyncBatchEmbeddings:
         Uses ``openaivec.util.map_async`` to efficiently handle batching and de-duplication.
 
         Args:
-            inputs: A list of input strings. Duplicates are handled efficiently.
-            batch_size: Maximum number of unique inputs per API call.
+            inputs (List[str]): A list of input strings. Duplicates are handled efficiently.
+            batch_size (int): Maximum number of unique inputs per API call.
 
         Returns:
             A list of ``np.ndarray`` objects (dtype ``float32``) where each entry

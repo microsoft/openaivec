@@ -133,7 +133,7 @@ def _extract_value(x, series_name):
     """Return a homogeneous ``dict`` representation of any Series value.
 
     Args:
-        x: Single element taken from the Series.
+        x (Any): Single element taken from the Series.
         series_name (str): Name of the Series (used for logging).
 
     Returns:
