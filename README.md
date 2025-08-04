@@ -261,50 +261,39 @@ Scale to enterprise datasets with distributed processing:
 
 📓 **[Complete Spark tutorial →](https://microsoft.github.io/openaivec/examples/spark/)**
 
-First, obtain a Spark session:
-
-```python
-from pyspark.sql import SparkSession
-
-spark = SparkSession.builder.getOrCreate()
-```
-
-Next, instantiate UDF builders using either OpenAI or Azure OpenAI credentials and register the UDFs.
+First, obtain a Spark session and configure authentication:
 
 ```python
 import os
+from pyspark.sql import SparkSession
+
+spark = SparkSession.builder.getOrCreate()
+sc = spark.sparkContext
+
+# Configure authentication via SparkContext environment variables
+# Option 1: Using OpenAI
+sc.environment["OPENAI_API_KEY"] = os.environ.get("OPENAI_API_KEY")
+
+# Option 2: Using Azure OpenAI
+# sc.environment["AZURE_OPENAI_API_KEY"] = os.environ.get("AZURE_OPENAI_API_KEY")
+# sc.environment["AZURE_OPENAI_API_ENDPOINT"] = os.environ.get("AZURE_OPENAI_API_ENDPOINT")
+# sc.environment["AZURE_OPENAI_API_VERSION"] = os.environ.get("AZURE_OPENAI_API_VERSION")
+```
+
+Next, instantiate UDF builders with model names and register the UDFs:
+
+```python
 from openaivec.spark import ResponsesUDFBuilder, EmbeddingsUDFBuilder, count_tokens_udf
 from pydantic import BaseModel
 
-# --- Option 1: Using OpenAI ---
-resp_builder_openai = ResponsesUDFBuilder.of_openai(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    model_name="gpt-4o-mini", # Model for responses
-)
-emb_builder_openai = EmbeddingsUDFBuilder.of_openai(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    model_name="text-embedding-3-small", # Model for embeddings
-)
-
-# --- Option 2: Using Azure OpenAI ---
-# resp_builder_azure = ResponsesUDFBuilder.of_azure_openai(
-#     api_key=os.getenv("AZURE_OPENAI_KEY"),
-#     endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-#     api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-#     model_name="<your-resp-deployment-name>", # Deployment for responses
-# )
-# emb_builder_azure = EmbeddingsUDFBuilder.of_azure_openai(
-#     api_key=os.getenv("AZURE_OPENAI_KEY"),
-#     endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-#     api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-#     model_name="<your-emb-deployment-name>", # Deployment for embeddings
-# )
+# Create builders (no authentication parameters needed)
+resp_builder = ResponsesUDFBuilder(model_name="gpt-4o-mini")
+emb_builder = EmbeddingsUDFBuilder(model_name="text-embedding-3-small")
 
 # --- Register Responses UDF (String Output) ---
-# Use the builder corresponding to your setup (OpenAI or Azure)
 spark.udf.register(
     "parse_flavor",
-    resp_builder_openai.build( # or resp_builder_azure.build(...)
+    resp_builder.build(
         instructions="Extract flavor-related information. Return only the concise flavor name.",
         response_format=str, # Specify string output
         batch_size=64,      # Optimize for Spark partition sizes
@@ -320,7 +309,7 @@ class Translation(BaseModel):
 
 spark.udf.register(
     "translate_struct",
-    resp_builder_openai.build( # or resp_builder_azure.build(...)
+    resp_builder.build(
         instructions="Translate the text to English, French, and Japanese.",
         response_format=Translation, # Specify Pydantic model for structured output
         batch_size=32,              # Smaller batches for complex structured outputs
@@ -331,7 +320,7 @@ spark.udf.register(
 # --- Register Embeddings UDF ---
 spark.udf.register(
     "embed_text",
-    emb_builder_openai.build( # or emb_builder_azure.build()
+    emb_builder.build(
         batch_size=128,     # Larger batches for embeddings
         max_concurrency=8   # Concurrent requests PER EXECUTOR
     )
@@ -345,7 +334,7 @@ from openaivec.task import nlp, customer_support
 
 spark.udf.register(
     "analyze_sentiment",
-    resp_builder_openai.build_from_task(
+    resp_builder.build_from_task(
         task=nlp.SENTIMENT_ANALYSIS,
         batch_size=64,
         max_concurrency=8    # Concurrent requests PER EXECUTOR
@@ -354,7 +343,7 @@ spark.udf.register(
 
 spark.udf.register(
     "classify_intent",
-    resp_builder_openai.build_from_task(
+    resp_builder.build_from_task(
         task=customer_support.INTENT_ANALYSIS,
         batch_size=32,       # Smaller batches for complex analysis
         max_concurrency=6    # Conservative for customer support tasks
@@ -627,14 +616,20 @@ steps:
    - In the notebook, import and use `openaivec.spark.ResponsesUDFBuilder` as you normally would. For example:
 
      ```python
+     import os
+     from pyspark.sql import SparkSession
      from openaivec.spark import ResponsesUDFBuilder
-
-     resp_builder = ResponsesUDFBuilder.of_azure_openai(
-         api_key="<your-api-key>",
-         endpoint="https://<your-resource-name>.openai.azure.com",
-         api_version="2024-10-21",
-         model_name="<your-deployment-name>"
-     )
+     
+     spark = SparkSession.builder.getOrCreate()
+     sc = spark.sparkContext
+     
+     # Configure Azure OpenAI authentication
+     sc.environment["AZURE_OPENAI_API_KEY"] = "<your-api-key>"
+     sc.environment["AZURE_OPENAI_API_ENDPOINT"] = "https://<your-resource-name>.openai.azure.com"
+     sc.environment["AZURE_OPENAI_API_VERSION"] = "2024-10-21"
+     
+     # Create builder
+     resp_builder = ResponsesUDFBuilder(model_name="<your-deployment-name>")
      ```
 
 Following these steps allows you to successfully integrate and use `openaivec` within Microsoft Fabric.
