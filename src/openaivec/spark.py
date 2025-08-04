@@ -142,7 +142,6 @@ __all__ = [
     "similarity_udf",
 ]
 
-ResponseFormat = BaseModel | Type[str]
 T = TypeVar("T", bound=BaseModel)
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)

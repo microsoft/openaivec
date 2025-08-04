@@ -4,7 +4,6 @@ from typing import Type, TypeVar
 from pydantic import BaseModel
 
 T = TypeVar("T", bound=BaseModel)
-ResponseFormat = Type[BaseModel] | Type[str]
 
 
 @dataclass(frozen=True)
