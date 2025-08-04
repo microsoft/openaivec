@@ -116,13 +116,13 @@ Note: This module provides asynchronous support through the pandas extensions.
 
 import asyncio
 import logging
+import os
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, Iterator, List, Optional, Type, TypeVar, Union, get_args, get_origin
 
 import pandas as pd
 import tiktoken
-from openai import AsyncAzureOpenAI, AsyncOpenAI
 from pydantic import BaseModel
 from pyspark.sql.pandas.functions import pandas_udf
 from pyspark.sql.types import ArrayType, BooleanType, FloatType, IntegerType, StringType, StructField, StructType
@@ -145,30 +145,29 @@ __all__ = [
 ResponseFormat = BaseModel | Type[str]
 T = TypeVar("T", bound=BaseModel)
 
-_INITIALIZED: bool = False
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 _TIKTOKEN_ENC: tiktoken.Encoding | None = None
 
 
 def _initialize(api_key: str, endpoint: str | None, api_version: str | None) -> None:
-    """Initializes the OpenAI client for asynchronous operations.
+    """Initializes environment variables for OpenAI client configuration.
 
-    This function sets up the global asynchronous OpenAI client instance
-    (either `AsyncOpenAI` or `AsyncAzureOpenAI`) used by the UDFs in this
-    module. It ensures the client is initialized only once.
+    This function sets up the required environment variables that will be used
+    by the pandas_ext module to configure the appropriate OpenAI client
+    (either OpenAI or Azure OpenAI) in Spark worker processes.
 
     Args:
         api_key: The OpenAI or Azure OpenAI API key.
         endpoint: The Azure OpenAI endpoint URL. Required for Azure.
         api_version: The Azure OpenAI API version. Required for Azure.
     """
-    global _INITIALIZED
-    if not _INITIALIZED:
-        if endpoint and api_version:
-            pandas_ext.use_async(AsyncAzureOpenAI(api_key=api_key, azure_endpoint=endpoint, api_version=api_version))
-        else:
-            pandas_ext.use_async(AsyncOpenAI(api_key=api_key))
-        _INITIALIZED = True
+    if endpoint and api_version:
+        os.environ["AZURE_OPENAI_API_KEY"] = api_key
+        os.environ["AZURE_OPENAI_API_VERSION"] = api_version
+        os.environ["AZURE_OPENAI_ENDPOINT"] = endpoint
+
+    else:
+        os.environ["OPENAI_API_KEY"] = api_key
 
 
 def _python_type_to_spark(python_type):
