@@ -65,7 +65,7 @@ Example:
 """
 
 import json
-from typing import Dict, List, Union
+from typing import Dict, List
 
 import pandas as pd
 from pydantic import BaseModel, Field
@@ -120,7 +120,7 @@ class FillNaResponse(BaseModel):
     """
 
     index: int = Field(description="Index of the row in the original DataFrame")
-    output: Union[int, float, str, bool, None] = Field(
+    output: int | float | str | bool | None = Field(
         description="Filled value for the target column. This value should be JSON-compatible and match the target column type in the original DataFrame."
     )
 
