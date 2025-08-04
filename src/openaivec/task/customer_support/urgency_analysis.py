@@ -140,16 +140,16 @@ def urgency_analysis(
     """Create a configurable urgency analysis task.
 
     Args:
-        urgency_levels: Dictionary mapping urgency levels to descriptions.
-        response_times: Dictionary mapping urgency levels to response times.
-        customer_tiers: Dictionary mapping tier names to descriptions.
-        escalation_rules: Dictionary mapping conditions to escalation actions.
-        urgency_keywords: Dictionary mapping urgency levels to indicator keywords.
-        business_context: Description of the business context.
-        business_hours: Description of business hours for response time calculation.
-        sla_rules: Dictionary mapping customer tiers to SLA requirements.
-        temperature: Sampling temperature (0.0-1.0).
-        top_p: Nucleus sampling parameter (0.0-1.0).
+        urgency_levels (Optional[Dict[str, str]]): Dictionary mapping urgency levels to descriptions.
+        response_times (Optional[Dict[str, str]]): Dictionary mapping urgency levels to response times.
+        customer_tiers (Optional[Dict[str, str]]): Dictionary mapping tier names to descriptions.
+        escalation_rules (Optional[Dict[str, str]]): Dictionary mapping conditions to escalation actions.
+        urgency_keywords (Optional[Dict[str, List[str]]]): Dictionary mapping urgency levels to indicator keywords.
+        business_context (str): Description of the business context.
+        business_hours (str): Description of business hours for response time calculation.
+        sla_rules (Optional[Dict[str, str]]): Dictionary mapping customer tiers to SLA requirements.
+        temperature (float): Sampling temperature (0.0-1.0).
+        top_p (float): Nucleus sampling parameter (0.0-1.0).
 
     Returns:
         PreparedTask configured for urgency analysis.

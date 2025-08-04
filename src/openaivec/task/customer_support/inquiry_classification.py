@@ -122,16 +122,16 @@ def inquiry_classification(
     """Create a configurable inquiry classification task.
 
     Args:
-        categories: Dictionary mapping category names to lists of subcategories.
+        categories (Optional[Dict[str, List[str]]]): Dictionary mapping category names to lists of subcategories.
             Default provides standard support categories.
-        routing_rules: Dictionary mapping categories to routing destinations.
+        routing_rules (Optional[Dict[str, str]]): Dictionary mapping categories to routing destinations.
             Default provides standard routing options.
-        priority_rules: Dictionary mapping keywords/patterns to priority levels.
+        priority_rules (Optional[Dict[str, str]]): Dictionary mapping keywords/patterns to priority levels.
             Default uses standard priority indicators.
-        business_context: Description of the business context to help with classification.
-        custom_keywords: Dictionary mapping categories to relevant keywords.
-        temperature: Sampling temperature (0.0-1.0).
-        top_p: Nucleus sampling parameter (0.0-1.0).
+        business_context (str): Description of the business context to help with classification.
+        custom_keywords (Optional[Dict[str, List[str]]]): Dictionary mapping categories to relevant keywords.
+        temperature (float): Sampling temperature (0.0-1.0).
+        top_p (float): Nucleus sampling parameter (0.0-1.0).
 
     Returns:
         PreparedTask configured for inquiry classification.

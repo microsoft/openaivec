@@ -98,9 +98,9 @@ def customer_sentiment(
     """Create a configurable customer sentiment analysis task.
 
     Args:
-        business_context: Business context for sentiment analysis.
-        temperature: Sampling temperature (0.0-1.0).
-        top_p: Nucleus sampling parameter (0.0-1.0).
+        business_context (str): Business context for sentiment analysis.
+        temperature (float): Sampling temperature (0.0-1.0).
+        top_p (float): Nucleus sampling parameter (0.0-1.0).
 
     Returns:
         PreparedTask configured for customer sentiment analysis.

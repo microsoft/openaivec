@@ -104,9 +104,9 @@ def intent_analysis(
     """Create a configurable intent analysis task.
 
     Args:
-        business_context: Business context for intent analysis.
-        temperature: Sampling temperature (0.0-1.0).
-        top_p: Nucleus sampling parameter (0.0-1.0).
+        business_context (str): Business context for intent analysis.
+        temperature (float): Sampling temperature (0.0-1.0).
+        top_p (float): Nucleus sampling parameter (0.0-1.0).
 
     Returns:
         PreparedTask configured for intent analysis.

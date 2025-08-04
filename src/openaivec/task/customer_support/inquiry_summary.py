@@ -93,10 +93,10 @@ def inquiry_summary(
     """Create a configurable inquiry summary task.
 
     Args:
-        summary_length: Length of summary (concise, detailed, bullet_points).
-        business_context: Business context for summary.
-        temperature: Sampling temperature (0.0-1.0).
-        top_p: Nucleus sampling parameter (0.0-1.0).
+        summary_length (str): Length of summary (concise, detailed, bullet_points).
+        business_context (str): Business context for summary.
+        temperature (float): Sampling temperature (0.0-1.0).
+        top_p (float): Nucleus sampling parameter (0.0-1.0).
 
     Returns:
         PreparedTask configured for inquiry summarization.

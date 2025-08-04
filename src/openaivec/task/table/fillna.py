@@ -134,11 +134,11 @@ def fillna(df: pd.DataFrame, target_column_name: str, max_examples: int = 500) -
     extracted from non-null rows in the DataFrame.
 
     Args:
-        df: Source DataFrame containing the data with missing values.
-        target_column_name: Name of the column to fill missing values for.
+        df (pd.DataFrame): Source DataFrame containing the data with missing values.
+        target_column_name (str): Name of the column to fill missing values for.
             This column should exist in the DataFrame and contain some
             non-null values to serve as training examples.
-        max_examples: Maximum number of example rows to use for few-shot
+        max_examples (int): Maximum number of example rows to use for few-shot
             learning. Defaults to 500. Higher values provide more context
             but increase token usage and processing time.
 
