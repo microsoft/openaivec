@@ -321,7 +321,7 @@ spark.udf.register(
 )
 
 # --- Register Token Counting UDF ---
-spark.udf.register("count_tokens", count_tokens_udf("gpt-4o"))
+spark.udf.register("count_tokens", count_tokens_udf())
 
 # --- Register UDFs with Pre-configured Tasks ---
 from openaivec.task import nlp, customer_support

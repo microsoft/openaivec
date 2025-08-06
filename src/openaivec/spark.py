@@ -1,6 +1,6 @@
 """Asynchronous Spark UDFs for the OpenAI and Azure OpenAI APIs.
 
-This module provides functions (`responses_udf`, `task_udf`, `embeddings_udf`)
+This module provides functions (`responses_udf`, `task_udf`, `embeddings_udf`, `count_tokens_udf`, `split_to_chunks_udf`)
 for creating asynchronous Spark UDFs that communicate with either the public
 OpenAI API or Azure OpenAI using the `openaivec.spark` subpackage.
 It supports UDFs for generating responses and creating embeddings asynchronously.
@@ -31,7 +31,7 @@ sc.environment["OPENAI_API_KEY"] = "your-openai-api-key"
 Next, create UDFs and register them:
 
 ```python
-from openaivec.spark import responses_udf, task_udf, embeddings_udf
+from openaivec.spark import responses_udf, task_udf, embeddings_udf, count_tokens_udf, split_to_chunks_udf
 from pydantic import BaseModel
 
 # Define a Pydantic model for structured responses (optional)
@@ -68,6 +68,10 @@ spark.udf.register(
         max_concurrency=8                     # Concurrent requests PER EXECUTOR
     ),
 )
+
+# Register token counting and text chunking UDFs
+spark.udf.register("count_tokens", count_tokens_udf())
+spark.udf.register("split_chunks", split_to_chunks_udf(max_tokens=512, sep=[".", "!", "?"]))
 ```
 
 You can now invoke the UDFs from Spark SQL:
@@ -77,7 +81,9 @@ SELECT
     text,
     translate_async(text) AS translation,
     sentiment_async(text) AS sentiment,
-    embed_async(text) AS embedding
+    embed_async(text) AS embedding,
+    count_tokens(text) AS token_count,
+    split_chunks(text) AS chunks
 FROM your_table;
 ```
 
@@ -130,9 +136,6 @@ __all__ = [
 
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
-_TIKTOKEN_ENC: tiktoken.Encoding | None = None
-
-
 
 
 def _python_type_to_spark(python_type):
@@ -227,10 +230,10 @@ def responses_udf(
     Note:
         Authentication must be configured via SparkContext environment variables.
         Set the appropriate environment variables on the SparkContext:
-        
+
         For OpenAI:
             sc.environment["OPENAI_API_KEY"] = "your-openai-api-key"
-        
+
         For Azure OpenAI:
             sc.environment["AZURE_OPENAI_API_KEY"] = "your-azure-openai-api-key"
             sc.environment["AZURE_OPENAI_API_ENDPOINT"] = "your-azure-openai-endpoint"
@@ -313,7 +316,6 @@ def responses_udf(
         raise ValueError(f"Unsupported response_format: {response_format}")
 
 
-
 def task_udf(
     task: PreparedTask,
     model_name: str = "gpt-4.1-mini",
@@ -356,10 +358,10 @@ def task_udf(
     task_instructions = task.instructions
     task_temperature = task.temperature
     task_top_p = task.top_p
-    
+
     if issubclass(task.response_format, BaseModel):
         task_response_format_json = serialize_base_model(task.response_format)
-        
+
         # Deserialize the response format from JSON
         response_format = deserialize_base_model(task_response_format_json)
         spark_schema = _pydantic_to_spark_schema(response_format)
@@ -382,9 +384,9 @@ def task_udf(
                 yield pd.DataFrame(predictions.map(_safe_dump).tolist())
 
         return task_udf
-    
+
     elif issubclass(task.response_format, str):
-        
+
         @pandas_udf(returnType=StringType())
         def task_string_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
             pandas_ext.responses_model(model_name)
@@ -403,14 +405,14 @@ def task_udf(
                 yield predictions.map(_safe_cast_str)
 
         return task_string_udf
-    
+
     else:
         raise ValueError(f"Unsupported response_format in task: {task.response_format}")
 
 
-
-
-def embeddings_udf(model_name: str = "text-embedding-3-small", batch_size: int = 128, max_concurrency: int = 8) -> UserDefinedFunction:
+def embeddings_udf(
+    model_name: str = "text-embedding-3-small", batch_size: int = 128, max_concurrency: int = 8
+) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF for generating embeddings.
 
     Configures and builds UDFs that leverage `pandas_ext.aio.embeddings`
@@ -419,10 +421,10 @@ def embeddings_udf(model_name: str = "text-embedding-3-small", batch_size: int =
     Note:
         Authentication must be configured via SparkContext environment variables.
         Set the appropriate environment variables on the SparkContext:
-        
+
         For OpenAI:
             sc.environment["OPENAI_API_KEY"] = "your-openai-api-key"
-        
+
         For Azure OpenAI:
             sc.environment["AZURE_OPENAI_API_KEY"] = "your-azure-openai-api-key"
             sc.environment["AZURE_OPENAI_API_ENDPOINT"] = "your-azure-openai-endpoint"
@@ -451,6 +453,7 @@ def embeddings_udf(model_name: str = "text-embedding-3-small", batch_size: int =
         - Embeddings API typically has higher throughput than chat completions
         - Use larger batch_size for embeddings compared to response generation
     """
+
     @pandas_udf(returnType=ArrayType(FloatType()))
     def _embeddings_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
         pandas_ext.embeddings_model(model_name)
@@ -464,11 +467,10 @@ def embeddings_udf(model_name: str = "text-embedding-3-small", batch_size: int =
     return _embeddings_udf
 
 
-def split_to_chunks_udf(model_name: str, max_tokens: int, sep: List[str]) -> UserDefinedFunction:
+def split_to_chunks_udf(max_tokens: int, sep: List[str]) -> UserDefinedFunction:
     """Create a pandas‑UDF that splits text into token‑bounded chunks.
 
     Args:
-        model_name (str): Model identifier passed to *tiktoken*.
         max_tokens (int): Maximum tokens allowed per chunk.
         sep (List[str]): Ordered list of separator strings used by ``TextChunker``.
 
@@ -479,11 +481,8 @@ def split_to_chunks_udf(model_name: str, max_tokens: int, sep: List[str]) -> Use
 
     @pandas_udf(ArrayType(StringType()))
     def fn(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
-        global _TIKTOKEN_ENC
-        if _TIKTOKEN_ENC is None:
-            _TIKTOKEN_ENC = tiktoken.encoding_for_model(model_name)
-
-        chunker = TextChunker(_TIKTOKEN_ENC)
+        encoding = tiktoken.get_encoding("o200k_base")
+        chunker = TextChunker(encoding)
 
         for part in col:
             yield part.map(lambda x: chunker.split(x, max_tokens=max_tokens, sep=sep) if isinstance(x, str) else [])
@@ -491,14 +490,11 @@ def split_to_chunks_udf(model_name: str, max_tokens: int, sep: List[str]) -> Use
     return fn
 
 
-def count_tokens_udf(model_name: str = "gpt-4o") -> UserDefinedFunction:
+def count_tokens_udf() -> UserDefinedFunction:
     """Create a pandas‑UDF that counts tokens for every string cell.
 
     The UDF uses *tiktoken* to approximate tokenisation and caches the
     resulting ``Encoding`` object per executor.
-
-    Args:
-        model_name (str): Model identifier understood by ``tiktoken``.
 
     Returns:
         A pandas UDF producing an ``IntegerType`` column with token counts.
@@ -506,12 +502,10 @@ def count_tokens_udf(model_name: str = "gpt-4o") -> UserDefinedFunction:
 
     @pandas_udf(IntegerType())
     def fn(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
-        global _TIKTOKEN_ENC
-        if _TIKTOKEN_ENC is None:
-            _TIKTOKEN_ENC = tiktoken.encoding_for_model(model_name)
+        encoding = tiktoken.get_encoding("o200k_base")
 
         for part in col:
-            yield part.map(lambda x: len(_TIKTOKEN_ENC.encode(x)) if isinstance(x, str) else 0)
+            yield part.map(lambda x: len(encoding.encode(x)) if isinstance(x, str) else 0)
 
     return fn
 

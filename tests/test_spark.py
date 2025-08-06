@@ -186,7 +186,7 @@ class TestSparkUDFs(TestCase):
         """Test count_tokens_udf functionality."""
         self.spark.udf.register(
             "count_tokens",
-            count_tokens_udf("gpt-4o"),
+            count_tokens_udf(),
         )
 
         sentences = [
