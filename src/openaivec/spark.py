@@ -341,7 +341,8 @@ def responses_udf_from_task(
 
     Returns:
         UserDefinedFunction: A Spark pandas UDF configured to execute the specified task
-            asynchronously, returning a struct derived from the task's response format.
+            asynchronously. Output schema is StringType for str response format or
+            a struct derived from the task's response format for BaseModel.
 
     Example:
         ```python
@@ -354,32 +355,58 @@ def responses_udf_from_task(
     """
     # Serialize task parameters for Spark serialization compatibility
     task_instructions = task.instructions
-    task_response_format_json = serialize_base_model(task.response_format)
     task_temperature = task.temperature
     task_top_p = task.top_p
+    
+    if issubclass(task.response_format, BaseModel):
+        task_response_format_json = serialize_base_model(task.response_format)
+        
+        # Deserialize the response format from JSON
+        response_format = deserialize_base_model(task_response_format_json)
+        spark_schema = _pydantic_to_spark_schema(response_format)
 
-    # Deserialize the response format from JSON
-    response_format = deserialize_base_model(task_response_format_json)
-    spark_schema = _pydantic_to_spark_schema(response_format)
+        @pandas_udf(returnType=spark_schema)
+        def task_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
+            pandas_ext.responses_model(model_name)
 
-    @pandas_udf(returnType=spark_schema)
-    def task_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
-        pandas_ext.responses_model(model_name)
-
-        for part in col:
-            predictions: pd.Series = asyncio.run(
-                part.aio.responses(
-                    instructions=task_instructions,
-                    response_format=response_format,
-                    batch_size=batch_size,
-                    temperature=task_temperature,
-                    top_p=task_top_p,
-                    max_concurrency=max_concurrency,
+            for part in col:
+                predictions: pd.Series = asyncio.run(
+                    part.aio.responses(
+                        instructions=task_instructions,
+                        response_format=response_format,
+                        batch_size=batch_size,
+                        temperature=task_temperature,
+                        top_p=task_top_p,
+                        max_concurrency=max_concurrency,
+                    )
                 )
-            )
-            yield pd.DataFrame(predictions.map(_safe_dump).tolist())
+                yield pd.DataFrame(predictions.map(_safe_dump).tolist())
 
-    return task_udf
+        return task_udf
+    
+    elif issubclass(task.response_format, str):
+        
+        @pandas_udf(returnType=StringType())
+        def task_string_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
+            pandas_ext.responses_model(model_name)
+
+            for part in col:
+                predictions: pd.Series = asyncio.run(
+                    part.aio.responses(
+                        instructions=task_instructions,
+                        response_format=str,
+                        batch_size=batch_size,
+                        temperature=task_temperature,
+                        top_p=task_top_p,
+                        max_concurrency=max_concurrency,
+                    )
+                )
+                yield predictions.map(_safe_cast_str)
+
+        return task_string_udf
+    
+    else:
+        raise ValueError(f"Unsupported response_format in task: {task.response_format}")
 
 
 

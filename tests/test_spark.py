@@ -14,6 +14,7 @@ from openaivec.spark import (
     similarity_udf,
 )
 from openaivec.task import nlp
+from openaivec.model import PreparedTask
 
 
 class TestUDFBuilder(TestCase):
@@ -137,6 +138,66 @@ class TestUDFBuilder(TestCase):
         )
         df_pandas = df.toPandas()
         assert df_pandas.shape == (1, 2)
+
+    def test_responses_udf_from_task_with_str_response_format(self):
+        """Test responses_udf_from_task with string response format."""
+        # Create a simple task with string response format
+        simple_task = PreparedTask(
+            instructions="Repeat the input text twice, separated by a space.",
+            response_format=str,
+            temperature=0.0,
+            top_p=1.0
+        )
+        
+        self.spark.udf.register(
+            "repeat_text",
+            responses_udf_from_task(task=simple_task, model_name="gpt-4.1-nano"),
+        )
+        
+        text_data = [("hello",), ("world",), ("test",)]
+        dummy_df = self.spark.createDataFrame(text_data, ["text"])
+        dummy_df.createOrReplaceTempView("simple_text")
+
+        df = self.spark.sql(
+            """
+            SELECT text, repeat_text(text) as repeated from simple_text
+            """
+        )
+        df_pandas = df.toPandas()
+        assert df_pandas.shape == (3, 2)
+        # Check that the result is a string column, not a struct
+        assert df.dtypes[1][1] == 'string'
+
+    def test_responses_udf_from_task_with_basemodel_response_format(self):
+        """Test responses_udf_from_task with BaseModel response format."""
+        class SimpleResponse(BaseModel):
+            original: str
+            length: int
+            
+        structured_task = PreparedTask(
+            instructions="Analyze the text and return the original text and its length.",
+            response_format=SimpleResponse,
+            temperature=0.0,
+            top_p=1.0
+        )
+        
+        self.spark.udf.register(
+            "analyze_text",
+            responses_udf_from_task(task=structured_task, model_name="gpt-4.1-nano"),
+        )
+        
+        text_data = [("hello",), ("world",), ("testing",)]
+        dummy_df = self.spark.createDataFrame(text_data, ["text"])
+        dummy_df.createOrReplaceTempView("struct_text")
+
+        df = self.spark.sql(
+            """
+            with t as (SELECT analyze_text(text) as result from struct_text)
+            select result.original, result.length from t
+            """
+        )
+        df_pandas = df.toPandas()
+        assert df_pandas.shape == (3, 2)
 
 
 

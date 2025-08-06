@@ -52,7 +52,7 @@ class PreparedTask:
     """
 
     instructions: str
-    response_format: Type[T]
+    response_format: Type[T] | Type[str]
     temperature: float = 0.0
     top_p: float = 1.0
 
