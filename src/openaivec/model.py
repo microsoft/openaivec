@@ -65,3 +65,23 @@ class ResponsesModelName:
 @dataclass(frozen=True)
 class EmbeddingsModelName:
     value: str
+
+
+@dataclass(frozen=True)
+class OpenAIAPIKey:
+    value: str
+
+
+@dataclass(frozen=True)
+class AzureOpenAIAPIKey:
+    value: str
+
+
+@dataclass(frozen=True)
+class AzureOpenAIEndpoint:
+    value: str
+
+
+@dataclass(frozen=True)
+class AzureOpenAIAPIVersion:
+    value: str
