@@ -6,8 +6,9 @@ from pyspark.sql.session import SparkSession
 from pyspark.sql.types import ArrayType, FloatType, IntegerType, StringType, StructField, StructType
 
 from openaivec.spark import (
-    EmbeddingsUDFBuilder,
-    ResponsesUDFBuilder,
+    embeddings_udf,
+    responses_udf,
+    responses_udf_from_task,
     _pydantic_to_spark_schema,
     count_tokens_udf,
     similarity_udf,
@@ -17,8 +18,6 @@ from openaivec.task import nlp
 
 class TestUDFBuilder(TestCase):
     def setUp(self):
-        self.responses = ResponsesUDFBuilder(model_name="gpt-4.1-nano")
-        self.embeddings = EmbeddingsUDFBuilder(model_name="text-embedding-3-small")
         self.spark: SparkSession = SparkSession.builder \
             .appName("TestSparkUDF") \
             .master("local[*]") \
@@ -35,7 +34,7 @@ class TestUDFBuilder(TestCase):
     def test_responses(self):
         self.spark.udf.register(
             "repeat",
-            self.responses.build("Repeat twice input string."),
+            responses_udf("Repeat twice input string.", model_name="gpt-4.1-nano"),
         )
         dummy_df = self.spark.range(31)
         dummy_df.createOrReplaceTempView("dummy")
@@ -57,9 +56,10 @@ class TestUDFBuilder(TestCase):
 
         self.spark.udf.register(
             "fruit",
-            self.responses.build(
+            responses_udf(
                 instructions="return the color and taste of given fruit",
                 response_format=Fruit,
+                model_name="gpt-4.1-nano",
             ),
         )
 
@@ -79,7 +79,7 @@ class TestUDFBuilder(TestCase):
     def test_embeddings(self):
         self.spark.udf.register(
             "embed",
-            self.embeddings.build(batch_size=8),
+            embeddings_udf(model_name="text-embedding-3-small", batch_size=8),
         )
         dummy_df = self.spark.range(31)
         dummy_df.createOrReplaceTempView("dummy")
@@ -94,10 +94,10 @@ class TestUDFBuilder(TestCase):
         assert df_pandas.shape == (31, 2)
 
     def test_task_sentiment_analysis(self):
-        # Test using the build_from_task method with predefined tasks
+        # Test using the responses_udf_from_task function with predefined tasks
         self.spark.udf.register(
             "analyze_sentiment",
-            self.responses.build_from_task(task=nlp.SENTIMENT_ANALYSIS),
+            responses_udf_from_task(task=nlp.SENTIMENT_ANALYSIS, model_name="gpt-4.1-nano"),
         )
         
         text_data = [
@@ -118,11 +118,11 @@ class TestUDFBuilder(TestCase):
         assert df_pandas.shape == (3, 3)
 
     def test_responses_build_from_task_method(self):
-        """Test the build_from_task method in ResponsesUDFBuilder."""
-        # Test that build_from_task works with predefined tasks
+        """Test the responses_udf_from_task function with predefined tasks."""
+        # Test that responses_udf_from_task works with predefined tasks
         self.spark.udf.register(
             "analyze_sentiment_new",
-            self.responses.build_from_task(task=nlp.SENTIMENT_ANALYSIS),
+            responses_udf_from_task(task=nlp.SENTIMENT_ANALYSIS, model_name="gpt-4.1-nano"),
         )
         
         text_data = [("This is a great product!",)]

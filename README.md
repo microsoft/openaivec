@@ -280,24 +280,21 @@ sc.environment["OPENAI_API_KEY"] = os.environ.get("OPENAI_API_KEY")
 # sc.environment["AZURE_OPENAI_API_VERSION"] = os.environ.get("AZURE_OPENAI_API_VERSION")
 ```
 
-Next, instantiate UDF builders with model names and register the UDFs:
+Next, create and register UDFs using the provided functions:
 
 ```python
-from openaivec.spark import ResponsesUDFBuilder, EmbeddingsUDFBuilder, count_tokens_udf
+from openaivec.spark import responses_udf, responses_udf_from_task, embeddings_udf, count_tokens_udf
 from pydantic import BaseModel
-
-# Create builders (no authentication parameters needed)
-resp_builder = ResponsesUDFBuilder(model_name="gpt-4o-mini")
-emb_builder = EmbeddingsUDFBuilder(model_name="text-embedding-3-small")
 
 # --- Register Responses UDF (String Output) ---
 spark.udf.register(
     "parse_flavor",
-    resp_builder.build(
+    responses_udf(
         instructions="Extract flavor-related information. Return only the concise flavor name.",
-        response_format=str, # Specify string output
-        batch_size=64,      # Optimize for Spark partition sizes
-        max_concurrency=4   # Conservative for distributed processing
+        response_format=str,        # Specify string output
+        model_name="gpt-4.1-mini",  # Optional, defaults to gpt-4.1-mini
+        batch_size=64,              # Optimize for Spark partition sizes
+        max_concurrency=4           # Conservative for distributed processing
     )
 )
 
@@ -309,20 +306,22 @@ class Translation(BaseModel):
 
 spark.udf.register(
     "translate_struct",
-    resp_builder.build(
+    responses_udf(
         instructions="Translate the text to English, French, and Japanese.",
-        response_format=Translation, # Specify Pydantic model for structured output
-        batch_size=32,              # Smaller batches for complex structured outputs
-        max_concurrency=6           # Concurrent requests PER EXECUTOR
+        response_format=Translation,    # Specify Pydantic model for structured output
+        model_name="gpt-4.1-mini",      # Optional, defaults to gpt-4.1-mini
+        batch_size=32,                  # Smaller batches for complex structured outputs
+        max_concurrency=6               # Concurrent requests PER EXECUTOR
     )
 )
 
 # --- Register Embeddings UDF ---
 spark.udf.register(
     "embed_text",
-    emb_builder.build(
-        batch_size=128,     # Larger batches for embeddings
-        max_concurrency=8   # Concurrent requests PER EXECUTOR
+    embeddings_udf(
+        model_name="text-embedding-3-small",  # Optional, defaults to text-embedding-3-small
+        batch_size=128,                       # Larger batches for embeddings
+        max_concurrency=8                     # Concurrent requests PER EXECUTOR
     )
 )
 
@@ -334,19 +333,21 @@ from openaivec.task import nlp, customer_support
 
 spark.udf.register(
     "analyze_sentiment",
-    resp_builder.build_from_task(
+    responses_udf_from_task(
         task=nlp.SENTIMENT_ANALYSIS,
+        model_name="gpt-4.1-mini",  # Optional, defaults to gpt-4.1-mini
         batch_size=64,
-        max_concurrency=8    # Concurrent requests PER EXECUTOR
+        max_concurrency=8           # Concurrent requests PER EXECUTOR
     )
 )
 
 spark.udf.register(
     "classify_intent",
-    resp_builder.build_from_task(
+    responses_udf_from_task(
         task=customer_support.INTENT_ANALYSIS,
-        batch_size=32,       # Smaller batches for complex analysis
-        max_concurrency=6    # Conservative for customer support tasks
+        model_name="gpt-4.1-mini",  # Optional, defaults to gpt-4.1-mini
+        batch_size=32,              # Smaller batches for complex analysis
+        max_concurrency=6           # Conservative for customer support tasks
     )
 )
 
@@ -613,12 +614,12 @@ steps:
    - Select the environment you created in the previous steps.
    - ![image](https://github.com/user-attachments/assets/2457c078-1691-461b-b66e-accc3989e419)
      _Figure: Using custom environment from a notebook._
-   - In the notebook, import and use `openaivec.spark.ResponsesUDFBuilder` as you normally would. For example:
+   - In the notebook, import and use `openaivec.spark` functions as you normally would. For example:
 
      ```python
      import os
      from pyspark.sql import SparkSession
-     from openaivec.spark import ResponsesUDFBuilder
+     from openaivec.spark import responses_udf, embeddings_udf
      
      spark = SparkSession.builder.getOrCreate()
      sc = spark.sparkContext
@@ -628,8 +629,14 @@ steps:
      sc.environment["AZURE_OPENAI_API_ENDPOINT"] = "https://<your-resource-name>.openai.azure.com"
      sc.environment["AZURE_OPENAI_API_VERSION"] = "2024-10-21"
      
-     # Create builder
-     resp_builder = ResponsesUDFBuilder(model_name="<your-deployment-name>")
+     # Register UDFs
+     spark.udf.register(
+         "analyze_text",
+         responses_udf(
+             instructions="Analyze the sentiment of the text",
+             model_name="<your-deployment-name>"
+         )
+     )
      ```
 
 Following these steps allows you to successfully integrate and use `openaivec` within Microsoft Fabric.
