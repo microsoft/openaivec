@@ -48,7 +48,7 @@ from pydantic import BaseModel
 
 from .di import Container
 from .embeddings import AsyncBatchEmbeddings, BatchEmbeddings
-from .model import EmbeddingsModelName, PreparedTask, ResponsesModelName
+from .model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
 from .provider import provide_async_openai_client, provide_openai_client
 from .responses import AsyncBatchResponses, BatchResponses
 from .task.table import FillNaResponse, fillna
@@ -63,7 +63,7 @@ __all__ = [
 _LOGGER = logging.getLogger(__name__)
 
 
-T = TypeVar("T")
+T = TypeVar("T")  # For pipe function return type
 
 _DI = Container()
 _DI.register(OpenAI, provide_openai_client)
@@ -163,7 +163,7 @@ class OpenAIVecSeriesAccessor:
     def responses(
         self,
         instructions: str,
-        response_format: Type[T] = str,
+        response_format: Type[ResponseFormat] = str,
         batch_size: int = 128,
         temperature: float = 0.0,
         top_p: float = 1.0,
@@ -182,7 +182,7 @@ class OpenAIVecSeriesAccessor:
 
         Args:
             instructions (str): System prompt prepended to every user message.
-            response_format (Type[T], optional): Pydantic model or built‑in
+            response_format (Type[ResponseFormat], optional): Pydantic model or built‑in
                 type the assistant should return. Defaults to ``str``.
             batch_size (int, optional): Number of prompts grouped into a single
                 request. Defaults to ``128``.
@@ -368,7 +368,7 @@ class OpenAIVecDataFrameAccessor:
     def responses(
         self,
         instructions: str,
-        response_format: Type[T] = str,
+        response_format: Type[ResponseFormat] = str,
         batch_size: int = 128,
         temperature: float = 0.0,
         top_p: float = 1.0,
@@ -392,7 +392,7 @@ class OpenAIVecDataFrameAccessor:
 
         Args:
             instructions (str): System prompt for the assistant.
-            response_format (Type[T], optional): Desired Python type of the
+            response_format (Type[ResponseFormat], optional): Desired Python type of the
                 responses. Defaults to ``str``.
             batch_size (int, optional): Number of requests sent in one batch.
                 Defaults to ``128``.
@@ -535,7 +535,7 @@ class AsyncOpenAIVecSeriesAccessor:
     async def responses(
         self,
         instructions: str,
-        response_format: Type[T] = str,
+        response_format: Type[ResponseFormat] = str,
         batch_size: int = 128,
         temperature: float = 0.0,
         top_p: float = 1.0,
@@ -556,7 +556,7 @@ class AsyncOpenAIVecSeriesAccessor:
 
         Args:
             instructions (str): System prompt prepended to every user message.
-            response_format (Type[T], optional): Pydantic model or built‑in
+            response_format (Type[ResponseFormat], optional): Pydantic model or built‑in
                 type the assistant should return. Defaults to ``str``.
             batch_size (int, optional): Number of prompts grouped into a single
                 request. Defaults to ``128``.
@@ -695,7 +695,7 @@ class AsyncOpenAIVecDataFrameAccessor:
     async def responses(
         self,
         instructions: str,
-        response_format: Type[T] = str,
+        response_format: Type[ResponseFormat] = str,
         batch_size: int = 128,
         temperature: float = 0.0,
         top_p: float = 1.0,
@@ -721,7 +721,7 @@ class AsyncOpenAIVecDataFrameAccessor:
 
         Args:
             instructions (str): System prompt for the assistant.
-            response_format (Type[T], optional): Desired Python type of the
+            response_format (Type[ResponseFormat], optional): Desired Python type of the
                 responses. Defaults to ``str``.
             batch_size (int, optional): Number of requests sent in one batch.
                 Defaults to ``128``.

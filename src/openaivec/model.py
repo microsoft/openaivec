@@ -3,7 +3,7 @@ from typing import Type, TypeVar
 
 from pydantic import BaseModel
 
-T = TypeVar("T", bound=BaseModel)
+ResponseFormat = TypeVar("ResponseFormat", bound=BaseModel | str)
 
 
 @dataclass(frozen=True)
@@ -18,8 +18,8 @@ class PreparedTask:
     Attributes:
         instructions (str): The prompt or instructions to send to the OpenAI model.
             This should contain clear, specific directions for the task.
-        response_format (Type[T]): A Pydantic model class that defines the expected
-            structure of the response. Must inherit from BaseModel.
+        response_format (Type[ResponseFormat]): A Pydantic model class or str type that defines the expected
+            structure of the response. Can be either a BaseModel subclass or str.
         temperature (float): Controls randomness in the model's output.
             Range: 0.0 to 1.0. Lower values make output more deterministic.
             Defaults to 0.0.
@@ -52,7 +52,7 @@ class PreparedTask:
     """
 
     instructions: str
-    response_format: Type[T]
+    response_format: Type[ResponseFormat]
     temperature: float = 0.0
     top_p: float = 1.0
 

@@ -1,6 +1,6 @@
 """Asynchronous Spark UDFs for the OpenAI and Azure OpenAI APIs.
 
-This module provides functions (`responses_udf`, `responses_udf_from_task`, `embeddings_udf`)
+This module provides functions (`responses_udf`, `task_udf`, `embeddings_udf`)
 for creating asynchronous Spark UDFs that communicate with either the public
 OpenAI API or Azure OpenAI using the `openaivec.spark` subpackage.
 It supports UDFs for generating responses and creating embeddings asynchronously.
@@ -31,7 +31,7 @@ sc.environment["OPENAI_API_KEY"] = "your-openai-api-key"
 Next, create UDFs and register them:
 
 ```python
-from openaivec.spark import responses_udf, responses_udf_from_task, embeddings_udf
+from openaivec.spark import responses_udf, task_udf, embeddings_udf
 from pydantic import BaseModel
 
 # Define a Pydantic model for structured responses (optional)
@@ -52,11 +52,11 @@ spark.udf.register(
     ),
 )
 
-# Or use a predefined task with responses_udf_from_task
+# Or use a predefined task with task_udf
 from openaivec.task import nlp
 spark.udf.register(
     "sentiment_async",
-    responses_udf_from_task(nlp.SENTIMENT_ANALYSIS),
+    task_udf(nlp.SENTIMENT_ANALYSIS),
 )
 
 # Register the asynchronous embeddings UDF with performance tuning
@@ -104,7 +104,7 @@ Note: This module provides asynchronous support through the pandas extensions.
 import asyncio
 import logging
 from enum import Enum
-from typing import Dict, Iterator, List, Optional, Type, TypeVar, Union, get_args, get_origin
+from typing import Dict, Iterator, List, Optional, Type, Union, get_args, get_origin
 
 import pandas as pd
 import tiktoken
@@ -115,20 +115,19 @@ from pyspark.sql.udf import UserDefinedFunction
 from typing_extensions import Literal
 
 from . import pandas_ext
-from .model import PreparedTask
+from .model import PreparedTask, ResponseFormat
 from .serialize import deserialize_base_model, serialize_base_model
 from .util import TextChunker
 
 __all__ = [
     "responses_udf",
-    "responses_udf_from_task",
+    "task_udf",
     "embeddings_udf",
     "split_to_chunks_udf",
     "count_tokens_udf",
     "similarity_udf",
 ]
 
-T = TypeVar("T", bound=BaseModel)
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 _TIKTOKEN_ENC: tiktoken.Encoding | None = None
@@ -213,7 +212,7 @@ def _safe_dump(x: Optional[BaseModel]) -> Dict:
 
 def responses_udf(
     instructions: str,
-    response_format: Type[T] = str,
+    response_format: Type[ResponseFormat] = str,
     model_name: str = "gpt-4.1-mini",
     batch_size: int = 128,
     temperature: float = 0.0,
@@ -239,7 +238,7 @@ def responses_udf(
 
     Args:
         instructions (str): The system prompt or instructions for the model.
-        response_format (Type[T]): The desired output format. Either `str` for plain text
+        response_format (Type[ResponseFormat]): The desired output format. Either `str` for plain text
             or a Pydantic `BaseModel` for structured JSON output. Defaults to `str`.
         model_name (str): Deployment name (Azure) or model name (OpenAI) for responses.
             Defaults to "gpt-4.1-mini".
@@ -315,7 +314,7 @@ def responses_udf(
 
 
 
-def responses_udf_from_task(
+def task_udf(
     task: PreparedTask,
     model_name: str = "gpt-4.1-mini",
     batch_size: int = 128,
@@ -341,45 +340,72 @@ def responses_udf_from_task(
 
     Returns:
         UserDefinedFunction: A Spark pandas UDF configured to execute the specified task
-            asynchronously, returning a struct derived from the task's response format.
+            asynchronously. Output schema is StringType for str response format or
+            a struct derived from the task's response format for BaseModel.
 
     Example:
         ```python
         from openaivec.task import nlp
 
-        sentiment_udf = responses_udf_from_task(nlp.SENTIMENT_ANALYSIS)
+        sentiment_udf = task_udf(nlp.SENTIMENT_ANALYSIS)
 
         spark.udf.register("analyze_sentiment", sentiment_udf)
         ```
     """
     # Serialize task parameters for Spark serialization compatibility
     task_instructions = task.instructions
-    task_response_format_json = serialize_base_model(task.response_format)
     task_temperature = task.temperature
     task_top_p = task.top_p
+    
+    if issubclass(task.response_format, BaseModel):
+        task_response_format_json = serialize_base_model(task.response_format)
+        
+        # Deserialize the response format from JSON
+        response_format = deserialize_base_model(task_response_format_json)
+        spark_schema = _pydantic_to_spark_schema(response_format)
 
-    # Deserialize the response format from JSON
-    response_format = deserialize_base_model(task_response_format_json)
-    spark_schema = _pydantic_to_spark_schema(response_format)
+        @pandas_udf(returnType=spark_schema)
+        def task_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
+            pandas_ext.responses_model(model_name)
 
-    @pandas_udf(returnType=spark_schema)
-    def task_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
-        pandas_ext.responses_model(model_name)
-
-        for part in col:
-            predictions: pd.Series = asyncio.run(
-                part.aio.responses(
-                    instructions=task_instructions,
-                    response_format=response_format,
-                    batch_size=batch_size,
-                    temperature=task_temperature,
-                    top_p=task_top_p,
-                    max_concurrency=max_concurrency,
+            for part in col:
+                predictions: pd.Series = asyncio.run(
+                    part.aio.responses(
+                        instructions=task_instructions,
+                        response_format=response_format,
+                        batch_size=batch_size,
+                        temperature=task_temperature,
+                        top_p=task_top_p,
+                        max_concurrency=max_concurrency,
+                    )
                 )
-            )
-            yield pd.DataFrame(predictions.map(_safe_dump).tolist())
+                yield pd.DataFrame(predictions.map(_safe_dump).tolist())
 
-    return task_udf
+        return task_udf
+    
+    elif issubclass(task.response_format, str):
+        
+        @pandas_udf(returnType=StringType())
+        def task_string_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
+            pandas_ext.responses_model(model_name)
+
+            for part in col:
+                predictions: pd.Series = asyncio.run(
+                    part.aio.responses(
+                        instructions=task_instructions,
+                        response_format=str,
+                        batch_size=batch_size,
+                        temperature=task_temperature,
+                        top_p=task_top_p,
+                        max_concurrency=max_concurrency,
+                    )
+                )
+                yield predictions.map(_safe_cast_str)
+
+        return task_string_udf
+    
+    else:
+        raise ValueError(f"Unsupported response_format in task: {task.response_format}")
 
 
 
