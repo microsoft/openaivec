@@ -123,7 +123,7 @@ class BatchResponses(Generic[ResponseFormat]):
         system_message: System prompt prepended to every request.
         temperature: Sampling temperature passed to the model.
         top_p: Nucleus‑sampling parameter.
-        response_format: Expected Pydantic type of each assistant message
+        response_format: Expected Pydantic BaseModel subclass or str type for each assistant message
             (defaults to ``str``).
 
     Notes:
@@ -272,7 +272,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         system_message: System prompt prepended to every request.
         temperature: Sampling temperature passed to the model.
         top_p: Nucleus-sampling parameter.
-        response_format: Expected Pydantic type of each assistant message
+        response_format: Expected Pydantic BaseModel subclass or str type for each assistant message
             (defaults to `str`).
         max_concurrency: Maximum number of concurrent requests to the OpenAI API.
     """

@@ -117,7 +117,7 @@ All tasks are built using the `PreparedTask` dataclass:
 @dataclass(frozen=True)
 class PreparedTask:
     instructions: str           # Detailed prompt for the LLM
-    response_format: Type[T]    # Pydantic model for structured output
+    response_format: Type[ResponseFormat]    # Pydantic model or str for structured/plain output
     temperature: float = 0.0    # Sampling temperature
     top_p: float = 1.0         # Nucleus sampling parameter
 ```
@@ -183,8 +183,4 @@ src/openaivec/task/finance/
 See individual task modules for detailed documentation and examples.
 """
 
-from ..model import PreparedTask
-
-__all__ = [
-    "PreparedTask",
-]
+__all__ = []
