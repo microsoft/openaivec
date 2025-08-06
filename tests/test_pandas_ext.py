@@ -10,7 +10,7 @@ from openaivec import pandas_ext
 
 pandas_ext.use(OpenAI())
 pandas_ext.use_async(AsyncOpenAI())
-pandas_ext.responses_model("gpt-4o-mini")
+pandas_ext.responses_model("gpt-4.1-mini")
 pandas_ext.embeddings_model("text-embedding-3-small")
 
 

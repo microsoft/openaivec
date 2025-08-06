@@ -128,7 +128,7 @@ from openaivec import BatchResponses
 # Initialize the batch client
 client = BatchResponses(
     client=OpenAI(),
-    model_name="gpt-4o-mini",
+    model_name="gpt-4.1-mini",
     system_message="Please answer only with 'xx family' and do not output anything else."
 )
 
@@ -147,7 +147,7 @@ import pandas as pd
 from openaivec import pandas_ext
 
 # Setup (optional - uses OPENAI_API_KEY environment variable by default)
-pandas_ext.responses_model("gpt-4o-mini")
+pandas_ext.responses_model("gpt-4.1-mini")
 
 # Create your data
 df = pd.DataFrame({"name": ["panda", "rabbit", "koala"]})
@@ -222,7 +222,7 @@ import pandas as pd
 from openaivec import pandas_ext
 
 # Setup (same as synchronous version)
-pandas_ext.responses_model("gpt-4o-mini")
+pandas_ext.responses_model("gpt-4.1-mini")
 
 df = pd.DataFrame({"text": [
     "This product is amazing!",

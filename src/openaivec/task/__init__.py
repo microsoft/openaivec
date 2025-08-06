@@ -40,13 +40,13 @@ client = OpenAI()
 # Use pre-configured tasks
 sentiment_analyzer = BatchResponses.of_task(
     client=client,
-    model_name="gpt-4o-mini",
+    model_name="gpt-4.1-mini",
     task=nlp.SENTIMENT_ANALYSIS
 )
 
 intent_analyzer = BatchResponses.of_task(
     client=client,
-    model_name="gpt-4o-mini",
+    model_name="gpt-4.1-mini",
     task=customer_support.INTENT_ANALYSIS
 )
 ```
@@ -68,7 +68,7 @@ custom_urgency = urgency_analysis(
 
 analyzer = BatchResponses.of_task(
     client=client,
-    model_name="gpt-4o-mini",
+    model_name="gpt-4.1-mini",
     task=custom_urgency
 )
 ```
@@ -97,7 +97,7 @@ spark.udf.register(
     "analyze_sentiment",
     ResponsesUDFBuilder.of_openai(
         api_key=api_key,
-        model_name="gpt-4o-mini"
+        model_name="gpt-4.1-mini"
     ).build_from_task(task=nlp.SENTIMENT_ANALYSIS)
 )
 
@@ -165,7 +165,7 @@ src/openaivec/task/finance/
 ## Best Practices
 
 1. **Choose Appropriate Models**:
-   - `gpt-4o-mini`: Fast, cost-effective for most tasks
+   - `gpt-4.1-mini`: Fast, cost-effective for most tasks
    - `gpt-4o`: Higher accuracy for complex analysis
 
 2. **Customize When Needed**:

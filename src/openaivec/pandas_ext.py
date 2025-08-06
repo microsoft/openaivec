@@ -27,7 +27,7 @@ async_client = AsyncOpenAI(api_key="your-api-key")
 pandas_ext.use_async(async_client)
 
 # Set up model names (optional, defaults shown)
-pandas_ext.responses_model("gpt-4o-mini")
+pandas_ext.responses_model("gpt-4.1-mini")
 pandas_ext.embeddings_model("text-embedding-3-small")
 ```
 
@@ -68,7 +68,7 @@ T = TypeVar("T")
 _DI = Container()
 _DI.register(OpenAI, provide_openai_client)
 _DI.register(AsyncOpenAI, provide_async_openai_client)
-_DI.register(ResponsesModelName, lambda: ResponsesModelName("gpt-4o-mini"))
+_DI.register(ResponsesModelName, lambda: ResponsesModelName("gpt-4.1-mini"))
 _DI.register(EmbeddingsModelName, lambda: EmbeddingsModelName("text-embedding-3-small"))
 
 
@@ -114,7 +114,7 @@ def responses_model(name: str) -> None:
 
     Args:
         name (str): Model name as listed in the OpenAI API
-            (for example, ``gpt-4o-mini``).
+            (for example, ``gpt-4.1-mini``).
     """
     _DI.register(ResponsesModelName, lambda: ResponsesModelName(name))
     _DI.register(tiktoken.Encoding, _provide_tiktoken_encoding)
@@ -178,7 +178,7 @@ class OpenAIVecSeriesAccessor:
             This method returns a Series of strings, each containing the
             assistant's response to the corresponding input.
             The model used is set by the `responses_model` function.
-            The default model is `gpt-4o-mini`.
+            The default model is `gpt-4.1-mini`.
 
         Args:
             instructions (str): System prompt prepended to every user message.
@@ -388,7 +388,7 @@ class OpenAIVecDataFrameAccessor:
             assistant's response to the corresponding input.
             Each row is serialised to JSON before being sent to the assistant.
             The model used is set by the `responses_model` function.
-            The default model is `gpt-4o-mini`.
+            The default model is `gpt-4.1-mini`.
 
         Args:
             instructions (str): System prompt for the assistant.
@@ -552,7 +552,7 @@ class AsyncOpenAIVecSeriesAccessor:
             This method returns a Series of strings, each containing the
             assistant's response to the corresponding input.
             The model used is set by the `responses_model` function.
-            The default model is `gpt-4o-mini`.
+            The default model is `gpt-4.1-mini`.
 
         Args:
             instructions (str): System prompt prepended to every user message.
@@ -717,7 +717,7 @@ class AsyncOpenAIVecDataFrameAccessor:
             assistant's response to the corresponding input.
             Each row is serialised to JSON before being sent to the assistant.
             The model used is set by the `responses_model` function.
-            The default model is `gpt-4o-mini`.
+            The default model is `gpt-4.1-mini`.
 
         Args:
             instructions (str): System prompt for the assistant.
