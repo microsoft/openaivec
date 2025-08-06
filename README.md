@@ -346,34 +346,34 @@ You can now use these UDFs in Spark SQL:
 
 ```sql
 -- Create a sample table (replace with your actual table)
-CREATE OR REPLACE TEMP VIEW products AS SELECT * FROM VALUES
-  ('1001', 'iPhone 15 Pro Max'),
-  ('1002', 'Samsung Galaxy S24 Ultra'),
-  ('1003', 'Google Pixel 8 Pro')
-AS products(id, product_name);
+CREATE OR REPLACE TEMP VIEW product_reviews AS SELECT * FROM VALUES
+  ('1001', 'The new iPhone camera quality is amazing, Apple really outdid themselves this time!'),
+  ('1002', 'Samsung Galaxy has great battery life but the price is too high for what you get'),
+  ('1003', 'Google Pixel phone crashed twice today, very disappointed with this purchase')
+AS product_reviews(id, review_text);
 
 -- Use the registered UDFs (including pre-configured tasks)
 SELECT
     id,
-    product_name,
-    extract_brand(product_name) AS brand,
-    translate_struct(product_name) AS translation,
-    analyze_sentiment(product_name).sentiment AS sentiment,
-    analyze_sentiment(product_name).confidence AS sentiment_confidence,
-    classify_intent(product_name).primary_intent AS intent,
-    classify_intent(product_name).action_required AS action_required,
-    embed_text(product_name) AS embedding,
-    count_tokens(product_name) AS token_count
-FROM products;
+    review_text,
+    extract_brand(review_text) AS brand,
+    translate_struct(review_text) AS translation,
+    analyze_sentiment(review_text).sentiment AS sentiment,
+    analyze_sentiment(review_text).confidence AS sentiment_confidence,
+    classify_intent(review_text).primary_intent AS intent,
+    classify_intent(review_text).action_required AS action_required,
+    embed_text(review_text) AS embedding,
+    count_tokens(review_text) AS token_count
+FROM product_reviews;
 ```
 
 Example Output (structure might vary slightly):
 
-| id   | product_name              | brand   | translation                 | sentiment | sentiment_confidence | intent           | action_required     | embedding              | token_count |
-| ---- | ------------------------- | ------- | --------------------------- | --------- | -------------------- | ---------------- | ------------------- | ---------------------- | ----------- |
-| 1001 | iPhone 15 Pro Max         | Apple   | {en: ..., fr: ..., ja: ...} | positive  | 0.92                 | seek_information | provide_information | [0.1, -0.2, ..., 0.5]  | 5           |
-| 1002 | Samsung Galaxy S24 Ultra  | Samsung | {en: ..., fr: ..., ja: ...} | positive  | 0.88                 | seek_information | provide_information | [-0.3, 0.1, ..., -0.1] | 6           |
-| 1003 | Google Pixel 8 Pro        | Google  | {en: ..., fr: ..., ja: ...} | positive  | 0.90                 | seek_information | provide_information | [0.0, 0.4, ..., 0.2]   | 5           |
+| id   | review_text                                                                   | brand   | translation                 | sentiment | sentiment_confidence | intent           | action_required     | embedding              | token_count |
+| ---- | ----------------------------------------------------------------------------- | ------- | --------------------------- | --------- | -------------------- | ---------------- | ------------------- | ---------------------- | ----------- |
+| 1001 | The new iPhone camera quality is amazing, Apple really outdid themselves...  | Apple   | {en: ..., fr: ..., ja: ...} | positive  | 0.95                 | provide_feedback | acknowledge_review  | [0.1, -0.2, ..., 0.5]  | 18          |
+| 1002 | Samsung Galaxy has great battery life but the price is too high for what...  | Samsung | {en: ..., fr: ..., ja: ...} | mixed     | 0.78                 | provide_feedback | follow_up_pricing   | [-0.3, 0.1, ..., -0.1] | 17          |
+| 1003 | Google Pixel phone crashed twice today, very disappointed with this purchase | Google  | {en: ..., fr: ..., ja: ...} | negative  | 0.88                 | complaint        | investigate_issue   | [0.0, 0.4, ..., 0.2]   | 12          |
 
 ### Spark Performance Tuning
 
