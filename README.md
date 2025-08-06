@@ -32,6 +32,7 @@ results = reviews.assign(
 ## 💡 Real-World Impact
 
 ### Customer Feedback Analysis
+
 ```python
 # Process 50,000 support tickets automatically
 tickets.assign(
@@ -42,6 +43,7 @@ tickets.assign(
 ```
 
 ### Market Research at Scale
+
 ```python
 # Analyze multilingual social media data
 social_data.assign(
@@ -52,6 +54,7 @@ social_data.assign(
 ```
 
 ### Survey Data Transformation
+
 ```python
 # Convert free-text responses to structured data
 from pydantic import BaseModel
@@ -63,7 +66,7 @@ class Demographics(BaseModel):
 
 survey_responses.assign(
     structured=lambda df: df.response.ai.responses(
-        "Extract demographics as structured data", 
+        "Extract demographics as structured data",
         response_format=Demographics
     )
 ).ai.extract("structured")  # Auto-expands to columns
@@ -90,7 +93,7 @@ into your data processing pipelines.
 ## Key Benefits
 
 - **🚀 Performance**: Vectorized processing handles thousands of records in minutes, not hours
-- **💰 Cost Efficiency**: Automatic deduplication significantly reduces API costs on typical datasets  
+- **💰 Cost Efficiency**: Automatic deduplication significantly reduces API costs on typical datasets
 - **🔗 Integration**: Works within existing pandas/Spark workflows without architectural changes
 - **📈 Scalability**: Same API scales from exploratory analysis (100s of records) to production systems (millions of records)
 - **🎯 Pre-configured Tasks**: Ready-to-use task library with optimized prompts for common use cases
@@ -160,11 +163,11 @@ result = df.assign(
 )
 ```
 
-| name   | family        | habitat | fun_fact                    |
-|--------|---------------|---------|-----------------------------|
-| panda  | bear family   | forest  | Eats bamboo 14 hours daily  |
-| rabbit | rabbit family | meadow  | Can see nearly 360 degrees  |
-| koala  | marsupial family | tree   | Sleeps 22 hours per day    |
+| name   | family           | habitat | fun_fact                   |
+| ------ | ---------------- | ------- | -------------------------- |
+| panda  | bear family      | forest  | Eats bamboo 14 hours daily |
+| rabbit | rabbit family    | meadow  | Can see nearly 360 degrees |
+| koala  | marsupial family | tree    | Sleeps 22 hours per day    |
 
 📓 **[Interactive pandas examples →](https://microsoft.github.io/openaivec/examples/pandas/)**
 
@@ -195,17 +198,19 @@ results = text_df.assign(
 # Extract structured results into separate columns (one at a time)
 extracted_results = (results
     .ai.extract("sentiment")
-    .ai.extract("entities") 
+    .ai.extract("entities")
     .ai.extract("intent")
     .ai.extract("urgency")
 )
 ```
 
 **Available Task Categories:**
+
 - **Text Analysis**: `nlp.SENTIMENT_ANALYSIS`, `nlp.TRANSLATION`, `nlp.NAMED_ENTITY_RECOGNITION`, `nlp.KEYWORD_EXTRACTION`
 - **Content Classification**: `customer_support.INTENT_ANALYSIS`, `customer_support.URGENCY_ANALYSIS`, `customer_support.INQUIRY_CLASSIFICATION`
 
 **Benefits of Pre-configured Tasks:**
+
 - Optimized prompts tested across diverse datasets
 - Consistent structured outputs with Pydantic validation
 - Multilingual support with standardized categorical fields
@@ -250,6 +255,7 @@ sentiments = asyncio.run(process_data())
 - **`max_concurrency`** (default: 8): Limits the number of concurrent API requests. Higher values increase throughput but may hit rate limits or overwhelm the API.
 
 **Performance Benefits:**
+
 - Process thousands of records in parallel
 - Automatic request batching and deduplication
 - Built-in rate limiting and error handling
@@ -288,13 +294,9 @@ from pydantic import BaseModel
 
 # --- Register Responses UDF (String Output) ---
 spark.udf.register(
-    "parse_flavor",
+    "extract_brand",
     responses_udf(
-        instructions="Extract flavor-related information. Return only the concise flavor name.",
-        response_format=str,        # Specify string output
-        model_name="gpt-4.1-mini",  # Optional, defaults to gpt-4.1-mini
-        batch_size=64,              # Optimize for Spark partition sizes
-        max_concurrency=4           # Conservative for distributed processing
+        instructions="Extract the brand name from the product. Return only the brand name."
     )
 )
 
@@ -308,21 +310,14 @@ spark.udf.register(
     "translate_struct",
     responses_udf(
         instructions="Translate the text to English, French, and Japanese.",
-        response_format=Translation,    # Specify Pydantic model for structured output
-        model_name="gpt-4.1-mini",      # Optional, defaults to gpt-4.1-mini
-        batch_size=32,                  # Smaller batches for complex structured outputs
-        max_concurrency=6               # Concurrent requests PER EXECUTOR
+        response_format=Translation
     )
 )
 
 # --- Register Embeddings UDF ---
 spark.udf.register(
     "embed_text",
-    embeddings_udf(
-        model_name="text-embedding-3-small",  # Optional, defaults to text-embedding-3-small
-        batch_size=128,                       # Larger batches for embeddings
-        max_concurrency=8                     # Concurrent requests PER EXECUTOR
-    )
+    embeddings_udf()
 )
 
 # --- Register Token Counting UDF ---
@@ -334,20 +329,14 @@ from openaivec.task import nlp, customer_support
 spark.udf.register(
     "analyze_sentiment",
     task_udf(
-        task=nlp.SENTIMENT_ANALYSIS,
-        model_name="gpt-4.1-mini",  # Optional, defaults to gpt-4.1-mini
-        batch_size=64,
-        max_concurrency=8           # Concurrent requests PER EXECUTOR
+        task=nlp.SENTIMENT_ANALYSIS
     )
 )
 
 spark.udf.register(
     "classify_intent",
     task_udf(
-        task=customer_support.INTENT_ANALYSIS,
-        model_name="gpt-4.1-mini",  # Optional, defaults to gpt-4.1-mini
-        batch_size=32,              # Smaller batches for complex analysis
-        max_concurrency=6           # Conservative for customer support tasks
+        task=customer_support.INTENT_ANALYSIS
     )
 )
 
@@ -357,46 +346,48 @@ You can now use these UDFs in Spark SQL:
 
 ```sql
 -- Create a sample table (replace with your actual table)
-CREATE OR REPLACE TEMP VIEW product_names AS SELECT * FROM VALUES
-  ('4414732714624', 'Cafe Mocha Smoothie (Trial Size)'),
-  ('4200162318339', 'Dark Chocolate Tea (New Product)'),
-  ('4920122084098', 'Uji Matcha Tea (New Product)')
-AS product_names(id, product_name);
+CREATE OR REPLACE TEMP VIEW product_reviews AS SELECT * FROM VALUES
+  ('1001', 'The new iPhone camera quality is amazing, Apple really outdid themselves this time!'),
+  ('1002', 'Samsung Galaxy has great battery life but the price is too high for what you get'),
+  ('1003', 'Google Pixel phone crashed twice today, very disappointed with this purchase')
+AS product_reviews(id, review_text);
 
 -- Use the registered UDFs (including pre-configured tasks)
 SELECT
     id,
-    product_name,
-    parse_flavor(product_name) AS flavor,
-    translate_struct(product_name) AS translation,
-    analyze_sentiment(product_name).sentiment AS sentiment,
-    analyze_sentiment(product_name).confidence AS sentiment_confidence,
-    classify_intent(product_name).primary_intent AS intent,
-    classify_intent(product_name).action_required AS action_required,
-    embed_text(product_name) AS embedding,
-    count_tokens(product_name) AS token_count
-FROM product_names;
+    review_text,
+    extract_brand(review_text) AS brand,
+    translate_struct(review_text) AS translation,
+    analyze_sentiment(review_text).sentiment AS sentiment,
+    analyze_sentiment(review_text).confidence AS sentiment_confidence,
+    classify_intent(review_text).primary_intent AS intent,
+    classify_intent(review_text).action_required AS action_required,
+    embed_text(review_text) AS embedding,
+    count_tokens(review_text) AS token_count
+FROM product_reviews;
 ```
 
 Example Output (structure might vary slightly):
 
-| id            | product_name                      | flavor    | translation              | sentiment | sentiment_confidence | intent      | action_required    | embedding           | token_count |
-|---------------|-----------------------------------|-----------|--------------------------|-----------|---------------------|-------------|--------------------|---------------------|-------------|
-| 4414732714624 | Cafe Mocha Smoothie (Trial Size)  | Mocha     | {en: ..., fr: ..., ja: ...} | positive  | 0.92               | seek_information | provide_information | [0.1, -0.2, ..., 0.5] | 8           |
-| 4200162318339 | Dark Chocolate Tea (New Product)  | Chocolate | {en: ..., fr: ..., ja: ...} | neutral   | 0.87               | seek_information | provide_information | [-0.3, 0.1, ..., -0.1] | 7           |
-| 4920122084098 | Uji Matcha Tea (New Product)      | Matcha    | {en: ..., fr: ..., ja: ...} | positive  | 0.89               | seek_information | provide_information | [0.0, 0.4, ..., 0.2] | 8           |
+| id   | review_text                                                                   | brand   | translation                 | sentiment | sentiment_confidence | intent           | action_required     | embedding              | token_count |
+| ---- | ----------------------------------------------------------------------------- | ------- | --------------------------- | --------- | -------------------- | ---------------- | ------------------- | ---------------------- | ----------- |
+| 1001 | The new iPhone camera quality is amazing, Apple really outdid themselves...  | Apple   | {en: ..., fr: ..., ja: ...} | positive  | 0.95                 | provide_feedback | acknowledge_review  | [0.1, -0.2, ..., 0.5]  | 18          |
+| 1002 | Samsung Galaxy has great battery life but the price is too high for what...  | Samsung | {en: ..., fr: ..., ja: ...} | mixed     | 0.78                 | provide_feedback | follow_up_pricing   | [-0.3, 0.1, ..., -0.1] | 17          |
+| 1003 | Google Pixel phone crashed twice today, very disappointed with this purchase | Google  | {en: ..., fr: ..., ja: ...} | negative  | 0.88                 | complaint        | investigate_issue   | [0.0, 0.4, ..., 0.2]   | 12          |
 
 ### Spark Performance Tuning
 
 When using openaivec with Spark, proper configuration of `batch_size` and `max_concurrency` is crucial for optimal performance:
 
 **`batch_size`** (default: 128):
+
 - Controls how many rows are processed together in each API request within a partition
 - **Larger values**: Fewer API calls per partition, reduced overhead
 - **Smaller values**: More granular processing, better memory management
 - **Recommendation**: 32-128 depending on data complexity and partition size
 
 **`max_concurrency`** (default: 8):
+
 - **Important**: This is the number of concurrent API requests **PER EXECUTOR**
 - Total cluster concurrency = `max_concurrency × number_of_executors`
 - **Higher values**: Faster processing but may overwhelm API rate limits
@@ -404,11 +395,12 @@ When using openaivec with Spark, proper configuration of `batch_size` and `max_c
 - **Recommendation**: 4-12 per executor, considering your OpenAI tier limits
 
 **Example for a 10-executor cluster:**
+
 ```python
 # With max_concurrency=8, total cluster concurrency = 8 × 10 = 80 concurrent requests
 spark.udf.register(
     "analyze_sentiment",
-    resp_builder.build(
+    responses_udf(
         instructions="Analyze sentiment as positive/negative/neutral",
         batch_size=64,        # Good balance for most use cases
         max_concurrency=8     # 80 total concurrent requests across cluster
@@ -417,6 +409,7 @@ spark.udf.register(
 ```
 
 **Monitoring and Scaling:**
+
 - Monitor OpenAI API rate limits and adjust `max_concurrency` accordingly
 - Use Spark UI to optimize partition sizes and executor configurations
 - Consider your OpenAI tier limits when scaling clusters
@@ -620,15 +613,15 @@ steps:
      import os
      from pyspark.sql import SparkSession
      from openaivec.spark import responses_udf, embeddings_udf
-     
+
      spark = SparkSession.builder.getOrCreate()
      sc = spark.sparkContext
-     
+
      # Configure Azure OpenAI authentication
      sc.environment["AZURE_OPENAI_API_KEY"] = "<your-api-key>"
      sc.environment["AZURE_OPENAI_API_ENDPOINT"] = "https://<your-resource-name>.openai.azure.com"
      sc.environment["AZURE_OPENAI_API_VERSION"] = "2024-10-21"
-     
+
      # Register UDFs
      spark.udf.register(
          "analyze_text",
