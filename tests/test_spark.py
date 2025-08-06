@@ -8,7 +8,7 @@ from pyspark.sql.types import ArrayType, FloatType, IntegerType, StringType, Str
 from openaivec.spark import (
     embeddings_udf,
     responses_udf,
-    responses_udf_from_task,
+    task_udf,
     _pydantic_to_spark_schema,
     count_tokens_udf,
     similarity_udf,
@@ -17,7 +17,9 @@ from openaivec.task import nlp
 from openaivec.model import PreparedTask
 
 
-class TestUDFBuilder(TestCase):
+class TestSparkUDFs(TestCase):
+    """Test all Spark UDF functions."""
+    
     def setUp(self):
         self.spark: SparkSession = SparkSession.builder \
             .appName("TestSparkUDF") \
@@ -32,7 +34,8 @@ class TestUDFBuilder(TestCase):
         if self.spark:
             self.spark.stop()
 
-    def test_responses(self):
+    def test_responses_udf_string_format(self):
+        """Test responses_udf with string response format."""
         self.spark.udf.register(
             "repeat",
             responses_udf("Repeat twice input string.", model_name="gpt-4.1-nano"),
@@ -49,7 +52,8 @@ class TestUDFBuilder(TestCase):
         df_pandas = df.toPandas()
         assert df_pandas.shape == (31, 2)
 
-    def test_responses_structured(self):
+    def test_responses_udf_structured_format(self):
+        """Test responses_udf with Pydantic BaseModel response format."""
         class Fruit(BaseModel):
             name: str
             color: str
@@ -77,28 +81,11 @@ class TestUDFBuilder(TestCase):
         df_pandas = df.toPandas()
         assert df_pandas.shape == (3, 3)
 
-    def test_embeddings(self):
-        self.spark.udf.register(
-            "embed",
-            embeddings_udf(model_name="text-embedding-3-small", batch_size=8),
-        )
-        dummy_df = self.spark.range(31)
-        dummy_df.createOrReplaceTempView("dummy")
-
-        df = self.spark.sql(
-            """
-            SELECT id, embed(cast(id as STRING)) as v from dummy
-            """
-        )
-
-        df_pandas = df.toPandas()
-        assert df_pandas.shape == (31, 2)
-
-    def test_task_sentiment_analysis(self):
-        # Test using the responses_udf_from_task function with predefined tasks
+    def test_task_udf_basemodel(self):
+        """Test task_udf with predefined BaseModel task."""
         self.spark.udf.register(
             "analyze_sentiment",
-            responses_udf_from_task(task=nlp.SENTIMENT_ANALYSIS, model_name="gpt-4.1-nano"),
+            task_udf(task=nlp.SENTIMENT_ANALYSIS, model_name="gpt-4.1-nano"),
         )
         
         text_data = [
@@ -118,30 +105,8 @@ class TestUDFBuilder(TestCase):
         df_pandas = df.toPandas()
         assert df_pandas.shape == (3, 3)
 
-    def test_responses_build_from_task_method(self):
-        """Test the responses_udf_from_task function with predefined tasks."""
-        # Test that responses_udf_from_task works with predefined tasks
-        self.spark.udf.register(
-            "analyze_sentiment_new",
-            responses_udf_from_task(task=nlp.SENTIMENT_ANALYSIS, model_name="gpt-4.1-nano"),
-        )
-        
-        text_data = [("This is a great product!",)]
-        dummy_df = self.spark.createDataFrame(text_data, ["text"])
-        dummy_df.createOrReplaceTempView("test_reviews")
-
-        df = self.spark.sql(
-            """
-            with t as (SELECT analyze_sentiment_new(text) as sentiment from test_reviews)
-            select sentiment.sentiment, sentiment.confidence from t
-            """
-        )
-        df_pandas = df.toPandas()
-        assert df_pandas.shape == (1, 2)
-
-    def test_responses_udf_from_task_with_str_response_format(self):
-        """Test responses_udf_from_task with string response format."""
-        # Create a simple task with string response format
+    def test_task_udf_string_format(self):
+        """Test task_udf with string response format."""
         simple_task = PreparedTask(
             instructions="Repeat the input text twice, separated by a space.",
             response_format=str,
@@ -151,7 +116,7 @@ class TestUDFBuilder(TestCase):
         
         self.spark.udf.register(
             "repeat_text",
-            responses_udf_from_task(task=simple_task, model_name="gpt-4.1-nano"),
+            task_udf(task=simple_task, model_name="gpt-4.1-nano"),
         )
         
         text_data = [("hello",), ("world",), ("test",)]
@@ -165,11 +130,11 @@ class TestUDFBuilder(TestCase):
         )
         df_pandas = df.toPandas()
         assert df_pandas.shape == (3, 2)
-        # Check that the result is a string column, not a struct
+        # Verify string column type
         assert df.dtypes[1][1] == 'string'
 
-    def test_responses_udf_from_task_with_basemodel_response_format(self):
-        """Test responses_udf_from_task with BaseModel response format."""
+    def test_task_udf_custom_basemodel(self):
+        """Test task_udf with custom BaseModel response format."""
         class SimpleResponse(BaseModel):
             original: str
             length: int
@@ -183,7 +148,7 @@ class TestUDFBuilder(TestCase):
         
         self.spark.udf.register(
             "analyze_text",
-            responses_udf_from_task(task=structured_task, model_name="gpt-4.1-nano"),
+            task_udf(task=structured_task, model_name="gpt-4.1-nano"),
         )
         
         text_data = [("hello",), ("world",), ("testing",)]
@@ -199,10 +164,75 @@ class TestUDFBuilder(TestCase):
         df_pandas = df.toPandas()
         assert df_pandas.shape == (3, 2)
 
+    def test_embeddings_udf(self):
+        """Test embeddings_udf functionality."""
+        self.spark.udf.register(
+            "embed",
+            embeddings_udf(model_name="text-embedding-3-small", batch_size=8),
+        )
+        dummy_df = self.spark.range(31)
+        dummy_df.createOrReplaceTempView("dummy")
+
+        df = self.spark.sql(
+            """
+            SELECT id, embed(cast(id as STRING)) as v from dummy
+            """
+        )
+
+        df_pandas = df.toPandas()
+        assert df_pandas.shape == (31, 2)
+
+    def test_count_tokens_udf(self):
+        """Test count_tokens_udf functionality."""
+        self.spark.udf.register(
+            "count_tokens",
+            count_tokens_udf("gpt-4o"),
+        )
+
+        sentences = [
+            ("How many tokens in this sentence?",),
+            ("Understanding token counts helps optimize language model inputs",),
+            ("Tokenization is a crucial step in natural language processing tasks",),
+        ]
+        dummy_df = self.spark.createDataFrame(sentences, ["sentence"])
+        dummy_df.createOrReplaceTempView("sentences")
+
+        result_df = self.spark.sql(
+            """
+            SELECT sentence, count_tokens(sentence) as token_count from sentences
+            """
+        )
+        df_pandas = result_df.toPandas()
+        assert df_pandas.shape == (3, 2)
+
+    def test_similarity_udf(self):
+        """Test similarity_udf functionality."""
+        self.spark.udf.register("similarity", similarity_udf())
+
+        df = self.spark.createDataFrame(
+            [
+                (1, [0.1, 0.2, 0.3]),
+                (2, [0.4, 0.5, 0.6]),
+                (3, [0.7, 0.8, 0.9]),
+            ],
+            ["id", "vector"],
+        )
+        df.createOrReplaceTempView("vectors")
+        result_df = self.spark.sql(
+            """
+            SELECT id, similarity(vector, vector) as similarity_score
+            FROM vectors
+            """
+        )
+        df_pandas = result_df.toPandas()
+        assert df_pandas.shape == (3, 2)
 
 
-class TestMappingFunctions(TestCase):
+class TestSchemaMapping(TestCase):
+    """Test Pydantic to Spark schema mapping functionality."""
+    
     def test_pydantic_to_spark_schema(self):
+        """Test _pydantic_to_spark_schema function with nested models."""
         class InnerModel(BaseModel):
             inner_id: int
             description: str
@@ -231,55 +261,3 @@ class TestMappingFunctions(TestCase):
         )
 
         self.assertEqual(schema, expected)
-
-
-class TestCountTokensUDF(TestCase):
-    def setUp(self):
-        self.spark: SparkSession = SparkSession.builder.getOrCreate()
-        self.spark.sparkContext.setLogLevel("INFO")
-        self.spark.udf.register(
-            "count_tokens",
-            count_tokens_udf("gpt-4o"),
-        )
-
-    def test_count_token(self):
-        sentences = [
-            ("How many tokens in this sentence?",),
-            ("Understanding token counts helps optimize language model inputs",),
-            ("Tokenization is a crucial step in natural language processing tasks",),
-        ]
-        dummy_df = self.spark.createDataFrame(sentences, ["sentence"])
-        dummy_df.createOrReplaceTempView("sentences")
-
-        self.spark.sql(
-            """
-            SELECT sentence, count_tokens(sentence) as token_count from sentences
-            """
-        ).show(truncate=False)
-
-
-class TestSimilarityUDF(TestCase):
-    def setUp(self):
-        self.spark: SparkSession = SparkSession.builder.getOrCreate()
-        self.spark.sparkContext.setLogLevel("INFO")
-        self.spark.udf.register("similarity", similarity_udf())
-
-    def test_similarity(self):
-        df = self.spark.createDataFrame(
-            [
-                (1, [0.1, 0.2, 0.3]),
-                (2, [0.4, 0.5, 0.6]),
-                (3, [0.7, 0.8, 0.9]),
-            ],
-            ["id", "vector"],
-        )
-        df.createOrReplaceTempView("vectors")
-        result_df = self.spark.sql(
-            """
-            SELECT id, similarity(vector, vector) as similarity_score
-            FROM vectors
-            """
-        )
-        result_df.show(truncate=False)
-        df_pandas = result_df.toPandas()
-        assert df_pandas.shape == (3, 2)

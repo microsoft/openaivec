@@ -1,6 +1,6 @@
 """Asynchronous Spark UDFs for the OpenAI and Azure OpenAI APIs.
 
-This module provides functions (`responses_udf`, `responses_udf_from_task`, `embeddings_udf`)
+This module provides functions (`responses_udf`, `task_udf`, `embeddings_udf`)
 for creating asynchronous Spark UDFs that communicate with either the public
 OpenAI API or Azure OpenAI using the `openaivec.spark` subpackage.
 It supports UDFs for generating responses and creating embeddings asynchronously.
@@ -31,7 +31,7 @@ sc.environment["OPENAI_API_KEY"] = "your-openai-api-key"
 Next, create UDFs and register them:
 
 ```python
-from openaivec.spark import responses_udf, responses_udf_from_task, embeddings_udf
+from openaivec.spark import responses_udf, task_udf, embeddings_udf
 from pydantic import BaseModel
 
 # Define a Pydantic model for structured responses (optional)
@@ -52,11 +52,11 @@ spark.udf.register(
     ),
 )
 
-# Or use a predefined task with responses_udf_from_task
+# Or use a predefined task with task_udf
 from openaivec.task import nlp
 spark.udf.register(
     "sentiment_async",
-    responses_udf_from_task(nlp.SENTIMENT_ANALYSIS),
+    task_udf(nlp.SENTIMENT_ANALYSIS),
 )
 
 # Register the asynchronous embeddings UDF with performance tuning
@@ -121,7 +121,7 @@ from .util import TextChunker
 
 __all__ = [
     "responses_udf",
-    "responses_udf_from_task",
+    "task_udf",
     "embeddings_udf",
     "split_to_chunks_udf",
     "count_tokens_udf",
@@ -315,7 +315,7 @@ def responses_udf(
 
 
 
-def responses_udf_from_task(
+def task_udf(
     task: PreparedTask,
     model_name: str = "gpt-4.1-mini",
     batch_size: int = 128,
@@ -348,7 +348,7 @@ def responses_udf_from_task(
         ```python
         from openaivec.task import nlp
 
-        sentiment_udf = responses_udf_from_task(nlp.SENTIMENT_ANALYSIS)
+        sentiment_udf = task_udf(nlp.SENTIMENT_ANALYSIS)
 
         spark.udf.register("analyze_sentiment", sentiment_udf)
         ```
