@@ -283,7 +283,7 @@ sc.environment["OPENAI_API_KEY"] = os.environ.get("OPENAI_API_KEY")
 Next, create and register UDFs using the provided functions:
 
 ```python
-from openaivec.spark import responses_udf, responses_udf_from_task, embeddings_udf, count_tokens_udf
+from openaivec.spark import responses_udf, task_udf, embeddings_udf, count_tokens_udf
 from pydantic import BaseModel
 
 # --- Register Responses UDF (String Output) ---
@@ -333,7 +333,7 @@ from openaivec.task import nlp, customer_support
 
 spark.udf.register(
     "analyze_sentiment",
-    responses_udf_from_task(
+    task_udf(
         task=nlp.SENTIMENT_ANALYSIS,
         model_name="gpt-4.1-mini",  # Optional, defaults to gpt-4.1-mini
         batch_size=64,
@@ -343,7 +343,7 @@ spark.udf.register(
 
 spark.udf.register(
     "classify_intent",
-    responses_udf_from_task(
+    task_udf(
         task=customer_support.INTENT_ANALYSIS,
         model_name="gpt-4.1-mini",  # Optional, defaults to gpt-4.1-mini
         batch_size=32,              # Smaller batches for complex analysis
