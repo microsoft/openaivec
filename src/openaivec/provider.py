@@ -1,20 +1,36 @@
 import os
 
+import tiktoken
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
+
+from openaivec import di
+from openaivec.model import (
+    AzureOpenAIAPIKey,
+    AzureOpenAIAPIVersion,
+    AzureOpenAIEndpoint,
+    EmbeddingsModelName,
+    OpenAIAPIKey,
+    ResponsesModelName,
+)
+
+CONTAINER = di.Container()
 
 
 def provide_openai_client() -> OpenAI:
     """Provide OpenAI client based on environment variables. Prioritizes OpenAI over Azure."""
-    if os.getenv("OPENAI_API_KEY"):
+    openai_api_key = CONTAINER.resolve(OpenAIAPIKey)
+    if openai_api_key.value:
         return OpenAI()
 
-    if all(
-        os.getenv(name) for name in ["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_API_ENDPOINT", "AZURE_OPENAI_API_VERSION"]
-    ):
+    azure_api_key = CONTAINER.resolve(AzureOpenAIAPIKey)
+    azure_endpoint = CONTAINER.resolve(AzureOpenAIEndpoint)
+    azure_api_version = CONTAINER.resolve(AzureOpenAIAPIVersion)
+
+    if all(param.value for param in [azure_api_key, azure_endpoint, azure_api_version]):
         return AzureOpenAI(
-            api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-            azure_endpoint=os.getenv("AZURE_OPENAI_API_ENDPOINT"),
-            api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+            api_key=azure_api_key.value,
+            azure_endpoint=azure_endpoint.value,
+            api_version=azure_api_version.value,
         )
 
     raise ValueError(
@@ -26,16 +42,19 @@ def provide_openai_client() -> OpenAI:
 
 def provide_async_openai_client() -> AsyncOpenAI:
     """Provide async OpenAI client based on environment variables. Prioritizes OpenAI over Azure."""
-    if os.getenv("OPENAI_API_KEY"):
+    openai_api_key = CONTAINER.resolve(OpenAIAPIKey)
+    if openai_api_key.value:
         return AsyncOpenAI()
 
-    if all(
-        os.getenv(name) for name in ["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_API_ENDPOINT", "AZURE_OPENAI_API_VERSION"]
-    ):
+    azure_api_key = CONTAINER.resolve(AzureOpenAIAPIKey)
+    azure_endpoint = CONTAINER.resolve(AzureOpenAIEndpoint)
+    azure_api_version = CONTAINER.resolve(AzureOpenAIAPIVersion)
+
+    if all(param.value for param in [azure_api_key, azure_endpoint, azure_api_version]):
         return AsyncAzureOpenAI(
-            api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-            azure_endpoint=os.getenv("AZURE_OPENAI_API_ENDPOINT"),
-            api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+            api_key=azure_api_key.value,
+            azure_endpoint=azure_endpoint.value,
+            api_version=azure_api_version.value,
         )
 
     raise ValueError(
@@ -43,3 +62,35 @@ def provide_async_openai_client() -> AsyncOpenAI:
         "Please set either OPENAI_API_KEY or AZURE_OPENAI_API_KEY, "
         "AZURE_OPENAI_API_ENDPOINT, and AZURE_OPENAI_API_VERSION."
     )
+
+
+CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName("gpt-4.1-mini"))
+CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName("text-embedding-3-small"))
+CONTAINER.register(OpenAIAPIKey, lambda: OpenAIAPIKey(os.getenv("OPENAI_API_KEY")))
+CONTAINER.register(AzureOpenAIAPIKey, lambda: AzureOpenAIAPIKey(os.getenv("AZURE_OPENAI_API_KEY")))
+CONTAINER.register(AzureOpenAIEndpoint, lambda: AzureOpenAIEndpoint(os.getenv("AZURE_OPENAI_API_ENDPOINT")))
+CONTAINER.register(
+    cls=AzureOpenAIAPIVersion,
+    provider=lambda: AzureOpenAIAPIVersion(os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview")),
+)
+CONTAINER.register(OpenAI, provide_openai_client)
+CONTAINER.register(AsyncOpenAI, provide_async_openai_client)
+CONTAINER.register(tiktoken.Encoding, lambda: tiktoken.get_encoding("o200k_base"))
+
+
+def reset_environment_registrations():
+    """Reset environment variable related registrations in the container.
+
+    This function re-registers environment variable dependent services to pick up
+    current environment variable values. Useful for testing when environment
+    variables are changed after initial container setup.
+    """
+    CONTAINER.register(OpenAIAPIKey, lambda: OpenAIAPIKey(os.getenv("OPENAI_API_KEY")))
+    CONTAINER.register(AzureOpenAIAPIKey, lambda: AzureOpenAIAPIKey(os.getenv("AZURE_OPENAI_API_KEY")))
+    CONTAINER.register(AzureOpenAIEndpoint, lambda: AzureOpenAIEndpoint(os.getenv("AZURE_OPENAI_API_ENDPOINT")))
+    CONTAINER.register(
+        cls=AzureOpenAIAPIVersion,
+        provider=lambda: AzureOpenAIAPIVersion(os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview")),
+    )
+    CONTAINER.register(OpenAI, provide_openai_client)
+    CONTAINER.register(AsyncOpenAI, provide_async_openai_client)
