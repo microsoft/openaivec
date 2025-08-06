@@ -17,7 +17,7 @@ basicConfig(handlers=[_h], level="DEBUG")
 class TestVectorizedResponsesOpenAI(TestCase):
     def setUp(self):
         self.openai_client = OpenAI()
-        self.model_name = "gpt-4o-mini"
+        self.model_name = "gpt-4.1-mini"
 
     def test_predict_str(self):
         system_message = """

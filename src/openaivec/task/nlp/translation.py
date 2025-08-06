@@ -19,7 +19,7 @@ Example:
     client = OpenAI()
     translator = BatchResponses.of_task(
         client=client,
-        model_name="gpt-4o-mini",
+        model_name="gpt-4.1-mini",
         task=nlp.MULTILINGUAL_TRANSLATION
     )
 

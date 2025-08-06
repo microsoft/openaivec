@@ -253,7 +253,7 @@ class AsyncBatchResponses(Generic[T]):
 
         vector_llm = AsyncBatchResponses(
             client=openai_async_client,
-            model_name="gpt-4o-mini",
+            model_name="gpt-4.1-mini",
             system_message="You are a helpful assistant.",
             max_concurrency=5  # Limit concurrent requests
         )

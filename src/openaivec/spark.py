@@ -1,6 +1,6 @@
 """Asynchronous Spark UDFs for the OpenAI and Azure OpenAI APIs.
 
-This module provides builder classes (`ResponsesUDFBuilder`, `EmbeddingsUDFBuilder`)
+This module provides functions (`responses_udf`, `responses_udf_from_task`, `embeddings_udf`)
 for creating asynchronous Spark UDFs that communicate with either the public
 OpenAI API or Azure OpenAI using the `openaivec.spark` subpackage.
 It supports UDFs for generating responses and creating embeddings asynchronously.
@@ -28,15 +28,11 @@ sc.environment["OPENAI_API_KEY"] = "your-openai-api-key"
 # sc.environment["AZURE_OPENAI_API_VERSION"] = "your-azure-openai-api-version"
 ```
 
-Next, instantiate UDF builders with model names and register the desired UDFs:
+Next, create UDFs and register them:
 
 ```python
-from openaivec.spark import ResponsesUDFBuilder, EmbeddingsUDFBuilder
+from openaivec.spark import responses_udf, responses_udf_from_task, embeddings_udf
 from pydantic import BaseModel
-
-# Create builders (no authentication parameters needed)
-resp_builder = ResponsesUDFBuilder(model_name="gpt-4o-mini")
-emb_builder = EmbeddingsUDFBuilder(model_name="text-embedding-3-small")
 
 # Define a Pydantic model for structured responses (optional)
 class Translation(BaseModel):
@@ -47,27 +43,29 @@ class Translation(BaseModel):
 # Register the asynchronous responses UDF with performance tuning
 spark.udf.register(
     "translate_async",
-    resp_builder.build(
+    responses_udf(
         instructions="Translate the text to multiple languages.",
         response_format=Translation,
-        batch_size=64,        # Rows per API request within partition
-        max_concurrency=8     # Concurrent requests PER EXECUTOR
+        model_name="gpt-4.1-mini",  # Optional, defaults to gpt-4.1-mini
+        batch_size=64,              # Rows per API request within partition
+        max_concurrency=8           # Concurrent requests PER EXECUTOR
     ),
 )
 
-# Or use a predefined task with build_from_task method
+# Or use a predefined task with responses_udf_from_task
 from openaivec.task import nlp
 spark.udf.register(
     "sentiment_async",
-    resp_builder.build_from_task(nlp.SENTIMENT_ANALYSIS),
+    responses_udf_from_task(nlp.SENTIMENT_ANALYSIS),
 )
 
 # Register the asynchronous embeddings UDF with performance tuning
 spark.udf.register(
     "embed_async",
-    emb_builder.build(
-        batch_size=128,       # Larger batches for embeddings
-        max_concurrency=8     # Concurrent requests PER EXECUTOR
+    embeddings_udf(
+        model_name="text-embedding-3-small",  # Optional, defaults to text-embedding-3-small
+        batch_size=128,                       # Larger batches for embeddings
+        max_concurrency=8                     # Concurrent requests PER EXECUTOR
     ),
 )
 ```
@@ -105,7 +103,6 @@ Note: This module provides asynchronous support through the pandas extensions.
 
 import asyncio
 import logging
-from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, Iterator, List, Optional, Type, TypeVar, Union, get_args, get_origin
 
@@ -123,8 +120,9 @@ from .serialize import deserialize_base_model, serialize_base_model
 from .util import TextChunker
 
 __all__ = [
-    "ResponsesUDFBuilder",
-    "EmbeddingsUDFBuilder",
+    "responses_udf",
+    "responses_udf_from_task",
+    "embeddings_udf",
     "split_to_chunks_udf",
     "count_tokens_udf",
     "similarity_udf",
@@ -213,20 +211,22 @@ def _safe_dump(x: Optional[BaseModel]) -> Dict:
         return {}
 
 
-@dataclass(frozen=True)
-class ResponsesUDFBuilder:
-    """Builder for asynchronous Spark pandas UDFs for generating responses.
+def responses_udf(
+    instructions: str,
+    response_format: Type[T] = str,
+    model_name: str = "gpt-4.1-mini",
+    batch_size: int = 128,
+    temperature: float = 0.0,
+    top_p: float = 1.0,
+    max_concurrency: int = 8,
+) -> UserDefinedFunction:
+    """Create an asynchronous Spark pandas UDF for generating responses.
 
     Configures and builds UDFs that leverage `pandas_ext.aio.responses`
     to generate text or structured responses from OpenAI models asynchronously.
-    An instance stores the model name for API calls.
-
-    This builder supports two main methods:
-    - `build()`: Creates UDFs with custom instructions and response formats
-    - `build_from_task()`: Creates UDFs from predefined tasks (e.g., sentiment analysis)
 
     Note:
-        Authentication must be configured via SparkContext environment variables before using this builder.
+        Authentication must be configured via SparkContext environment variables.
         Set the appropriate environment variables on the SparkContext:
         
         For OpenAI:
@@ -237,176 +237,161 @@ class ResponsesUDFBuilder:
             sc.environment["AZURE_OPENAI_API_ENDPOINT"] = "your-azure-openai-endpoint"
             sc.environment["AZURE_OPENAI_API_VERSION"] = "your-azure-openai-api-version"
 
-    Attributes:
+    Args:
+        instructions (str): The system prompt or instructions for the model.
+        response_format (Type[T]): The desired output format. Either `str` for plain text
+            or a Pydantic `BaseModel` for structured JSON output. Defaults to `str`.
         model_name (str): Deployment name (Azure) or model name (OpenAI) for responses.
+            Defaults to "gpt-4.1-mini".
+        batch_size (int): Number of rows per async batch request within each partition.
+            Larger values reduce API call overhead but increase memory usage.
+            Recommended: 32-128 depending on data complexity. Defaults to 128.
+        temperature (float): Sampling temperature (0.0 to 2.0). Defaults to 0.0.
+        top_p (float): Nucleus sampling parameter. Defaults to 1.0.
+        max_concurrency (int): Maximum number of concurrent API requests **PER EXECUTOR**.
+            Total cluster concurrency = max_concurrency × number_of_executors.
+            Higher values increase throughput but may hit OpenAI rate limits.
+            Recommended: 4-12 per executor. Defaults to 8.
+
+    Returns:
+        UserDefinedFunction: A Spark pandas UDF configured to generate responses asynchronously.
+            Output schema is `StringType` or a struct derived from `response_format`.
+
+    Raises:
+        ValueError: If `response_format` is not `str` or a Pydantic `BaseModel`.
+
+    Note:
+        For optimal performance in distributed environments:
+        - Monitor OpenAI API rate limits when scaling executor count
+        - Consider your OpenAI tier limits: total_requests = max_concurrency × executors
+        - Use Spark UI to optimize partition sizes relative to batch_size
     """
-
-    # Params for Responses API
-    model_name: str
-
-
-    def build(
-        self,
-        instructions: str,
-        response_format: Type[T] = str,
-        batch_size: int = 128,  # Default batch size for async might differ
-        temperature: float = 0.0,
-        top_p: float = 1.0,
-        max_concurrency: int = 8,
-    ) -> UserDefinedFunction:
-        """Builds the asynchronous pandas UDF for generating responses.
-
-        Args:
-            instructions (str): The system prompt or instructions for the model.
-            response_format (Type[T]): The desired output format. Either `str` for plain text
-                or a Pydantic `BaseModel` for structured JSON output. Defaults to `str`.
-            batch_size (int): Number of rows per async batch request within each partition.
-                Larger values reduce API call overhead but increase memory usage.
-                Recommended: 32-128 depending on data complexity. Defaults to 128.
-            temperature (float): Sampling temperature (0.0 to 2.0). Defaults to 0.0.
-            top_p (float): Nucleus sampling parameter. Defaults to 1.0.
-            max_concurrency (int): Maximum number of concurrent API requests **PER EXECUTOR**.
-                Total cluster concurrency = max_concurrency × number_of_executors.
-                Higher values increase throughput but may hit OpenAI rate limits.
-                Recommended: 4-12 per executor. Defaults to 8.
-
-        Returns:
-            UserDefinedFunction: A Spark pandas UDF configured to generate responses asynchronously.
-                Output schema is `StringType` or a struct derived from `response_format`.
-
-        Raises:
-            ValueError: If `response_format` is not `str` or a Pydantic `BaseModel`.
-
-        Note:
-            For optimal performance in distributed environments:
-            - Monitor OpenAI API rate limits when scaling executor count
-            - Consider your OpenAI tier limits: total_requests = max_concurrency × executors
-            - Use Spark UI to optimize partition sizes relative to batch_size
-        """
-        if issubclass(response_format, BaseModel):
-            spark_schema = _pydantic_to_spark_schema(response_format)
-            json_schema_string = serialize_base_model(response_format)
-
-            @pandas_udf(returnType=spark_schema)
-            def structure_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
-                pandas_ext.responses_model(self.model_name)
-
-                for part in col:
-                    predictions: pd.Series = asyncio.run(
-                        part.aio.responses(
-                            instructions=instructions,
-                            response_format=deserialize_base_model(json_schema_string),
-                            batch_size=batch_size,
-                            temperature=temperature,
-                            top_p=top_p,
-                            max_concurrency=max_concurrency,
-                        )
-                    )
-                    yield pd.DataFrame(predictions.map(_safe_dump).tolist())
-
-            return structure_udf
-
-        elif issubclass(response_format, str):
-
-            @pandas_udf(returnType=StringType())
-            def string_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
-                pandas_ext.responses_model(self.model_name)
-
-                for part in col:
-                    predictions: pd.Series = asyncio.run(
-                        part.aio.responses(
-                            instructions=instructions,
-                            response_format=str,
-                            batch_size=batch_size,
-                            temperature=temperature,
-                            top_p=top_p,
-                            max_concurrency=max_concurrency,
-                        )
-                    )
-                    yield predictions.map(_safe_cast_str)
-
-            return string_udf
-
-        else:
-            raise ValueError(f"Unsupported response_format: {response_format}")
-
-    def build_from_task(
-        self,
-        task: PreparedTask,
-        batch_size: int = 128,
-        max_concurrency: int = 8,
-    ) -> UserDefinedFunction:
-        """Builds the asynchronous pandas UDF from a predefined task.
-
-        This method allows users to create UDFs from predefined tasks such as sentiment analysis,
-        translation, or other common NLP operations defined in the openaivec.task module.
-
-        Args:
-            task (PreparedTask): A predefined task configuration containing instructions,
-                response format, temperature, and top_p settings.
-            batch_size (int): Number of rows per async batch request within each partition.
-                Larger values reduce API call overhead but increase memory usage.
-                Recommended: 32-128 depending on task complexity. Defaults to 128.
-            max_concurrency (int): Maximum number of concurrent API requests **PER EXECUTOR**.
-                Total cluster concurrency = max_concurrency × number_of_executors.
-                Higher values increase throughput but may hit OpenAI rate limits.
-                Recommended: 4-12 per executor. Defaults to 8.
-
-        Returns:
-            UserDefinedFunction: A Spark pandas UDF configured to execute the specified task
-                asynchronously, returning a struct derived from the task's response format.
-
-        Example:
-            ```python
-            from openaivec.task import nlp
-
-            builder = ResponsesUDFBuilder(model_name="gpt-4o-mini")
-
-            sentiment_udf = builder.build_from_task(nlp.SENTIMENT_ANALYSIS)
-
-            spark.udf.register("analyze_sentiment", sentiment_udf)
-            ```
-        """
-        # Serialize task parameters for Spark serialization compatibility
-        task_instructions = task.instructions
-        task_response_format_json = serialize_base_model(task.response_format)
-        task_temperature = task.temperature
-        task_top_p = task.top_p
-
-        # Deserialize the response format from JSON
-        response_format = deserialize_base_model(task_response_format_json)
+    if issubclass(response_format, BaseModel):
         spark_schema = _pydantic_to_spark_schema(response_format)
+        json_schema_string = serialize_base_model(response_format)
 
         @pandas_udf(returnType=spark_schema)
-        def task_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
-            pandas_ext.responses_model(self.model_name)
+        def structure_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
+            pandas_ext.responses_model(model_name)
 
             for part in col:
                 predictions: pd.Series = asyncio.run(
                     part.aio.responses(
-                        instructions=task_instructions,
-                        response_format=response_format,
+                        instructions=instructions,
+                        response_format=deserialize_base_model(json_schema_string),
                         batch_size=batch_size,
-                        temperature=task_temperature,
-                        top_p=task_top_p,
+                        temperature=temperature,
+                        top_p=top_p,
                         max_concurrency=max_concurrency,
                     )
                 )
                 yield pd.DataFrame(predictions.map(_safe_dump).tolist())
 
-        return task_udf
+        return structure_udf
+
+    elif issubclass(response_format, str):
+
+        @pandas_udf(returnType=StringType())
+        def string_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
+            pandas_ext.responses_model(model_name)
+
+            for part in col:
+                predictions: pd.Series = asyncio.run(
+                    part.aio.responses(
+                        instructions=instructions,
+                        response_format=str,
+                        batch_size=batch_size,
+                        temperature=temperature,
+                        top_p=top_p,
+                        max_concurrency=max_concurrency,
+                    )
+                )
+                yield predictions.map(_safe_cast_str)
+
+        return string_udf
+
+    else:
+        raise ValueError(f"Unsupported response_format: {response_format}")
 
 
-@dataclass(frozen=True)
-class EmbeddingsUDFBuilder:
-    """Builder for asynchronous Spark pandas UDFs for creating embeddings.
+
+def responses_udf_from_task(
+    task: PreparedTask,
+    model_name: str = "gpt-4.1-mini",
+    batch_size: int = 128,
+    max_concurrency: int = 8,
+) -> UserDefinedFunction:
+    """Create an asynchronous Spark pandas UDF from a predefined task.
+
+    This function allows users to create UDFs from predefined tasks such as sentiment analysis,
+    translation, or other common NLP operations defined in the openaivec.task module.
+
+    Args:
+        task (PreparedTask): A predefined task configuration containing instructions,
+            response format, temperature, and top_p settings.
+        model_name (str): Deployment name (Azure) or model name (OpenAI) for responses.
+            Defaults to "gpt-4.1-mini".
+        batch_size (int): Number of rows per async batch request within each partition.
+            Larger values reduce API call overhead but increase memory usage.
+            Recommended: 32-128 depending on task complexity. Defaults to 128.
+        max_concurrency (int): Maximum number of concurrent API requests **PER EXECUTOR**.
+            Total cluster concurrency = max_concurrency × number_of_executors.
+            Higher values increase throughput but may hit OpenAI rate limits.
+            Recommended: 4-12 per executor. Defaults to 8.
+
+    Returns:
+        UserDefinedFunction: A Spark pandas UDF configured to execute the specified task
+            asynchronously, returning a struct derived from the task's response format.
+
+    Example:
+        ```python
+        from openaivec.task import nlp
+
+        sentiment_udf = responses_udf_from_task(nlp.SENTIMENT_ANALYSIS)
+
+        spark.udf.register("analyze_sentiment", sentiment_udf)
+        ```
+    """
+    # Serialize task parameters for Spark serialization compatibility
+    task_instructions = task.instructions
+    task_response_format_json = serialize_base_model(task.response_format)
+    task_temperature = task.temperature
+    task_top_p = task.top_p
+
+    # Deserialize the response format from JSON
+    response_format = deserialize_base_model(task_response_format_json)
+    spark_schema = _pydantic_to_spark_schema(response_format)
+
+    @pandas_udf(returnType=spark_schema)
+    def task_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
+        pandas_ext.responses_model(model_name)
+
+        for part in col:
+            predictions: pd.Series = asyncio.run(
+                part.aio.responses(
+                    instructions=task_instructions,
+                    response_format=response_format,
+                    batch_size=batch_size,
+                    temperature=task_temperature,
+                    top_p=task_top_p,
+                    max_concurrency=max_concurrency,
+                )
+            )
+            yield pd.DataFrame(predictions.map(_safe_dump).tolist())
+
+    return task_udf
+
+
+
+
+def embeddings_udf(model_name: str = "text-embedding-3-small", batch_size: int = 128, max_concurrency: int = 8) -> UserDefinedFunction:
+    """Create an asynchronous Spark pandas UDF for generating embeddings.
 
     Configures and builds UDFs that leverage `pandas_ext.aio.embeddings`
     to generate vector embeddings from OpenAI models asynchronously.
-    An instance stores the model name for API calls.
 
     Note:
-        Authentication must be configured via SparkContext environment variables before using this builder.
+        Authentication must be configured via SparkContext environment variables.
         Set the appropriate environment variables on the SparkContext:
         
         For OpenAI:
@@ -417,50 +402,40 @@ class EmbeddingsUDFBuilder:
             sc.environment["AZURE_OPENAI_API_ENDPOINT"] = "your-azure-openai-endpoint"
             sc.environment["AZURE_OPENAI_API_VERSION"] = "your-azure-openai-api-version"
 
-    Attributes:
+    Args:
         model_name (str): Deployment name (Azure) or model name (OpenAI) for embeddings.
+            Defaults to "text-embedding-3-small".
+        batch_size (int): Number of rows per async batch request within each partition.
+            Larger values reduce API call overhead but increase memory usage.
+            Embeddings typically handle larger batches efficiently.
+            Recommended: 64-256 depending on text length. Defaults to 128.
+        max_concurrency (int): Maximum number of concurrent API requests **PER EXECUTOR**.
+            Total cluster concurrency = max_concurrency × number_of_executors.
+            Higher values increase throughput but may hit OpenAI rate limits.
+            Recommended: 4-12 per executor. Defaults to 8.
+
+    Returns:
+        UserDefinedFunction: A Spark pandas UDF configured to generate embeddings asynchronously,
+            returning an `ArrayType(FloatType())` column.
+
+    Note:
+        For optimal performance in distributed environments:
+        - Monitor OpenAI API rate limits when scaling executor count
+        - Consider your OpenAI tier limits: total_requests = max_concurrency × executors
+        - Embeddings API typically has higher throughput than chat completions
+        - Use larger batch_size for embeddings compared to response generation
     """
+    @pandas_udf(returnType=ArrayType(FloatType()))
+    def _embeddings_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
+        pandas_ext.embeddings_model(model_name)
 
-    # Params for Embeddings API
-    model_name: str
+        for part in col:
+            embeddings: pd.Series = asyncio.run(
+                part.aio.embeddings(batch_size=batch_size, max_concurrency=max_concurrency)
+            )
+            yield embeddings.map(lambda x: x.tolist())
 
-
-    def build(self, batch_size: int = 128, max_concurrency: int = 8) -> UserDefinedFunction:
-        """Builds the asynchronous pandas UDF for generating embeddings.
-
-        Args:
-            batch_size (int): Number of rows per async batch request within each partition.
-                Larger values reduce API call overhead but increase memory usage.
-                Embeddings typically handle larger batches efficiently.
-                Recommended: 64-256 depending on text length. Defaults to 128.
-            max_concurrency (int): Maximum number of concurrent API requests **PER EXECUTOR**.
-                Total cluster concurrency = max_concurrency × number_of_executors.
-                Higher values increase throughput but may hit OpenAI rate limits.
-                Recommended: 4-12 per executor. Defaults to 8.
-
-        Returns:
-            UserDefinedFunction: A Spark pandas UDF configured to generate embeddings asynchronously,
-                returning an `ArrayType(FloatType())` column.
-
-        Note:
-            For optimal performance in distributed environments:
-            - Monitor OpenAI API rate limits when scaling executor count
-            - Consider your OpenAI tier limits: total_requests = max_concurrency × executors
-            - Embeddings API typically has higher throughput than chat completions
-            - Use larger batch_size for embeddings compared to response generation
-        """
-
-        @pandas_udf(returnType=ArrayType(FloatType()))
-        def embeddings_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
-            pandas_ext.embeddings_model(self.model_name)
-
-            for part in col:
-                embeddings: pd.Series = asyncio.run(
-                    part.aio.embeddings(batch_size=batch_size, max_concurrency=max_concurrency)
-                )
-                yield embeddings.map(lambda x: x.tolist())
-
-        return embeddings_udf
+    return _embeddings_udf
 
 
 def split_to_chunks_udf(model_name: str, max_tokens: int, sep: List[str]) -> UserDefinedFunction:

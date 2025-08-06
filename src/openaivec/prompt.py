@@ -421,7 +421,7 @@ class FewShotPromptBuilder:
 
         Args:
             client (openai.OpenAI): Configured OpenAI client.
-            model_name (str): Model identifier (e.g. ``gpt-4o-mini``).
+            model_name (str): Model identifier (e.g. ``gpt-4.1-mini``).
             temperature (float, optional): Sampling temperature. Defaults to 0.0.
             top_p (float, optional): Nucleus sampling parameter. Defaults to 1.0.
 
