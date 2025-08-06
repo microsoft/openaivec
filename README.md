@@ -294,13 +294,9 @@ from pydantic import BaseModel
 
 # --- Register Responses UDF (String Output) ---
 spark.udf.register(
-    "parse_flavor",
+    "extract_brand",
     responses_udf(
-        instructions="Extract flavor-related information. Return only the concise flavor name.",
-        response_format=str,        # Specify string output
-        model_name="gpt-4.1-mini",  # Optional, defaults to gpt-4.1-mini
-        batch_size=64,              # Optimize for Spark partition sizes
-        max_concurrency=4           # Conservative for distributed processing
+        instructions="Extract the brand name from the product. Return only the brand name."
     )
 )
 
@@ -314,21 +310,14 @@ spark.udf.register(
     "translate_struct",
     responses_udf(
         instructions="Translate the text to English, French, and Japanese.",
-        response_format=Translation,    # Specify Pydantic model for structured output
-        model_name="gpt-4.1-mini",      # Optional, defaults to gpt-4.1-mini
-        batch_size=32,                  # Smaller batches for complex structured outputs
-        max_concurrency=6               # Concurrent requests PER EXECUTOR
+        response_format=Translation
     )
 )
 
 # --- Register Embeddings UDF ---
 spark.udf.register(
     "embed_text",
-    embeddings_udf(
-        model_name="text-embedding-3-small",  # Optional, defaults to text-embedding-3-small
-        batch_size=128,                       # Larger batches for embeddings
-        max_concurrency=8                     # Concurrent requests PER EXECUTOR
-    )
+    embeddings_udf()
 )
 
 # --- Register Token Counting UDF ---
@@ -340,20 +329,14 @@ from openaivec.task import nlp, customer_support
 spark.udf.register(
     "analyze_sentiment",
     task_udf(
-        task=nlp.SENTIMENT_ANALYSIS,
-        model_name="gpt-4.1-mini",  # Optional, defaults to gpt-4.1-mini
-        batch_size=64,
-        max_concurrency=8           # Concurrent requests PER EXECUTOR
+        task=nlp.SENTIMENT_ANALYSIS
     )
 )
 
 spark.udf.register(
     "classify_intent",
     task_udf(
-        task=customer_support.INTENT_ANALYSIS,
-        model_name="gpt-4.1-mini",  # Optional, defaults to gpt-4.1-mini
-        batch_size=32,              # Smaller batches for complex analysis
-        max_concurrency=6           # Conservative for customer support tasks
+        task=customer_support.INTENT_ANALYSIS
     )
 )
 
@@ -363,17 +346,17 @@ You can now use these UDFs in Spark SQL:
 
 ```sql
 -- Create a sample table (replace with your actual table)
-CREATE OR REPLACE TEMP VIEW product_names AS SELECT * FROM VALUES
-  ('4414732714624', 'Cafe Mocha Smoothie (Trial Size)'),
-  ('4200162318339', 'Dark Chocolate Tea (New Product)'),
-  ('4920122084098', 'Uji Matcha Tea (New Product)')
-AS product_names(id, product_name);
+CREATE OR REPLACE TEMP VIEW products AS SELECT * FROM VALUES
+  ('1001', 'iPhone 15 Pro Max'),
+  ('1002', 'Samsung Galaxy S24 Ultra'),
+  ('1003', 'Google Pixel 8 Pro')
+AS products(id, product_name);
 
 -- Use the registered UDFs (including pre-configured tasks)
 SELECT
     id,
     product_name,
-    parse_flavor(product_name) AS flavor,
+    extract_brand(product_name) AS brand,
     translate_struct(product_name) AS translation,
     analyze_sentiment(product_name).sentiment AS sentiment,
     analyze_sentiment(product_name).confidence AS sentiment_confidence,
@@ -381,16 +364,16 @@ SELECT
     classify_intent(product_name).action_required AS action_required,
     embed_text(product_name) AS embedding,
     count_tokens(product_name) AS token_count
-FROM product_names;
+FROM products;
 ```
 
 Example Output (structure might vary slightly):
 
-| id            | product_name                     | flavor    | translation                 | sentiment | sentiment_confidence | intent           | action_required     | embedding              | token_count |
-| ------------- | -------------------------------- | --------- | --------------------------- | --------- | -------------------- | ---------------- | ------------------- | ---------------------- | ----------- |
-| 4414732714624 | Cafe Mocha Smoothie (Trial Size) | Mocha     | {en: ..., fr: ..., ja: ...} | positive  | 0.92                 | seek_information | provide_information | [0.1, -0.2, ..., 0.5]  | 8           |
-| 4200162318339 | Dark Chocolate Tea (New Product) | Chocolate | {en: ..., fr: ..., ja: ...} | neutral   | 0.87                 | seek_information | provide_information | [-0.3, 0.1, ..., -0.1] | 7           |
-| 4920122084098 | Uji Matcha Tea (New Product)     | Matcha    | {en: ..., fr: ..., ja: ...} | positive  | 0.89                 | seek_information | provide_information | [0.0, 0.4, ..., 0.2]   | 8           |
+| id   | product_name              | brand   | translation                 | sentiment | sentiment_confidence | intent           | action_required     | embedding              | token_count |
+| ---- | ------------------------- | ------- | --------------------------- | --------- | -------------------- | ---------------- | ------------------- | ---------------------- | ----------- |
+| 1001 | iPhone 15 Pro Max         | Apple   | {en: ..., fr: ..., ja: ...} | positive  | 0.92                 | seek_information | provide_information | [0.1, -0.2, ..., 0.5]  | 5           |
+| 1002 | Samsung Galaxy S24 Ultra  | Samsung | {en: ..., fr: ..., ja: ...} | positive  | 0.88                 | seek_information | provide_information | [-0.3, 0.1, ..., -0.1] | 6           |
+| 1003 | Google Pixel 8 Pro        | Google  | {en: ..., fr: ..., ja: ...} | positive  | 0.90                 | seek_information | provide_information | [0.0, 0.4, ..., 0.2]   | 5           |
 
 ### Spark Performance Tuning
 
