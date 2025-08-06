@@ -46,10 +46,9 @@ import tiktoken
 from openai import AsyncOpenAI, OpenAI
 from pydantic import BaseModel
 
-from .di import Container
 from .embeddings import AsyncBatchEmbeddings, BatchEmbeddings
 from .model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
-from .provider import provide_async_openai_client, provide_openai_client
+from .provider import CONTAINER
 from .responses import AsyncBatchResponses, BatchResponses
 from .task.table import FillNaResponse, fillna
 
@@ -65,27 +64,6 @@ _LOGGER = logging.getLogger(__name__)
 
 T = TypeVar("T")  # For pipe function return type
 
-_DI = Container()
-_DI.register(OpenAI, provide_openai_client)
-_DI.register(AsyncOpenAI, provide_async_openai_client)
-_DI.register(ResponsesModelName, lambda: ResponsesModelName("gpt-4.1-mini"))
-_DI.register(EmbeddingsModelName, lambda: EmbeddingsModelName("text-embedding-3-small"))
-
-
-def _provide_tiktoken_encoding() -> tiktoken.Encoding:
-    model_name = _DI.resolve(ResponsesModelName).value
-    try:
-        return tiktoken.encoding_for_model(model_name)
-    except KeyError:
-        _LOGGER.info(
-            "The model name '%s' is not supported by tiktoken. Using 'o200k_base' encoding instead.",
-            model_name,
-        )
-        return tiktoken.get_encoding("o200k_base")
-
-
-_DI.register(tiktoken.Encoding, _provide_tiktoken_encoding)
-
 
 def use(client: OpenAI) -> None:
     """Register a custom OpenAI‑compatible client.
@@ -95,7 +73,7 @@ def use(client: OpenAI) -> None:
             `openai.AzureOpenAI` instance.
             The same instance is reused by every helper in this module.
     """
-    _DI.register(OpenAI, lambda: client)
+    CONTAINER.register(OpenAI, lambda: client)
 
 
 def use_async(client: AsyncOpenAI) -> None:
@@ -106,7 +84,7 @@ def use_async(client: AsyncOpenAI) -> None:
             `openai.AsyncAzureOpenAI` instance.
             The same instance is reused by every helper in this module.
     """
-    _DI.register(AsyncOpenAI, lambda: client)
+    CONTAINER.register(AsyncOpenAI, lambda: client)
 
 
 def responses_model(name: str) -> None:
@@ -116,8 +94,7 @@ def responses_model(name: str) -> None:
         name (str): Model name as listed in the OpenAI API
             (for example, ``gpt-4.1-mini``).
     """
-    _DI.register(ResponsesModelName, lambda: ResponsesModelName(name))
-    _DI.register(tiktoken.Encoding, _provide_tiktoken_encoding)
+    CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName(name))
 
 
 def embeddings_model(name: str) -> None:
@@ -126,7 +103,7 @@ def embeddings_model(name: str) -> None:
     Args:
         name (str): Embedding model name, e.g. ``text-embedding-3-small``.
     """
-    _DI.register(EmbeddingsModelName, lambda: EmbeddingsModelName(name))
+    CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName(name))
 
 
 def _extract_value(x, series_name):
@@ -193,8 +170,8 @@ class OpenAIVecSeriesAccessor:
             pandas.Series: Series whose values are instances of ``response_format``.
         """
         client: BatchResponses = BatchResponses(
-            client=_DI.resolve(OpenAI),
-            model_name=_DI.resolve(ResponsesModelName).value,
+            client=CONTAINER.resolve(OpenAI),
+            model_name=CONTAINER.resolve(ResponsesModelName).value,
             system_message=instructions,
             response_format=response_format,
             temperature=temperature,
@@ -238,7 +215,7 @@ class OpenAIVecSeriesAccessor:
                 response format, aligned with the original Series index.
         """
         client = BatchResponses.of_task(
-            client=_DI.resolve(OpenAI), model_name=_DI.resolve(ResponsesModelName).value, task=task
+            client=CONTAINER.resolve(OpenAI), model_name=CONTAINER.resolve(ResponsesModelName).value, task=task
         )
 
         return pd.Series(
@@ -269,8 +246,8 @@ class OpenAIVecSeriesAccessor:
                 (dtype ``float32``).
         """
         client: BatchEmbeddings = BatchEmbeddings(
-            client=_DI.resolve(OpenAI),
-            model_name=_DI.resolve(EmbeddingsModelName).value,
+            client=CONTAINER.resolve(OpenAI),
+            model_name=CONTAINER.resolve(EmbeddingsModelName).value,
         )
 
         return pd.Series(
@@ -293,7 +270,7 @@ class OpenAIVecSeriesAccessor:
         Returns:
             pandas.Series: Token counts for each element.
         """
-        encoding: tiktoken.Encoding = _DI.resolve(tiktoken.Encoding)
+        encoding: tiktoken.Encoding = CONTAINER.resolve(tiktoken.Encoding)
         return self._obj.map(encoding.encode).map(len).rename("num_tokens")
 
     def extract(self) -> pd.DataFrame:
@@ -572,8 +549,8 @@ class AsyncOpenAIVecSeriesAccessor:
             This is an asynchronous method and must be awaited.
         """
         client: AsyncBatchResponses = AsyncBatchResponses(
-            client=_DI.resolve(AsyncOpenAI),
-            model_name=_DI.resolve(ResponsesModelName).value,
+            client=CONTAINER.resolve(AsyncOpenAI),
+            model_name=CONTAINER.resolve(ResponsesModelName).value,
             system_message=instructions,
             response_format=response_format,
             temperature=temperature,
@@ -618,8 +595,8 @@ class AsyncOpenAIVecSeriesAccessor:
             This is an asynchronous method and must be awaited.
         """
         client: AsyncBatchEmbeddings = AsyncBatchEmbeddings(
-            client=_DI.resolve(AsyncOpenAI),
-            model_name=_DI.resolve(EmbeddingsModelName).value,
+            client=CONTAINER.resolve(AsyncOpenAI),
+            model_name=CONTAINER.resolve(EmbeddingsModelName).value,
             max_concurrency=max_concurrency,
         )
 
@@ -669,8 +646,8 @@ class AsyncOpenAIVecSeriesAccessor:
             This is an asynchronous method and must be awaited.
         """
         client = AsyncBatchResponses.of_task(
-            client=_DI.resolve(AsyncOpenAI),
-            model_name=_DI.resolve(ResponsesModelName).value,
+            client=CONTAINER.resolve(AsyncOpenAI),
+            model_name=CONTAINER.resolve(ResponsesModelName).value,
             task=task,
             max_concurrency=max_concurrency,
         )

@@ -76,3 +76,21 @@ CONTAINER.register(
 CONTAINER.register(OpenAI, provide_openai_client)
 CONTAINER.register(AsyncOpenAI, provide_async_openai_client)
 CONTAINER.register(tiktoken.Encoding, lambda: tiktoken.get_encoding("o200k_base"))
+
+
+def reset_environment_registrations():
+    """Reset environment variable related registrations in the container.
+
+    This function re-registers environment variable dependent services to pick up
+    current environment variable values. Useful for testing when environment
+    variables are changed after initial container setup.
+    """
+    CONTAINER.register(OpenAIAPIKey, lambda: OpenAIAPIKey(os.getenv("OPENAI_API_KEY")))
+    CONTAINER.register(AzureOpenAIAPIKey, lambda: AzureOpenAIAPIKey(os.getenv("AZURE_OPENAI_API_KEY")))
+    CONTAINER.register(AzureOpenAIEndpoint, lambda: AzureOpenAIEndpoint(os.getenv("AZURE_OPENAI_API_ENDPOINT")))
+    CONTAINER.register(
+        cls=AzureOpenAIAPIVersion,
+        provider=lambda: AzureOpenAIAPIVersion(os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview")),
+    )
+    CONTAINER.register(OpenAI, provide_openai_client)
+    CONTAINER.register(AsyncOpenAI, provide_async_openai_client)
