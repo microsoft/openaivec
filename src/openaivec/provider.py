@@ -12,6 +12,7 @@ from openaivec.model import (
     OpenAIAPIKey,
     ResponsesModelName,
 )
+from openaivec.util import TextChunker
 
 CONTAINER = di.Container()
 
@@ -76,6 +77,7 @@ CONTAINER.register(
 CONTAINER.register(OpenAI, provide_openai_client)
 CONTAINER.register(AsyncOpenAI, provide_async_openai_client)
 CONTAINER.register(tiktoken.Encoding, lambda: tiktoken.get_encoding("o200k_base"))
+CONTAINER.register(TextChunker, lambda: TextChunker(CONTAINER.resolve(tiktoken.Encoding)))
 
 
 def reset_environment_registrations():
