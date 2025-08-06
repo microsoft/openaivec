@@ -1,14 +1,14 @@
 import asyncio
 from dataclasses import dataclass, field
 from logging import Logger, getLogger
-from typing import Generic, List, Type, TypeVar, cast
+from typing import Generic, List, Type, cast
 
 from openai import AsyncOpenAI, OpenAI, RateLimitError
 from openai.types.responses import ParsedResponse
 from pydantic import BaseModel
 
 from .log import observe
-from .model import PreparedTask
+from .model import PreparedTask, ResponseFormat
 from .util import backoff, backoff_async, map, map_async
 
 __all__ = [
@@ -85,24 +85,23 @@ def _vectorize_system_message(system_message: str) -> str:
 """
 
 
-T = TypeVar("T")
 
 
-class Message(BaseModel, Generic[T]):
+class Message(BaseModel, Generic[ResponseFormat]):
     id: int
-    body: T
+    body: ResponseFormat
 
 
 class Request(BaseModel):
     user_messages: List[Message[str]]
 
 
-class Response(BaseModel, Generic[T]):
-    assistant_messages: List[Message[T]]
+class Response(BaseModel, Generic[ResponseFormat]):
+    assistant_messages: List[Message[ResponseFormat]]
 
 
 @dataclass(frozen=True)
-class BatchResponses(Generic[T]):
+class BatchResponses(Generic[ResponseFormat]):
     """Stateless façade that turns OpenAI's JSON‑mode API into a batched API.
 
     This wrapper allows you to submit *multiple* user prompts in one JSON‑mode
@@ -139,7 +138,7 @@ class BatchResponses(Generic[T]):
     system_message: str
     temperature: float = 0.0
     top_p: float = 1.0
-    response_format: Type[T] = str
+    response_format: Type[ResponseFormat] = str
     _vectorized_system_message: str = field(init=False)
     _model_json_schema: dict = field(init=False)
 
@@ -164,7 +163,7 @@ class BatchResponses(Generic[T]):
 
     @observe(_LOGGER)
     @backoff(exception=RateLimitError, scale=15, max_retries=8)
-    def _request_llm(self, user_messages: List[Message[str]]) -> ParsedResponse[Response[T]]:
+    def _request_llm(self, user_messages: List[Message[str]]) -> ParsedResponse[Response[ResponseFormat]]:
         """Make a single call to the OpenAI *JSON mode* endpoint.
 
         Args:
@@ -173,7 +172,7 @@ class BatchResponses(Generic[T]):
                 so we can restore ordering later.
 
         Returns:
-            ParsedResponse containing `Response[T]` which in turn holds the
+            ParsedResponse containing `Response[ResponseFormat]` which in turn holds the
             assistant messages in arbitrary order.
 
         Raises:
@@ -197,10 +196,10 @@ class BatchResponses(Generic[T]):
             top_p=self.top_p,
             text_format=ResponseT,
         )
-        return cast(ParsedResponse[Response[T]], completion)
+        return cast(ParsedResponse[Response[ResponseFormat]], completion)
 
     @observe(_LOGGER)
-    def _predict_chunk(self, user_messages: List[str]) -> List[T]:
+    def _predict_chunk(self, user_messages: List[str]) -> List[ResponseFormat]:
         """Helper executed for every unique minibatch.
 
         This method:
@@ -213,13 +212,13 @@ class BatchResponses(Generic[T]):
         serial and parallel execution paths.
         """
         messages = [Message(id=i, body=message) for i, message in enumerate(user_messages)]
-        responses: ParsedResponse[Response[T]] = self._request_llm(messages)
+        responses: ParsedResponse[Response[ResponseFormat]] = self._request_llm(messages)
         response_dict = {message.id: message.body for message in responses.output_parsed.assistant_messages}
         sorted_responses = [response_dict.get(m.id, None) for m in messages]
         return sorted_responses
 
     @observe(_LOGGER)
-    def parse(self, inputs: List[str], batch_size: int) -> List[T]:
+    def parse(self, inputs: List[str], batch_size: int) -> List[ResponseFormat]:
         """Public API: batched predict.
 
         Args:
@@ -235,7 +234,7 @@ class BatchResponses(Generic[T]):
 
 
 @dataclass(frozen=True)
-class AsyncBatchResponses(Generic[T]):
+class AsyncBatchResponses(Generic[ResponseFormat]):
     """Stateless façade that turns OpenAI's JSON-mode API into a batched API (Async version).
 
     This wrapper allows you to submit *multiple* user prompts in one JSON-mode
@@ -283,7 +282,7 @@ class AsyncBatchResponses(Generic[T]):
     system_message: str
     temperature: float = 0.0
     top_p: float = 1.0
-    response_format: Type[T] = str
+    response_format: Type[ResponseFormat] = str
     max_concurrency: int = 8  # Default concurrency limit
     _vectorized_system_message: str = field(init=False)
     _model_json_schema: dict = field(init=False)
@@ -316,7 +315,7 @@ class AsyncBatchResponses(Generic[T]):
 
     @observe(_LOGGER)
     @backoff_async(exception=RateLimitError, scale=15, max_retries=8)
-    async def _request_llm(self, user_messages: List[Message[str]]) -> ParsedResponse[Response[T]]:
+    async def _request_llm(self, user_messages: List[Message[str]]) -> ParsedResponse[Response[ResponseFormat]]:
         """Make a single async call to the OpenAI *JSON mode* endpoint, respecting concurrency limits.
 
         Args:
@@ -325,7 +324,7 @@ class AsyncBatchResponses(Generic[T]):
                 so we can restore ordering later.
 
         Returns:
-            ParsedResponse containing `Response[T]` which in turn holds the
+            ParsedResponse containing `Response[ResponseFormat]` which in turn holds the
             assistant messages in arbitrary order.
 
         Raises:
@@ -352,10 +351,10 @@ class AsyncBatchResponses(Generic[T]):
                 top_p=self.top_p,
                 text_format=ResponseT,
             )
-            return cast(ParsedResponse[Response[T]], completion)
+            return cast(ParsedResponse[Response[ResponseFormat]], completion)
 
     @observe(_LOGGER)
-    async def _predict_chunk(self, user_messages: List[str]) -> List[T]:
+    async def _predict_chunk(self, user_messages: List[str]) -> List[ResponseFormat]:
         """Helper executed asynchronously for every unique minibatch.
 
         This method:
@@ -367,14 +366,14 @@ class AsyncBatchResponses(Generic[T]):
         only on its arguments.
         """
         messages = [Message(id=i, body=message) for i, message in enumerate(user_messages)]
-        responses: ParsedResponse[Response[T]] = await self._request_llm(messages)
+        responses: ParsedResponse[Response[ResponseFormat]] = await self._request_llm(messages)
         response_dict = {message.id: message.body for message in responses.output_parsed.assistant_messages}
         # Ensure proper handling for missing IDs - this shouldn't happen in normal operation
         sorted_responses = [response_dict.get(m.id, None) for m in messages]
         return sorted_responses
 
     @observe(_LOGGER)
-    async def parse(self, inputs: List[str], batch_size: int) -> List[T]:
+    async def parse(self, inputs: List[str], batch_size: int) -> List[ResponseFormat]:
         """Asynchronous public API: batched predict.
 
         Args:

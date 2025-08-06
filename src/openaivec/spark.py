@@ -104,7 +104,7 @@ Note: This module provides asynchronous support through the pandas extensions.
 import asyncio
 import logging
 from enum import Enum
-from typing import Dict, Iterator, List, Optional, Type, TypeVar, Union, get_args, get_origin
+from typing import Dict, Iterator, List, Optional, Type, Union, get_args, get_origin
 
 import pandas as pd
 import tiktoken
@@ -115,7 +115,7 @@ from pyspark.sql.udf import UserDefinedFunction
 from typing_extensions import Literal
 
 from . import pandas_ext
-from .model import PreparedTask
+from .model import PreparedTask, ResponseFormat
 from .serialize import deserialize_base_model, serialize_base_model
 from .util import TextChunker
 
@@ -128,7 +128,6 @@ __all__ = [
     "similarity_udf",
 ]
 
-T = TypeVar("T", bound=BaseModel)
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 _TIKTOKEN_ENC: tiktoken.Encoding | None = None
@@ -213,7 +212,7 @@ def _safe_dump(x: Optional[BaseModel]) -> Dict:
 
 def responses_udf(
     instructions: str,
-    response_format: Type[T] = str,
+    response_format: Type[ResponseFormat] = str,
     model_name: str = "gpt-4.1-mini",
     batch_size: int = 128,
     temperature: float = 0.0,
@@ -239,7 +238,7 @@ def responses_udf(
 
     Args:
         instructions (str): The system prompt or instructions for the model.
-        response_format (Type[T]): The desired output format. Either `str` for plain text
+        response_format (Type[ResponseFormat]): The desired output format. Either `str` for plain text
             or a Pydantic `BaseModel` for structured JSON output. Defaults to `str`.
         model_name (str): Deployment name (Azure) or model name (OpenAI) for responses.
             Defaults to "gpt-4.1-mini".
