@@ -146,10 +146,19 @@ print(result)  # Expected output: ['bear family', 'rabbit family', 'koala family
 The easiest way to get started with your DataFrames:
 
 ```python
+import os
 import pandas as pd
 from openaivec import pandas_ext
 
-# Setup (optional - uses OPENAI_API_KEY environment variable by default)
+# Authentication: Set your API key as an environment variable before running
+# For OpenAI:
+os.environ["OPENAI_API_KEY"] = "your-api-key-here"
+# Or for Azure OpenAI:
+# os.environ["AZURE_OPENAI_API_KEY"] = "your-azure-key"
+# os.environ["AZURE_OPENAI_API_ENDPOINT"] = "https://<your-resource-name>.services.ai.azure.com"
+# os.environ["AZURE_OPENAI_API_VERSION"] = "2024-10-21"
+
+# Setup (optional - uses environment variables for authentication by default)
 pandas_ext.responses_model("gpt-4.1-mini")
 
 # Create your data
@@ -206,7 +215,7 @@ extracted_results = (results
 
 **Available Task Categories:**
 
-- **Text Analysis**: `nlp.SENTIMENT_ANALYSIS`, `nlp.TRANSLATION`, `nlp.NAMED_ENTITY_RECOGNITION`, `nlp.KEYWORD_EXTRACTION`
+- **Text Analysis**: `nlp.SENTIMENT_ANALYSIS`, `nlp.MULTILINGUAL_TRANSLATION`, `nlp.NAMED_ENTITY_RECOGNITION`, `nlp.KEYWORD_EXTRACTION`
 - **Content Classification**: `customer_support.INTENT_ANALYSIS`, `customer_support.URGENCY_ANALYSIS`, `customer_support.INQUIRY_CLASSIFICATION`
 
 **Benefits of Pre-configured Tasks:**
@@ -619,7 +628,7 @@ steps:
 
      # Configure Azure OpenAI authentication
      sc.environment["AZURE_OPENAI_API_KEY"] = "<your-api-key>"
-     sc.environment["AZURE_OPENAI_API_ENDPOINT"] = "https://<your-resource-name>.openai.azure.com"
+     sc.environment["AZURE_OPENAI_API_ENDPOINT"] = "https://<your-resource-name>.services.ai.azure.com"
      sc.environment["AZURE_OPENAI_API_VERSION"] = "2024-10-21"
 
      # Register UDFs
