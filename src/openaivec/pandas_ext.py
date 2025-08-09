@@ -18,7 +18,7 @@ pandas_ext.use(client)
 azure_client = AzureOpenAI(
     api_key="your-azure-key",
     azure_endpoint="https://<your-resource-name>.services.ai.azure.com",
-    api_version="2024-02-01"
+    api_version="2025-04-01-preview"
 )
 pandas_ext.use(azure_client)
 

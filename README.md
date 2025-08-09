@@ -156,7 +156,7 @@ os.environ["OPENAI_API_KEY"] = "your-api-key-here"
 # Or for Azure OpenAI:
 # os.environ["AZURE_OPENAI_API_KEY"] = "your-azure-key"
 # os.environ["AZURE_OPENAI_API_ENDPOINT"] = "https://<your-resource-name>.services.ai.azure.com"
-# os.environ["AZURE_OPENAI_API_VERSION"] = "2024-10-21"
+# os.environ["AZURE_OPENAI_API_VERSION"] = "2025-04-01-preview"
 
 # Authentication Option 2: Custom client (optional)
 # from openai import OpenAI, AsyncOpenAI
@@ -635,7 +635,7 @@ steps:
      # Configure Azure OpenAI authentication
      sc.environment["AZURE_OPENAI_API_KEY"] = "<your-api-key>"
      sc.environment["AZURE_OPENAI_API_ENDPOINT"] = "https://<your-resource-name>.services.ai.azure.com"
-     sc.environment["AZURE_OPENAI_API_VERSION"] = "2024-10-21"
+     sc.environment["AZURE_OPENAI_API_VERSION"] = "2025-04-01-preview"
 
      # Register UDFs
      spark.udf.register(

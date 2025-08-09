@@ -61,7 +61,7 @@ class TestProvideOpenAIClient(unittest.TestCase):
         self.set_env_and_reset(
             AZURE_OPENAI_API_KEY="test-azure-key",
             AZURE_OPENAI_API_ENDPOINT="https://test.openai.azure.com",
-            AZURE_OPENAI_API_VERSION="2024-02-01",
+            AZURE_OPENAI_API_VERSION="2025-04-01-preview",
         )
 
         client = provide_openai_client()
@@ -74,7 +74,7 @@ class TestProvideOpenAIClient(unittest.TestCase):
             OPENAI_API_KEY="test-key",
             AZURE_OPENAI_API_KEY="test-azure-key",
             AZURE_OPENAI_API_ENDPOINT="https://test.openai.azure.com",
-            AZURE_OPENAI_API_VERSION="2024-02-01",
+            AZURE_OPENAI_API_VERSION="2025-04-01-preview",
         )
 
         client = provide_openai_client()
@@ -84,7 +84,7 @@ class TestProvideOpenAIClient(unittest.TestCase):
     def test_provide_openai_client_with_incomplete_azure_config(self):
         """Test error when Azure config is incomplete - missing API key."""
         self.set_env_and_reset(
-            AZURE_OPENAI_API_ENDPOINT="https://test.openai.azure.com", AZURE_OPENAI_API_VERSION="2024-02-01"
+            AZURE_OPENAI_API_ENDPOINT="https://test.openai.azure.com", AZURE_OPENAI_API_VERSION="2025-04-01-preview"
         )
         # Missing AZURE_OPENAI_API_KEY
 
@@ -122,7 +122,7 @@ class TestProvideOpenAIClient(unittest.TestCase):
             OPENAI_API_KEY="",
             AZURE_OPENAI_API_KEY="test-azure-key",
             AZURE_OPENAI_API_ENDPOINT="https://test.openai.azure.com",
-            AZURE_OPENAI_API_VERSION="2024-02-01",
+            AZURE_OPENAI_API_VERSION="2025-04-01-preview",
         )
 
         client = provide_openai_client()
@@ -133,7 +133,7 @@ class TestProvideOpenAIClient(unittest.TestCase):
         """Test that empty Azure keys are treated as not set."""
         os.environ["AZURE_OPENAI_API_KEY"] = ""
         os.environ["AZURE_OPENAI_API_ENDPOINT"] = "https://test.openai.azure.com"
-        os.environ["AZURE_OPENAI_API_VERSION"] = "2024-02-01"
+        os.environ["AZURE_OPENAI_API_VERSION"] = "2025-04-01-preview"
 
         with self.assertRaises(ValueError):
             provide_openai_client()
@@ -194,7 +194,7 @@ class TestProvideAsyncOpenAIClient(unittest.TestCase):
         self.set_env_and_reset(
             AZURE_OPENAI_API_KEY="test-azure-key",
             AZURE_OPENAI_API_ENDPOINT="https://test.openai.azure.com",
-            AZURE_OPENAI_API_VERSION="2024-02-01",
+            AZURE_OPENAI_API_VERSION="2025-04-01-preview",
         )
 
         client = provide_async_openai_client()
@@ -207,7 +207,7 @@ class TestProvideAsyncOpenAIClient(unittest.TestCase):
             OPENAI_API_KEY="test-key",
             AZURE_OPENAI_API_KEY="test-azure-key",
             AZURE_OPENAI_API_ENDPOINT="https://test.openai.azure.com",
-            AZURE_OPENAI_API_VERSION="2024-02-01",
+            AZURE_OPENAI_API_VERSION="2025-04-01-preview",
         )
 
         client = provide_async_openai_client()
@@ -216,7 +216,7 @@ class TestProvideAsyncOpenAIClient(unittest.TestCase):
 
     def test_provide_async_openai_client_with_incomplete_azure_config(self):
         """Test error when Azure config is incomplete - missing endpoint."""
-        self.set_env_and_reset(AZURE_OPENAI_API_KEY="test-azure-key", AZURE_OPENAI_API_VERSION="2024-02-01")
+        self.set_env_and_reset(AZURE_OPENAI_API_KEY="test-azure-key", AZURE_OPENAI_API_VERSION="2025-04-01-preview")
         # Missing AZURE_OPENAI_API_ENDPOINT
 
         with self.assertRaises(ValueError) as context:
@@ -253,7 +253,7 @@ class TestProvideAsyncOpenAIClient(unittest.TestCase):
             OPENAI_API_KEY="",
             AZURE_OPENAI_API_KEY="test-azure-key",
             AZURE_OPENAI_API_ENDPOINT="https://test.openai.azure.com",
-            AZURE_OPENAI_API_VERSION="2024-02-01",
+            AZURE_OPENAI_API_VERSION="2025-04-01-preview",
         )
 
         client = provide_async_openai_client()
@@ -265,7 +265,7 @@ class TestProvideAsyncOpenAIClient(unittest.TestCase):
         self.set_env_and_reset(
             AZURE_OPENAI_API_KEY="",
             AZURE_OPENAI_API_ENDPOINT="https://test.openai.azure.com",
-            AZURE_OPENAI_API_VERSION="2024-02-01",
+            AZURE_OPENAI_API_VERSION="2025-04-01-preview",
         )
 
         with self.assertRaises(ValueError):
@@ -331,7 +331,7 @@ class TestProviderIntegration(unittest.TestCase):
         self.set_env_and_reset(
             AZURE_OPENAI_API_KEY="test-azure-key",
             AZURE_OPENAI_API_ENDPOINT="https://test.openai.azure.com",
-            AZURE_OPENAI_API_VERSION="2024-02-01",
+            AZURE_OPENAI_API_VERSION="2025-04-01-preview",
         )
 
         sync_client = provide_openai_client()
@@ -345,7 +345,7 @@ class TestProviderIntegration(unittest.TestCase):
         self.set_env_and_reset(
             AZURE_OPENAI_API_KEY="test-azure-key",
             AZURE_OPENAI_API_ENDPOINT="https://test.openai.azure.com",
-            AZURE_OPENAI_API_VERSION="2024-02-01",
+            AZURE_OPENAI_API_VERSION="2025-04-01-preview",
         )
 
         sync_client = provide_openai_client()
