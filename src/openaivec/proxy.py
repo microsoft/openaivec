@@ -60,13 +60,21 @@ class ProxyBase(Generic[S, T]):
 class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     """Thread-safe local proxy that caches results of a mapping function.
 
-    This proxy batches calls to the provided ``map_func`` (if ``batch_size`` is set),
+    This proxy batches calls to the ``map_func`` you pass to ``map()`` (if
+    ``batch_size`` is set),
     deduplicates inputs while preserving order, and ensures that concurrent calls do
     not duplicate work via an in-flight registry. All public behavior is preserved
     while minimizing redundant requests and maintaining input order in the output.
+
+    Example:
+        >>> from typing import List
+        >>> p = BatchingMapProxy[int, str](batch_size=3)
+        >>> def f(xs: List[int]) -> List[str]:
+        ...     return [f"v:{x}" for x in xs]
+        >>> p.map([1, 2, 2, 3, 4], f)
+        ['v:1', 'v:2', 'v:2', 'v:3', 'v:4']
     """
 
-    map_func: Callable[[List[S]], List[T]]
     # Number of items to process per call to map_func. If None or <= 0, process all at once.
     batch_size: Optional[int] = None
     __cache: Dict[S, T] = field(default_factory=dict)
@@ -164,7 +172,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                 if ev:
                     ev.set()
 
-    def __process_owned(self, owned: List[S]) -> None:
+    def __process_owned(self, owned: List[S], map_func: Callable[[List[S]], List[T]]) -> None:
         """Process owned items in mini-batches and fill the cache.
 
         Before calling ``map_func`` for each batch, the cache is re-checked
@@ -190,13 +198,13 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             if not to_call:
                 continue
             try:
-                results = self.map_func(to_call)
+                results = map_func(to_call)
             except Exception:
                 self.__finalize_failure(to_call)
                 raise
             self.__finalize_success(to_call, results)
 
-    def __try_compute_single(self, x: S) -> None:
+    def __try_compute_single(self, x: S, map_func: Callable[[List[S]], List[T]]) -> None:
         """Compute a single missing key when no one else is in-flight.
 
         This is used as a race-recovery path when a key is neither cached nor
@@ -214,7 +222,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             if x not in self.__inflight:
                 self.__inflight[x] = threading.Event()
         try:
-            result = self.map_func([x])[0]
+            result = map_func([x])[0]
         except Exception:
             with self.__lock:
                 ev = self.__inflight.pop(x, None)
@@ -227,7 +235,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             if ev:
                 ev.set()
 
-    def __wait_for(self, keys: List[S]) -> None:
+    def __wait_for(self, keys: List[S], map_func: Callable[[List[S]], List[T]]) -> None:
         """Wait for other threads to complete computations for the given keys.
 
         If a key is neither cached nor in-flight, this method attempts to compute
@@ -246,11 +254,11 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                     ev.wait()
                 else:
                     # No inflight and not cached; try compute here.
-                    self.__try_compute_single(x)
+                    self.__try_compute_single(x, map_func)
                     break
 
     # ---- public API ------------------------------------------------------
-    def map(self, items: List[S]) -> List[T]:
+    def map(self, items: List[S], map_func: Callable[[List[S]], List[T]]) -> List[T]:
         """Map ``items`` to values using caching and optional mini-batching.
 
         This method is thread-safe. It deduplicates inputs while preserving order,
@@ -260,6 +268,9 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
 
         Args:
             items (list[S]): Input items to map.
+            map_func (Callable[[list[S]], list[T]]): Function that maps a batch of
+                items to their corresponding results. Must return results in the
+                same order as inputs.
 
         Returns:
             list[T]: Mapped values corresponding to ``items`` in the same order.
@@ -273,8 +284,8 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         unique_items = self.__unique_in_order(items)
         owned, wait_for = self.__acquire_ownership(unique_items)
 
-        self.__process_owned(owned)
-        self.__wait_for(wait_for)
+        self.__process_owned(owned, map_func)
+        self.__wait_for(wait_for, map_func)
 
         return self.__values(items)
 
@@ -283,13 +294,25 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
 class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     """Asynchronous version of BatchingMapProxy for use with async functions.
 
-    This proxy accepts an async ``map_func`` that may perform I/O and awaits it
+    The ``map()`` method accepts an async ``map_func`` that may perform I/O and
+    awaits it
     in mini-batches. It deduplicates inputs, maintains cache consistency, and
     coordinates concurrent coroutines to avoid duplicate work via an in-flight
     registry of asyncio events.
+
+    Example:
+        >>> import asyncio
+        >>> from typing import List
+        >>> p = AsyncBatchingMapProxy[int, str](batch_size=2)
+        >>> async def af(xs: List[int]) -> List[str]:
+        ...     await asyncio.sleep(0)
+        ...     return [f"v:{x}" for x in xs]
+        >>> async def run():
+        ...     return await p.map([1, 2, 3], af)
+        >>> asyncio.run(run())
+        ['v:1', 'v:2', 'v:3']
     """
 
-    map_func: Callable[[List[S]], Awaitable[List[T]]]
     batch_size: Optional[int] = None
     max_concurrency: int = 8
 
@@ -403,7 +426,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                 if ev:
                     ev.set()
 
-    async def __process_owned(self, owned: List[S]) -> None:
+    async def __process_owned(self, owned: List[S], map_func: Callable[[List[S]], Awaitable[List[T]]]) -> None:
         """Process owned keys in mini-batches, re-checking cache before awaits.
 
         Before calling ``map_func`` for each batch, the cache is re-checked to
@@ -430,7 +453,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             try:
                 if self.__sema:
                     await self.__sema.acquire()
-                results = await self.map_func(to_call)
+                results = await map_func(to_call)
             except Exception:
                 if self.__sema:
                     self.__sema.release()
@@ -441,7 +464,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                     self.__sema.release()
             await self.__finalize_success(to_call, results)
 
-    async def __try_compute_single(self, x: S) -> None:
+    async def __try_compute_single(self, x: S, map_func: Callable[[List[S]], Awaitable[List[T]]]) -> None:
         """Compute a single missing key when no one else is in-flight.
 
         This is a race-recovery path invoked when a key is neither cached nor
@@ -461,7 +484,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         try:
             if self.__sema:
                 await self.__sema.acquire()
-            result = (await self.map_func([x]))[0]
+            result = (await map_func([x]))[0]
         except Exception:
             if self.__sema:
                 self.__sema.release()
@@ -479,7 +502,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             if ev:
                 ev.set()
 
-    async def __wait_for(self, keys: List[S]) -> None:
+    async def __wait_for(self, keys: List[S], map_func: Callable[[List[S]], Awaitable[List[T]]]) -> None:
         """Wait for computations owned by other coroutines to complete.
 
         If a key is neither cached nor in-flight, this method attempts to compute
@@ -498,15 +521,17 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                     await ev.wait()
                 else:
                     # No inflight and not cached; compute inline
-                    await self.__try_compute_single(x)
+                    await self.__try_compute_single(x, map_func)
                     break
 
     # ---- public API ------------------------------------------------------
-    async def map(self, items: List[S]) -> List[T]:
+    async def map(self, items: List[S], map_func: Callable[[List[S]], Awaitable[List[T]]]) -> List[T]:
         """Async map with caching, de-duplication, and optional mini-batching.
 
         Args:
             items (list[S]): Input items to map.
+            map_func (Callable[[list[S]], Awaitable[list[T]]]): Async function that
+                maps a batch of items to their results, preserving input order.
 
         Returns:
             list[T]: Mapped values corresponding to ``items`` in the same order.
@@ -517,7 +542,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         unique_items = self.__unique_in_order(items)
         owned, wait_for = await self.__acquire_ownership(unique_items)
 
-        await self.__process_owned(owned)
-        await self.__wait_for(wait_for)
+        await self.__process_owned(owned, map_func)
+        await self.__wait_for(wait_for, map_func)
 
         return await self.__values(items)
