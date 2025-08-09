@@ -9,7 +9,7 @@ T = TypeVar("T")
 
 
 class ProxyBase(Generic[S, T]):
-    """Common utilities shared by LocalProxy and AsyncLocalProxy.
+    """Common utilities shared by BatchingMapProxy and AsyncBatchingMapProxy.
 
     Provides order-preserving deduplication and batch size normalization that
     depend only on ``batch_size`` and do not touch concurrency primitives.
@@ -57,7 +57,7 @@ class ProxyBase(Generic[S, T]):
 
 
 @dataclass
-class LocalProxy(ProxyBase[S, T], Generic[S, T]):
+class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     """Thread-safe local proxy that caches results of a mapping function.
 
     This proxy batches calls to the provided ``map_func`` (if ``batch_size`` is set),
@@ -280,8 +280,8 @@ class LocalProxy(ProxyBase[S, T], Generic[S, T]):
 
 
 @dataclass
-class AsyncLocalProxy(ProxyBase[S, T], Generic[S, T]):
-    """Asynchronous version of LocalProxy for use with async functions.
+class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
+    """Asynchronous version of BatchingMapProxy for use with async functions.
 
     This proxy accepts an async ``map_func`` that may perform I/O and awaits it
     in mini-batches. It deduplicates inputs, maintains cache consistency, and

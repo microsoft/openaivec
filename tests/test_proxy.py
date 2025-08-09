@@ -3,10 +3,10 @@ from __future__ import annotations
 import asyncio
 from typing import List
 
-from openaivec.proxy import LocalProxy
+from openaivec.proxy import BatchingMapProxy
 
 
-def test_localproxy_batches_calls_by_batch_size():
+def test_batching_map_proxy_batches_calls_by_batch_size():
     calls: List[List[int]] = []
 
     def mf(xs: List[int]) -> List[int]:
@@ -14,7 +14,7 @@ def test_localproxy_batches_calls_by_batch_size():
         # echo back values
         return xs
 
-    proxy = LocalProxy[int, int](map_func=mf, batch_size=3)
+    proxy = BatchingMapProxy[int, int](map_func=mf, batch_size=3)
 
     items = list(range(8))  # 0..7
     out = proxy.map(items)
@@ -27,14 +27,14 @@ def test_localproxy_batches_calls_by_batch_size():
     assert calls[2] == [6, 7]
 
 
-def test_localproxy_cache_skips_already_processed_items():
+def test_batching_map_proxy_cache_skips_already_processed_items():
     calls: List[List[int]] = []
 
     def mf(xs: List[int]) -> List[int]:
         calls.append(xs[:])
         return xs
 
-    proxy = LocalProxy[int, int](map_func=mf, batch_size=10)
+    proxy = BatchingMapProxy[int, int](map_func=mf, batch_size=10)
 
     # first call processes 1,2,3
     out1 = proxy.map([1, 2, 3])
@@ -47,14 +47,14 @@ def test_localproxy_cache_skips_already_processed_items():
     assert calls == [[1, 2, 3], [4]]
 
 
-def test_localproxy_default_process_all_at_once_when_no_batch_size():
+def test_batching_map_proxy_default_process_all_at_once_when_no_batch_size():
     calls: List[List[int]] = []
 
     def mf(xs: List[int]) -> List[int]:
         calls.append(xs[:])
         return xs
 
-    proxy = LocalProxy[int, int](map_func=mf)  # batch_size None
+    proxy = BatchingMapProxy[int, int](map_func=mf)  # batch_size None
 
     items = [10, 20, 30, 40]
     out = proxy.map(items)
@@ -63,14 +63,14 @@ def test_localproxy_default_process_all_at_once_when_no_batch_size():
     assert calls[0] == items
 
 
-def test_localproxy_deduplicates_requests_and_batches():
+def test_batching_map_proxy_deduplicates_requests_and_batches():
     calls: List[List[int]] = []
 
     def mf(xs: List[int]) -> List[int]:
         calls.append(xs[:])
         return xs
 
-    proxy = LocalProxy[int, int](map_func=mf, batch_size=3)
+    proxy = BatchingMapProxy[int, int](map_func=mf, batch_size=3)
 
     # inputs contain duplicates; 1 and 2 repeat
     items = [1, 1, 2, 3, 2, 4, 4, 5]
@@ -89,7 +89,7 @@ def test_localproxy_deduplicates_requests_and_batches():
     assert [len(c) for c in calls] == [3, 2]
 
 
-def test_localproxy_rechecks_cache_within_batch_iteration():
+def test_batching_map_proxy_rechecks_cache_within_batch_iteration():
     calls: List[List[int]] = []
 
     def mf(xs: List[int]) -> List[int]:
@@ -98,7 +98,7 @@ def test_localproxy_rechecks_cache_within_batch_iteration():
         calls.append(xs[:])
         return xs
 
-    proxy = LocalProxy[int, int](map_func=mf, batch_size=4)
+    proxy = BatchingMapProxy[int, int](map_func=mf, batch_size=4)
 
     # First call: all unique, expect one call with 4
     out1 = proxy.map([1, 2, 3, 4])
@@ -114,18 +114,18 @@ def test_localproxy_rechecks_cache_within_batch_iteration():
 
 # -------------------- Internal methods tests --------------------
 def test_internal_unique_in_order():
-    from openaivec.proxy import LocalProxy
+    from openaivec.proxy import BatchingMapProxy
 
-    p = LocalProxy[int, int](map_func=lambda xs: xs)
-    uniq = getattr(p, "_LocalProxy__unique_in_order")
+    p = BatchingMapProxy[int, int](map_func=lambda xs: xs)
+    uniq = getattr(p, "_BatchingMapProxy__unique_in_order")
     assert uniq([1, 1, 2, 3, 2, 4]) == [1, 2, 3, 4]
 
 
 def test_internal_normalized_batch_size():
-    from openaivec.proxy import LocalProxy
+    from openaivec.proxy import BatchingMapProxy
 
-    p = LocalProxy[int, int](map_func=lambda xs: xs)
-    nb = getattr(p, "_LocalProxy__normalized_batch_size")
+    p = BatchingMapProxy[int, int](map_func=lambda xs: xs)
+    nb = getattr(p, "_BatchingMapProxy__normalized_batch_size")
     assert nb(5) == 5  # default None => total
     p.batch_size = 0
     assert nb(7) == 7  # non-positive => total
@@ -134,13 +134,13 @@ def test_internal_normalized_batch_size():
 
 
 def test_internal_all_cached_and_values():
-    from openaivec.proxy import LocalProxy
+    from openaivec.proxy import BatchingMapProxy
 
-    p = LocalProxy[int, int](map_func=lambda xs: xs)
+    p = BatchingMapProxy[int, int](map_func=lambda xs: xs)
     # fill cache via public API
     p.map([1, 2, 3])
-    all_cached = getattr(p, "_LocalProxy__all_cached")
-    values = getattr(p, "_LocalProxy__values")
+    all_cached = getattr(p, "_BatchingMapProxy__all_cached")
+    values = getattr(p, "_BatchingMapProxy__values")
     assert all_cached([1, 2]) is True
     assert all_cached([1, 4]) is False
     assert values([3, 2, 1]) == [3, 2, 1]
@@ -149,16 +149,16 @@ def test_internal_all_cached_and_values():
 def test_internal_acquire_ownership():
     import threading
 
-    from openaivec.proxy import LocalProxy
+    from openaivec.proxy import BatchingMapProxy
 
-    p = LocalProxy[int, int](map_func=lambda xs: xs)
+    p = BatchingMapProxy[int, int](map_func=lambda xs: xs)
     # Cache 1; mark 2 inflight; 3 is missing
     p.map([1])
-    inflight = getattr(p, "_LocalProxy__inflight")
-    lock = getattr(p, "_LocalProxy__lock")
+    inflight = getattr(p, "_BatchingMapProxy__inflight")
+    lock = getattr(p, "_BatchingMapProxy__lock")
     with lock:
         inflight[2] = threading.Event()
-    acquire = getattr(p, "_LocalProxy__acquire_ownership")
+    acquire = getattr(p, "_BatchingMapProxy__acquire_ownership")
     owned, wait_for = acquire([1, 2, 3])
     assert owned == [3]
     assert wait_for == [2]
@@ -167,14 +167,14 @@ def test_internal_acquire_ownership():
 def test_internal_finalize_success_and_failure():
     import threading
 
-    from openaivec.proxy import LocalProxy
+    from openaivec.proxy import BatchingMapProxy
 
-    p = LocalProxy[int, int](map_func=lambda xs: xs)
-    inflight = getattr(p, "_LocalProxy__inflight")
-    cache = getattr(p, "_LocalProxy__cache")
-    lock = getattr(p, "_LocalProxy__lock")
-    finalize_success = getattr(p, "_LocalProxy__finalize_success")
-    finalize_failure = getattr(p, "_LocalProxy__finalize_failure")
+    p = BatchingMapProxy[int, int](map_func=lambda xs: xs)
+    inflight = getattr(p, "_BatchingMapProxy__inflight")
+    cache = getattr(p, "_BatchingMapProxy__cache")
+    lock = getattr(p, "_BatchingMapProxy__lock")
+    finalize_success = getattr(p, "_BatchingMapProxy__finalize_success")
+    finalize_failure = getattr(p, "_BatchingMapProxy__finalize_failure")
 
     # success path
     with lock:
@@ -196,7 +196,7 @@ def test_internal_finalize_success_and_failure():
 
 
 def test_internal_process_owned_batches_and_skip_cached():
-    from openaivec.proxy import LocalProxy
+    from openaivec.proxy import BatchingMapProxy
 
     calls: list[list[int]] = []
 
@@ -204,13 +204,13 @@ def test_internal_process_owned_batches_and_skip_cached():
         calls.append(xs[:])
         return xs
 
-    p = LocalProxy[int, int](map_func=mf, batch_size=2)
+    p = BatchingMapProxy[int, int](map_func=mf, batch_size=2)
     # Pre-cache 3 to force skip in second batch
     p.map([3])
     # Reset call log to focus on process_owned invocations
     calls.clear()
-    process_owned = getattr(p, "_LocalProxy__process_owned")
-    cache = getattr(p, "_LocalProxy__cache")
+    process_owned = getattr(p, "_BatchingMapProxy__process_owned")
+    cache = getattr(p, "_BatchingMapProxy__cache")
 
     process_owned([0, 1, 2, 3, 4])
     assert calls[0] == [0, 1]
@@ -222,11 +222,11 @@ def test_internal_process_owned_batches_and_skip_cached():
 
 
 def test_internal_try_compute_single_success():
-    from openaivec.proxy import LocalProxy
+    from openaivec.proxy import BatchingMapProxy
 
-    p = LocalProxy[int, int](map_func=lambda xs: [x * 10 for x in xs])
-    try_single = getattr(p, "_LocalProxy__try_compute_single")
-    cache = getattr(p, "_LocalProxy__cache")
+    p = BatchingMapProxy[int, int](map_func=lambda xs: [x * 10 for x in xs])
+    try_single = getattr(p, "_BatchingMapProxy__try_compute_single")
+    cache = getattr(p, "_BatchingMapProxy__cache")
     try_single(7)
     assert cache[7] == 70
 
@@ -235,13 +235,13 @@ def test_internal_wait_for_with_inflight_event():
     import threading
     import time
 
-    from openaivec.proxy import LocalProxy
+    from openaivec.proxy import BatchingMapProxy
 
-    p = LocalProxy[int, int](map_func=lambda xs: [x * 10 for x in xs])
-    inflight = getattr(p, "_LocalProxy__inflight")
-    cache = getattr(p, "_LocalProxy__cache")
-    lock = getattr(p, "_LocalProxy__lock")
-    wait_for = getattr(p, "_LocalProxy__wait_for")
+    p = BatchingMapProxy[int, int](map_func=lambda xs: [x * 10 for x in xs])
+    inflight = getattr(p, "_BatchingMapProxy__inflight")
+    cache = getattr(p, "_BatchingMapProxy__cache")
+    lock = getattr(p, "_BatchingMapProxy__lock")
+    wait_for = getattr(p, "_BatchingMapProxy__wait_for")
 
     keys = [100, 200]
     with lock:
@@ -264,7 +264,7 @@ def test_internal_wait_for_with_inflight_event():
     assert all(k in cache for k in keys)
 
 
-# -------------------- AsyncLocalProxy tests --------------------
+# -------------------- AsyncBatchingMapProxy tests --------------------
 
 
 async def _afunc_echo(xs: list[int]) -> list[int]:
@@ -273,7 +273,7 @@ async def _afunc_echo(xs: list[int]) -> list[int]:
 
 
 def test_async_localproxy_basic(event_loop=None):
-    from openaivec.proxy import AsyncLocalProxy
+    from openaivec.proxy import AsyncBatchingMapProxy
 
     calls: list[list[int]] = []
 
@@ -281,7 +281,7 @@ def test_async_localproxy_basic(event_loop=None):
         calls.append(xs[:])
         return await _afunc_echo(xs)
 
-    proxy = AsyncLocalProxy[int, int](map_func=af, batch_size=3)
+    proxy = AsyncBatchingMapProxy[int, int](map_func=af, batch_size=3)
 
     async def run():
         out = await proxy.map([1, 2, 3, 4, 5])
@@ -293,7 +293,7 @@ def test_async_localproxy_basic(event_loop=None):
 
 
 def test_async_localproxy_dedup_and_cache(event_loop=None):
-    from openaivec.proxy import AsyncLocalProxy
+    from openaivec.proxy import AsyncBatchingMapProxy
 
     calls: list[list[int]] = []
 
@@ -301,7 +301,7 @@ def test_async_localproxy_dedup_and_cache(event_loop=None):
         calls.append(xs[:])
         return await _afunc_echo(xs)
 
-    proxy = AsyncLocalProxy[int, int](map_func=af, batch_size=10)
+    proxy = AsyncBatchingMapProxy[int, int](map_func=af, batch_size=10)
 
     async def run():
         out1 = await proxy.map([1, 1, 2, 3])
@@ -315,7 +315,7 @@ def test_async_localproxy_dedup_and_cache(event_loop=None):
 
 
 def test_async_localproxy_concurrent_requests(event_loop=None):
-    from openaivec.proxy import AsyncLocalProxy
+    from openaivec.proxy import AsyncBatchingMapProxy
 
     calls: list[list[int]] = []
 
@@ -325,7 +325,7 @@ def test_async_localproxy_concurrent_requests(event_loop=None):
         calls.append(xs[:])
         return xs
 
-    proxy = AsyncLocalProxy[int, int](map_func=af, batch_size=3)
+    proxy = AsyncBatchingMapProxy[int, int](map_func=af, batch_size=3)
 
     async def run():
         # two overlapping requests with duplicates
@@ -344,7 +344,7 @@ def test_async_localproxy_concurrent_requests(event_loop=None):
 
 
 def test_async_localproxy_max_concurrency_limit(event_loop=None):
-    from openaivec.proxy import AsyncLocalProxy
+    from openaivec.proxy import AsyncBatchingMapProxy
 
     current = 0
     peak = 0
@@ -358,7 +358,7 @@ def test_async_localproxy_max_concurrency_limit(event_loop=None):
         current -= 1
         return xs
 
-    proxy = AsyncLocalProxy[int, int](map_func=af, batch_size=1, max_concurrency=2)
+    proxy = AsyncBatchingMapProxy[int, int](map_func=af, batch_size=1, max_concurrency=2)
 
     async def run():
         # Launch several maps concurrently; each map will call af once per batch
