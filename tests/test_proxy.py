@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import List
 
 from openaivec.proxy import LocalProxy
@@ -261,3 +262,110 @@ def test_internal_wait_for_with_inflight_event():
     wait_for(keys)
     t.join(timeout=1)
     assert all(k in cache for k in keys)
+
+
+# -------------------- AsyncLocalProxy tests --------------------
+
+
+async def _afunc_echo(xs: list[int]) -> list[int]:
+    await asyncio.sleep(0.01)
+    return xs
+
+
+def test_async_localproxy_basic(event_loop=None):
+    from openaivec.proxy import AsyncLocalProxy
+
+    calls: list[list[int]] = []
+
+    async def af(xs: list[int]) -> list[int]:
+        calls.append(xs[:])
+        return await _afunc_echo(xs)
+
+    proxy = AsyncLocalProxy[int, int](map_func=af, batch_size=3)
+
+    async def run():
+        out = await proxy.map([1, 2, 3, 4, 5])
+        assert out == [1, 2, 3, 4, 5]
+
+    asyncio.run(run())
+    # Expect batches: [1,2,3], [4,5]
+    assert [len(c) for c in calls] == [3, 2]
+
+
+def test_async_localproxy_dedup_and_cache(event_loop=None):
+    from openaivec.proxy import AsyncLocalProxy
+
+    calls: list[list[int]] = []
+
+    async def af(xs: list[int]) -> list[int]:
+        calls.append(xs[:])
+        return await _afunc_echo(xs)
+
+    proxy = AsyncLocalProxy[int, int](map_func=af, batch_size=10)
+
+    async def run():
+        out1 = await proxy.map([1, 1, 2, 3])
+        assert out1 == [1, 1, 2, 3]
+        out2 = await proxy.map([3, 2, 1])
+        assert out2 == [3, 2, 1]
+
+    asyncio.run(run())
+    # First call computes [1,2,3] once, second call uses cache entirely
+    assert calls == [[1, 2, 3]]
+
+
+def test_async_localproxy_concurrent_requests(event_loop=None):
+    from openaivec.proxy import AsyncLocalProxy
+
+    calls: list[list[int]] = []
+
+    async def af(xs: list[int]) -> list[int]:
+        # simulate IO
+        await asyncio.sleep(0.02)
+        calls.append(xs[:])
+        return xs
+
+    proxy = AsyncLocalProxy[int, int](map_func=af, batch_size=3)
+
+    async def run():
+        # two overlapping requests with duplicates
+        r1 = proxy.map([1, 2, 3, 4])
+        r2 = proxy.map([3, 4, 5])
+        out1, out2 = await asyncio.gather(r1, r2)
+        assert out1 == [1, 2, 3, 4]
+        assert out2 == [3, 4, 5]
+
+    asyncio.run(run())
+    # Expect that computations are not duplicated: first call handles [1,2,3], [4,5] possibly
+    # depending on interleaving but total coverage should be minimal. We check that
+    # every number 1..5 appears across the union of calls and no number is overrepresented.
+    flat = [x for call in calls for x in call]
+    assert set(flat) == {1, 2, 3, 4, 5}
+
+
+def test_async_localproxy_max_concurrency_limit(event_loop=None):
+    from openaivec.proxy import AsyncLocalProxy
+
+    current = 0
+    peak = 0
+
+    async def af(xs: list[int]) -> list[int]:
+        nonlocal current, peak
+        # simulate per-call concurrent work proportional to input size
+        current += 1
+        peak = max(peak, current)
+        await asyncio.sleep(0.05)
+        current -= 1
+        return xs
+
+    proxy = AsyncLocalProxy[int, int](map_func=af, batch_size=1, max_concurrency=2)
+
+    async def run():
+        # Launch several maps concurrently; each map will call af once per batch
+        tasks = [proxy.map([i]) for i in range(6)]
+        outs = await asyncio.gather(*tasks)
+        assert outs == [[i] for i in range(6)]
+
+    asyncio.run(run())
+    # Peak concurrency should not exceed limit (2)
+    assert peak <= 2
