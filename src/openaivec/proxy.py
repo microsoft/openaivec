@@ -177,6 +177,24 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                 if ev:
                     ev.set()
 
+    def clear(self) -> None:
+        """Clear all cached results and release any in-flight waiters.
+
+        Notes:
+            - Intended to be called after all processing is finished.
+            - Do not call concurrently with active map() calls to avoid
+              unnecessary recomputation or racy wake-ups.
+        """
+        with self.__lock:
+            for ev in self.__inflight.values():
+                ev.set()
+            self.__inflight.clear()
+            self.__cache.clear()
+
+    def close(self) -> None:
+        """Alias for clear()."""
+        self.clear()
+
     def __process_owned(self, owned: List[S], map_func: Callable[[List[S]], List[T]]) -> None:
         """Process owned items in mini-batches and fill the cache.
 
@@ -416,6 +434,24 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                 ev = self.__inflight.pop(x, None)
                 if ev:
                     ev.set()
+
+    async def clear(self) -> None:
+        """Clear all cached results and release any in-flight waiters.
+
+        Notes:
+            - Intended to be awaited after all processing is finished.
+            - Do not call concurrently with active map() calls to avoid
+              unnecessary recomputation or racy wake-ups.
+        """
+        async with self.__lock:
+            for ev in self.__inflight.values():
+                ev.set()
+            self.__inflight.clear()
+            self.__cache.clear()
+
+    async def aclose(self) -> None:
+        """Alias for clear()."""
+        await self.clear()
 
     async def __process_owned(self, owned: List[S], map_func: Callable[[List[S]], Awaitable[List[T]]]) -> None:
         """Process owned keys in mini-batches, re-checking cache before awaits.

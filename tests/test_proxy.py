@@ -5,7 +5,7 @@ from typing import List
 
 import pytest
 
-from openaivec.proxy import BatchingMapProxy
+from openaivec.proxy import AsyncBatchingMapProxy, BatchingMapProxy
 
 
 def test_batching_map_proxy_batches_calls_by_batch_size():
@@ -404,3 +404,45 @@ def test_async_localproxy_map_func_length_mismatch_raises_and_releases(event_loo
         assert out == [10, 20]
 
     asyncio.run(run_ok())
+
+
+def test_sync_clear_releases_memory_and_recomputes():
+    calls: list[list[int]] = []
+
+    def f(xs: list[int]) -> list[int]:
+        calls.append(xs[:])
+        return xs
+
+    p = BatchingMapProxy[int, int](batch_size=10)
+    out1 = p.map([1, 2, 2, 3], f)
+    assert out1 == [1, 2, 2, 3]
+    assert len(calls) >= 1  # at least one batch call
+
+    # Clear all memory
+    p.clear()
+
+    # Next call should recompute (calls count increases)
+    out2 = p.map([1, 2, 2, 3], f)
+    assert out2 == [1, 2, 2, 3]
+    assert len(calls) >= 2
+
+
+@pytest.mark.asyncio
+async def test_async_clear_releases_memory_and_recomputes():
+    calls: list[list[int]] = []
+
+    async def af(xs: list[int]) -> list[int]:
+        calls.append(xs[:])
+        await asyncio.sleep(0)
+        return xs
+
+    p = AsyncBatchingMapProxy[int, int](batch_size=10)
+    out1 = await p.map([1, 2, 3], af)
+    assert out1 == [1, 2, 3]
+    assert len(calls) >= 1
+
+    await p.clear()
+
+    out2 = await p.map([1, 2, 3], af)
+    assert out2 == [1, 2, 3]
+    assert len(calls) >= 2
