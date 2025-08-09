@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 from typing import List
 
+import pytest
+
 from openaivec.proxy import BatchingMapProxy
 
 
@@ -110,6 +112,24 @@ def test_batching_map_proxy_rechecks_cache_within_batch_iteration():
     out2 = proxy.map([2, 3, 4, 5, 6], mf)
     assert out2 == [2, 3, 4, 5, 6]
     assert calls == [[1, 2, 3, 4], [5, 6]]
+
+
+def test_batching_map_proxy_map_func_length_mismatch_raises_and_releases():
+    from openaivec.proxy import BatchingMapProxy
+
+    p = BatchingMapProxy[int, int](batch_size=3)
+
+    def bad(xs: list[int]) -> list[int]:
+        # Return wrong length to simulate contract violation
+        return xs[:-1]
+
+    # Using a try/except to assert ValueError and ensure no deadlock occurs
+    with pytest.raises(ValueError):
+        p.map([1, 2, 3], bad)
+
+    # After failure, a good call should still proceed (events must be released)
+    out = p.map([1, 2, 3], lambda xs: xs)
+    assert out == [1, 2, 3]
 
 
 # -------------------- Internal methods tests --------------------
@@ -363,3 +383,24 @@ def test_async_localproxy_max_concurrency_limit(event_loop=None):
     asyncio.run(run())
     # Peak concurrency should not exceed limit (2)
     assert peak <= 2
+
+
+def test_async_localproxy_map_func_length_mismatch_raises_and_releases(event_loop=None):
+    from openaivec.proxy import AsyncBatchingMapProxy
+
+    async def bad(xs: list[int]) -> list[int]:
+        return xs[:-1]
+
+    proxy = AsyncBatchingMapProxy[int, int](batch_size=2)
+
+    async def run_bad():
+        with pytest.raises(ValueError):
+            await proxy.map([10, 20], bad)
+
+    asyncio.run(run_bad())
+
+    async def run_ok():
+        out = await proxy.map([10, 20], _afunc_echo)
+        assert out == [10, 20]
+
+    asyncio.run(run_ok())

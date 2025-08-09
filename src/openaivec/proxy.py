@@ -152,6 +152,11 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             to_call (list[S]): Items that were computed.
             results (list[T]): Results corresponding to ``to_call`` in order.
         """
+        if len(results) != len(to_call):
+            # Prevent deadlocks if map_func violates the contract.
+            # Release waiters and surface a clear error.
+            self.__finalize_failure(to_call)
+            raise ValueError("map_func must return a list of results with the same length and order as inputs")
         with self.__lock:
             for x, y in zip(to_call, results):
                 self.__cache[x] = y
@@ -388,6 +393,10 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             to_call (list[S]): Items that were computed in the recent batch.
             results (list[T]): Results corresponding to ``to_call`` in order.
         """
+        if len(results) != len(to_call):
+            # Prevent deadlocks if map_func violates the contract.
+            await self.__finalize_failure(to_call)
+            raise ValueError("map_func must return a list of results with the same length and order as inputs")
         async with self.__lock:
             for x, y in zip(to_call, results):
                 self.__cache[x] = y
