@@ -384,11 +384,11 @@ FROM product_reviews;
 
 Example Output (structure might vary slightly):
 
-| id   | review_text                                                                   | brand      | translation                 | sentiment | sentiment_confidence | intent           | action_required     | embedding              | token_count |
-| ---- | ----------------------------------------------------------------------------- | ---------- | --------------------------- | --------- | -------------------- | ---------------- | ------------------- | ---------------------- | ----------- |
-| 1001 | The new TechPhone X camera quality is amazing, Nexus Corp really outdid...   | Nexus Corp | {en: ..., fr: ..., ja: ...} | positive  | 0.95                 | provide_feedback | acknowledge_review  | [0.1, -0.2, ..., 0.5]  | 19          |
-| 1002 | Quantum Galaxy has great battery life but the price is too high for what...  | Quantum    | {en: ..., fr: ..., ja: ...} | mixed     | 0.78                 | provide_feedback | follow_up_pricing   | [-0.3, 0.1, ..., -0.1] | 16          |
-| 1003 | Zephyr mobile phone crashed twice today, very disappointed with this purchase | Zephyr     | {en: ..., fr: ..., ja: ...} | negative  | 0.88                 | complaint        | investigate_issue   | [0.0, 0.4, ..., 0.2]   | 12          |
+| id   | review_text                                                                   | brand      | translation                 | sentiment | sentiment_confidence | intent           | action_required    | embedding              | token_count |
+| ---- | ----------------------------------------------------------------------------- | ---------- | --------------------------- | --------- | -------------------- | ---------------- | ------------------ | ---------------------- | ----------- |
+| 1001 | The new TechPhone X camera quality is amazing, Nexus Corp really outdid...    | Nexus Corp | {en: ..., fr: ..., ja: ...} | positive  | 0.95                 | provide_feedback | acknowledge_review | [0.1, -0.2, ..., 0.5]  | 19          |
+| 1002 | Quantum Galaxy has great battery life but the price is too high for what...   | Quantum    | {en: ..., fr: ..., ja: ...} | mixed     | 0.78                 | provide_feedback | follow_up_pricing  | [-0.3, 0.1, ..., -0.1] | 16          |
+| 1003 | Zephyr mobile phone crashed twice today, very disappointed with this purchase | Zephyr     | {en: ..., fr: ..., ja: ...} | negative  | 0.88                 | complaint        | investigate_issue  | [0.0, 0.4, ..., 0.2]   | 12          |
 
 ### Spark Performance Tuning
 
@@ -626,10 +626,10 @@ steps:
 
      ```python
      import os
-     from pyspark.sql import SparkSession
      from openaivec.spark import responses_udf, embeddings_udf
 
-     spark = SparkSession.builder.getOrCreate()
+     # In Microsoft Fabric, spark session is automatically available
+     # spark = SparkSession.builder.getOrCreate()
      sc = spark.sparkContext
 
      # Configure Azure OpenAI authentication
