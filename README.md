@@ -146,10 +146,25 @@ print(result)  # Expected output: ['bear family', 'rabbit family', 'koala family
 The easiest way to get started with your DataFrames:
 
 ```python
+import os
 import pandas as pd
 from openaivec import pandas_ext
 
-# Setup (optional - uses OPENAI_API_KEY environment variable by default)
+# Authentication Option 1: Environment variables (automatic detection)
+# For OpenAI:
+os.environ["OPENAI_API_KEY"] = "your-api-key-here"
+# Or for Azure OpenAI:
+# os.environ["AZURE_OPENAI_API_KEY"] = "your-azure-key"
+# os.environ["AZURE_OPENAI_API_ENDPOINT"] = "https://<your-resource-name>.services.ai.azure.com"
+# os.environ["AZURE_OPENAI_API_VERSION"] = "2025-04-01-preview"
+
+# Authentication Option 2: Custom client (optional)
+# from openai import OpenAI, AsyncOpenAI
+# pandas_ext.use(OpenAI())
+# For async operations:
+# pandas_ext.use_async(AsyncOpenAI())
+
+# Configure model (optional - defaults to gpt-4.1-mini)
 pandas_ext.responses_model("gpt-4.1-mini")
 
 # Create your data
@@ -206,7 +221,7 @@ extracted_results = (results
 
 **Available Task Categories:**
 
-- **Text Analysis**: `nlp.SENTIMENT_ANALYSIS`, `nlp.TRANSLATION`, `nlp.NAMED_ENTITY_RECOGNITION`, `nlp.KEYWORD_EXTRACTION`
+- **Text Analysis**: `nlp.SENTIMENT_ANALYSIS`, `nlp.MULTILINGUAL_TRANSLATION`, `nlp.NAMED_ENTITY_RECOGNITION`, `nlp.KEYWORD_EXTRACTION`
 - **Content Classification**: `customer_support.INTENT_ANALYSIS`, `customer_support.URGENCY_ANALYSIS`, `customer_support.INQUIRY_CLASSIFICATION`
 
 **Benefits of Pre-configured Tasks:**
@@ -369,11 +384,11 @@ FROM product_reviews;
 
 Example Output (structure might vary slightly):
 
-| id   | review_text                                                                   | brand      | translation                 | sentiment | sentiment_confidence | intent           | action_required     | embedding              | token_count |
-| ---- | ----------------------------------------------------------------------------- | ---------- | --------------------------- | --------- | -------------------- | ---------------- | ------------------- | ---------------------- | ----------- |
-| 1001 | The new TechPhone X camera quality is amazing, Nexus Corp really outdid...   | Nexus Corp | {en: ..., fr: ..., ja: ...} | positive  | 0.95                 | provide_feedback | acknowledge_review  | [0.1, -0.2, ..., 0.5]  | 19          |
-| 1002 | Quantum Galaxy has great battery life but the price is too high for what...  | Quantum    | {en: ..., fr: ..., ja: ...} | mixed     | 0.78                 | provide_feedback | follow_up_pricing   | [-0.3, 0.1, ..., -0.1] | 16          |
-| 1003 | Zephyr mobile phone crashed twice today, very disappointed with this purchase | Zephyr     | {en: ..., fr: ..., ja: ...} | negative  | 0.88                 | complaint        | investigate_issue   | [0.0, 0.4, ..., 0.2]   | 12          |
+| id   | review_text                                                                   | brand      | translation                 | sentiment | sentiment_confidence | intent           | action_required    | embedding              | token_count |
+| ---- | ----------------------------------------------------------------------------- | ---------- | --------------------------- | --------- | -------------------- | ---------------- | ------------------ | ---------------------- | ----------- |
+| 1001 | The new TechPhone X camera quality is amazing, Nexus Corp really outdid...    | Nexus Corp | {en: ..., fr: ..., ja: ...} | positive  | 0.95                 | provide_feedback | acknowledge_review | [0.1, -0.2, ..., 0.5]  | 19          |
+| 1002 | Quantum Galaxy has great battery life but the price is too high for what...   | Quantum    | {en: ..., fr: ..., ja: ...} | mixed     | 0.78                 | provide_feedback | follow_up_pricing  | [-0.3, 0.1, ..., -0.1] | 16          |
+| 1003 | Zephyr mobile phone crashed twice today, very disappointed with this purchase | Zephyr     | {en: ..., fr: ..., ja: ...} | negative  | 0.88                 | complaint        | investigate_issue  | [0.0, 0.4, ..., 0.2]   | 12          |
 
 ### Spark Performance Tuning
 
@@ -611,16 +626,16 @@ steps:
 
      ```python
      import os
-     from pyspark.sql import SparkSession
      from openaivec.spark import responses_udf, embeddings_udf
 
-     spark = SparkSession.builder.getOrCreate()
+     # In Microsoft Fabric, spark session is automatically available
+     # spark = SparkSession.builder.getOrCreate()
      sc = spark.sparkContext
 
      # Configure Azure OpenAI authentication
      sc.environment["AZURE_OPENAI_API_KEY"] = "<your-api-key>"
-     sc.environment["AZURE_OPENAI_API_ENDPOINT"] = "https://<your-resource-name>.openai.azure.com"
-     sc.environment["AZURE_OPENAI_API_VERSION"] = "2024-10-21"
+     sc.environment["AZURE_OPENAI_API_ENDPOINT"] = "https://<your-resource-name>.services.ai.azure.com"
+     sc.environment["AZURE_OPENAI_API_VERSION"] = "2025-04-01-preview"
 
      # Register UDFs
      spark.udf.register(

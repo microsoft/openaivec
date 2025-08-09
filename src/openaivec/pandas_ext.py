@@ -17,8 +17,8 @@ pandas_ext.use(client)
 # Option 3: Use an existing Azure OpenAI client instance
 azure_client = AzureOpenAI(
     api_key="your-azure-key",
-    azure_endpoint="https://your-resource.openai.azure.com",
-    api_version="2024-02-01"
+    azure_endpoint="https://<your-resource-name>.services.ai.azure.com",
+    api_version="2025-04-01-preview"
 )
 pandas_ext.use(azure_client)
 
