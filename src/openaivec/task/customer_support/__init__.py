@@ -17,14 +17,14 @@ from .response_suggestion import RESPONSE_SUGGESTION
 __all__ = [
     # Configurable functions (recommended)
     "inquiry_classification",
-    "urgency_analysis", 
+    "urgency_analysis",
     "customer_sentiment",
     "intent_analysis",
     "inquiry_summary",
     "response_suggestion",
     # Backward compatibility constants
     "INQUIRY_CLASSIFICATION",
-    "URGENCY_ANALYSIS", 
+    "URGENCY_ANALYSIS",
     "CUSTOMER_SENTIMENT",
     "INTENT_ANALYSIS",
     "INQUIRY_SUMMARY",

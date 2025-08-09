@@ -85,8 +85,6 @@ def _vectorize_system_message(system_message: str) -> str:
 """
 
 
-
-
 class Message(BaseModel, Generic[ResponseFormat]):
     id: int
     body: ResponseFormat

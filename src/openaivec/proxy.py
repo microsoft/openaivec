@@ -204,58 +204,40 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                 raise
             self.__finalize_success(to_call, results)
 
-    def __try_compute_single(self, x: S, map_func: Callable[[List[S]], List[T]]) -> None:
-        """Compute a single missing key when no one else is in-flight.
-
-        This is used as a race-recovery path when a key is neither cached nor
-        registered as in-flight, ensuring progress without busy-waiting.
-
-        Args:
-            x (S): The item to compute.
-
-        Raises:
-            Exception: Propagates any exception raised by ``map_func``.
-        """
-        with self.__lock:
-            if x in self.__cache:
-                return
-            if x not in self.__inflight:
-                self.__inflight[x] = threading.Event()
-        try:
-            result = map_func([x])[0]
-        except Exception:
-            with self.__lock:
-                ev = self.__inflight.pop(x, None)
-                if ev:
-                    ev.set()
-            raise
-        with self.__lock:
-            self.__cache[x] = result
-            ev = self.__inflight.pop(x, None)
-            if ev:
-                ev.set()
-
     def __wait_for(self, keys: List[S], map_func: Callable[[List[S]], List[T]]) -> None:
         """Wait for other threads to complete computations for the given keys.
 
-        If a key is neither cached nor in-flight, this method attempts to compute
-        it inline via ``__try_compute_single`` to avoid indefinite waiting.
+        If a key is neither cached nor in-flight, this method now claims ownership
+        for that key immediately (registers an in-flight Event) and defers the
+        computation so that all such rescued keys can be processed together in a
+        single batched call to ``map_func`` after the scan completes. This avoids
+        high-cost single-item calls.
 
         Args:
             keys (list[S]): Items whose computations are owned by other threads.
         """
+        rescued: List[S] = []  # keys we claim to batch-process
         for x in keys:
             while True:
                 with self.__lock:
                     if x in self.__cache:
                         break
                     ev = self.__inflight.get(x)
-                if ev is not None:
-                    ev.wait()
-                else:
-                    # No inflight and not cached; try compute here.
-                    self.__try_compute_single(x, map_func)
-                    break
+                    if ev is None:
+                        # Not cached and no one computing; claim ownership to batch later.
+                        self.__inflight[x] = threading.Event()
+                        rescued.append(x)
+                        break
+                # Someone else is computing; wait for completion.
+                ev.wait()
+        # Batch-process rescued keys, if any
+        if rescued:
+            try:
+                self.__process_owned(rescued, map_func)
+            except Exception:
+                # Ensure events are released on failure to avoid deadlock
+                self.__finalize_failure(rescued)
+                raise
 
     # ---- public API ------------------------------------------------------
     def map(self, items: List[S], map_func: Callable[[List[S]], List[T]]) -> List[T]:
@@ -464,65 +446,39 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                     self.__sema.release()
             await self.__finalize_success(to_call, results)
 
-    async def __try_compute_single(self, x: S, map_func: Callable[[List[S]], Awaitable[List[T]]]) -> None:
-        """Compute a single missing key when no one else is in-flight.
-
-        This is a race-recovery path invoked when a key is neither cached nor
-        registered as in-flight, ensuring forward progress without busy-waiting.
-
-        Args:
-            x (S): The item to compute.
-
-        Raises:
-            Exception: Propagates any exception raised by ``map_func``.
-        """
-        async with self.__lock:
-            if x in self.__cache:
-                return
-            if x not in self.__inflight:
-                self.__inflight[x] = asyncio.Event()
-        try:
-            if self.__sema:
-                await self.__sema.acquire()
-            result = (await map_func([x]))[0]
-        except Exception:
-            if self.__sema:
-                self.__sema.release()
-            async with self.__lock:
-                ev = self.__inflight.pop(x, None)
-                if ev:
-                    ev.set()
-            raise
-        finally:
-            if self.__sema:
-                self.__sema.release()
-        async with self.__lock:
-            self.__cache[x] = result
-            ev = self.__inflight.pop(x, None)
-            if ev:
-                ev.set()
-
     async def __wait_for(self, keys: List[S], map_func: Callable[[List[S]], Awaitable[List[T]]]) -> None:
         """Wait for computations owned by other coroutines to complete.
 
-        If a key is neither cached nor in-flight, this method attempts to compute
-        it inline via ``__try_compute_single`` to avoid indefinite waiting.
+        If a key is neither cached nor in-flight, this method now claims ownership
+        for that key immediately (registers an in-flight Event) and defers the
+        computation so that all such rescued keys can be processed together in a
+        single batched call to ``map_func`` after the scan completes. This avoids
+        high-cost single-item calls.
 
         Args:
             keys (list[S]): Items whose computations are owned by other coroutines.
         """
+        rescued: List[S] = []  # keys we claim to batch-process
         for x in keys:
             while True:
                 async with self.__lock:
                     if x in self.__cache:
                         break
                     ev = self.__inflight.get(x)
-                if ev is not None:
-                    await ev.wait()
-                else:
-                    # No inflight and not cached; compute inline
-                    await self.__try_compute_single(x, map_func)
-                    break
+                    if ev is None:
+                        # Not cached and no one computing; claim ownership to batch later.
+                        self.__inflight[x] = asyncio.Event()
+                        rescued.append(x)
+                        break
+                # Someone else is computing; wait for completion.
+                await ev.wait()
+        # Batch-process rescued keys, if any
+        if rescued:
+            try:
+                await self.__process_owned(rescued, map_func)
+            except Exception:
+                await self.__finalize_failure(rescued)
+                raise
 
     # ---- public API ------------------------------------------------------
     async def map(self, items: List[S], map_func: Callable[[List[S]], Awaitable[List[T]]]) -> List[T]:

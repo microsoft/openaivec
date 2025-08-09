@@ -221,20 +221,6 @@ def test_internal_process_owned_batches_and_skip_cached():
         assert k in cache
 
 
-def test_internal_try_compute_single_success():
-    from openaivec.proxy import BatchingMapProxy
-
-    p = BatchingMapProxy[int, int]()
-
-    def mf(xs: list[int]) -> list[int]:
-        return [x * 10 for x in xs]
-
-    try_single = getattr(p, "_BatchingMapProxy__try_compute_single")
-    cache = getattr(p, "_BatchingMapProxy__cache")
-    try_single(7, mf)
-    assert cache[7] == 70
-
-
 def test_internal_wait_for_with_inflight_event():
     import threading
     import time

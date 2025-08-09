@@ -19,15 +19,16 @@ from openaivec.model import PreparedTask
 
 class TestSparkUDFs(TestCase):
     """Test all Spark UDF functions."""
-    
+
     def setUp(self):
-        self.spark: SparkSession = SparkSession.builder \
-            .appName("TestSparkUDF") \
-            .master("local[*]") \
-            .config("spark.driver.memory", "1g") \
-            .config("spark.executor.memory", "1g") \
-            .config("spark.sql.adaptive.enabled", "false") \
+        self.spark: SparkSession = (
+            SparkSession.builder.appName("TestSparkUDF")
+            .master("local[*]")
+            .config("spark.driver.memory", "1g")
+            .config("spark.executor.memory", "1g")
+            .config("spark.sql.adaptive.enabled", "false")
             .getOrCreate()
+        )
         self.spark.sparkContext.setLogLevel("INFO")
 
     def tearDown(self):
@@ -54,6 +55,7 @@ class TestSparkUDFs(TestCase):
 
     def test_responses_udf_structured_format(self):
         """Test responses_udf with Pydantic BaseModel response format."""
+
         class Fruit(BaseModel):
             name: str
             color: str
@@ -87,7 +89,7 @@ class TestSparkUDFs(TestCase):
             "analyze_sentiment",
             task_udf(task=nlp.SENTIMENT_ANALYSIS, model_name="gpt-4.1-nano"),
         )
-        
+
         text_data = [
             ("I love this product!",),
             ("This is terrible and disappointing.",),
@@ -111,14 +113,14 @@ class TestSparkUDFs(TestCase):
             instructions="Repeat the input text twice, separated by a space.",
             response_format=str,
             temperature=0.0,
-            top_p=1.0
+            top_p=1.0,
         )
-        
+
         self.spark.udf.register(
             "repeat_text",
             task_udf(task=simple_task, model_name="gpt-4.1-nano"),
         )
-        
+
         text_data = [("hello",), ("world",), ("test",)]
         dummy_df = self.spark.createDataFrame(text_data, ["text"])
         dummy_df.createOrReplaceTempView("simple_text")
@@ -131,26 +133,27 @@ class TestSparkUDFs(TestCase):
         df_pandas = df.toPandas()
         assert df_pandas.shape == (3, 2)
         # Verify string column type
-        assert df.dtypes[1][1] == 'string'
+        assert df.dtypes[1][1] == "string"
 
     def test_task_udf_custom_basemodel(self):
         """Test task_udf with custom BaseModel response format."""
+
         class SimpleResponse(BaseModel):
             original: str
             length: int
-            
+
         structured_task = PreparedTask(
             instructions="Analyze the text and return the original text and its length.",
             response_format=SimpleResponse,
             temperature=0.0,
-            top_p=1.0
+            top_p=1.0,
         )
-        
+
         self.spark.udf.register(
             "analyze_text",
             task_udf(task=structured_task, model_name="gpt-4.1-nano"),
         )
-        
+
         text_data = [("hello",), ("world",), ("testing",)]
         dummy_df = self.spark.createDataFrame(text_data, ["text"])
         dummy_df.createOrReplaceTempView("struct_text")
@@ -230,9 +233,10 @@ class TestSparkUDFs(TestCase):
 
 class TestSchemaMapping(TestCase):
     """Test Pydantic to Spark schema mapping functionality."""
-    
+
     def test_pydantic_to_spark_schema(self):
         """Test _pydantic_to_spark_schema function with nested models."""
+
         class InnerModel(BaseModel):
             inner_id: int
             description: str
