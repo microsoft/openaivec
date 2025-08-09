@@ -432,17 +432,17 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                 to_call = [x for x in batch if x not in self.__cache]
             if not to_call:
                 continue
+            acquired = False
             try:
                 if self.__sema:
                     await self.__sema.acquire()
+                    acquired = True
                 results = await map_func(to_call)
             except Exception:
-                if self.__sema:
-                    self.__sema.release()
                 await self.__finalize_failure(to_call)
                 raise
             finally:
-                if self.__sema:
+                if self.__sema and acquired:
                     self.__sema.release()
             await self.__finalize_success(to_call, results)
 
