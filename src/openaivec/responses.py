@@ -222,7 +222,7 @@ class BatchResponses(Generic[ResponseFormat]):
         return cast(ParsedResponse[Response[ResponseFormat]], completion)
 
     @observe(_LOGGER)
-    def _predict_chunk(self, user_messages: List[str]) -> List[ResponseFormat]:
+    def _predict_chunk(self, user_messages: List[str]) -> List[ResponseFormat | None]:
         """Helper executed for every unique minibatch.
 
         This method:
@@ -241,7 +241,7 @@ class BatchResponses(Generic[ResponseFormat]):
         return sorted_responses
 
     @observe(_LOGGER)
-    def parse(self, inputs: List[str]) -> List[ResponseFormat]:
+    def parse(self, inputs: List[str]) -> List[ResponseFormat | None]:
         """Public API: batched predict.
 
         Args:
@@ -395,7 +395,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         return cast(ParsedResponse[Response[ResponseFormat]], completion)
 
     @observe(_LOGGER)
-    async def _predict_chunk(self, user_messages: List[str]) -> List[ResponseFormat]:
+    async def _predict_chunk(self, user_messages: List[str]) -> List[ResponseFormat | None]:
         """Helper executed asynchronously for every unique minibatch.
 
         This method:
@@ -414,7 +414,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         return sorted_responses
 
     @observe(_LOGGER)
-    async def parse(self, inputs: List[str], batch_size: int) -> List[ResponseFormat]:
+    async def parse(self, inputs: List[str], batch_size: int) -> List[ResponseFormat | None]:
         """Asynchronous public API: batched predict.
 
         Args:
