@@ -7,9 +7,11 @@ from openai import AsyncOpenAI, OpenAI, RateLimitError
 from openai.types.responses import ParsedResponse
 from pydantic import BaseModel
 
+from openaivec.proxy import BatchingMapProxy
+
 from .log import observe
 from .model import PreparedTask, ResponseFormat
-from .util import backoff, backoff_async, map, map_async
+from .util import backoff, backoff_async, map_async
 
 __all__ = [
     "BatchResponses",
@@ -132,6 +134,7 @@ class BatchResponses(Generic[ResponseFormat]):
     """
 
     client: OpenAI
+    cache: BatchingMapProxy[str, ResponseFormat]
     model_name: str  # it would be the name of deployment for Azure
     system_message: str
     temperature: float = 0.0
@@ -141,10 +144,33 @@ class BatchResponses(Generic[ResponseFormat]):
     _model_json_schema: dict = field(init=False)
 
     @classmethod
-    def of_task(cls, client: OpenAI, model_name: str, task: PreparedTask) -> "BatchResponses":
+    def of(
+        cls,
+        client: OpenAI,
+        model_name: str,
+        system_message: str,
+        temperature: float = 0.0,
+        top_p: float = 1.0,
+        response_format: Type[ResponseFormat] = str,
+        batch_size: int = 128,
+    ) -> "BatchResponses":
+        """Create a BatchResponses instance from basic parameters."""
+        return cls(
+            client=client,
+            cache=BatchingMapProxy(batch_size=batch_size),
+            model_name=model_name,
+            system_message=system_message,
+            temperature=temperature,
+            top_p=top_p,
+            response_format=response_format,
+        )
+
+    @classmethod
+    def of_task(cls, client: OpenAI, model_name: str, task: PreparedTask, batch_size: int = 128) -> "BatchResponses":
         """Create a BatchResponses instance from a PreparedTask."""
         return cls(
             client=client,
+            cache=BatchingMapProxy(batch_size=batch_size),
             model_name=model_name,
             system_message=task.instructions,
             temperature=task.temperature,
@@ -216,7 +242,7 @@ class BatchResponses(Generic[ResponseFormat]):
         return sorted_responses
 
     @observe(_LOGGER)
-    def parse(self, inputs: List[str], batch_size: int) -> List[ResponseFormat]:
+    def parse(self, inputs: List[str]) -> List[ResponseFormat]:
         """Public API: batched predict.
 
         Args:
@@ -228,7 +254,7 @@ class BatchResponses(Generic[ResponseFormat]):
             A list containing the assistant responses in the same order as
                 *inputs*.
         """
-        return map(inputs, self._predict_chunk, batch_size)
+        return self.cache.map(inputs, self._predict_chunk)
 
 
 @dataclass(frozen=True)
