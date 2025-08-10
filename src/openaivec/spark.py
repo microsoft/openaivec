@@ -7,7 +7,7 @@ It supports UDFs for generating responses and creating embeddings asynchronously
 The UDFs operate on Spark DataFrames and leverage asyncio for potentially
 improved performance in I/O-bound operations.
 
-**Performance Optimization**: All response-generating UDFs (`responses_udf`, `task_udf`)
+**Performance Optimization**: All AI-powered UDFs (`responses_udf`, `task_udf`, `embeddings_udf`)
 automatically cache duplicate inputs within each partition, significantly reducing
 API calls and costs when processing datasets with overlapping content.
 
@@ -116,6 +116,7 @@ import logging
 from enum import Enum
 from typing import Dict, Iterator, List, Optional, Type, Union, get_args, get_origin
 
+import numpy as np
 import pandas as pd
 import tiktoken
 from pydantic import BaseModel
@@ -459,8 +460,11 @@ def embeddings_udf(
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF for generating embeddings.
 
-    Configures and builds UDFs that leverage `pandas_ext.aio.embeddings`
+    Configures and builds UDFs that leverage `pandas_ext.aio.embeddings_with_cache`
     to generate vector embeddings from OpenAI models asynchronously.
+    Each partition maintains its own cache to eliminate duplicate API calls within
+    the partition, significantly reducing API usage and costs when processing
+    datasets with overlapping content.
 
     Note:
         Authentication must be configured via SparkContext environment variables.
@@ -487,11 +491,14 @@ def embeddings_udf(
             Recommended: 4-12 per executor. Defaults to 8.
 
     Returns:
-        UserDefinedFunction: A Spark pandas UDF configured to generate embeddings asynchronously,
+        UserDefinedFunction: A Spark pandas UDF configured to generate embeddings asynchronously
+            with automatic caching for duplicate inputs within each partition,
             returning an `ArrayType(FloatType())` column.
 
     Note:
         For optimal performance in distributed environments:
+        - **Automatic Caching**: Duplicate inputs within each partition are cached,
+          reducing API calls and costs significantly on datasets with repeated content
         - Monitor OpenAI API rate limits when scaling executor count
         - Consider your OpenAI tier limits: total_requests = max_concurrency × executors
         - Embeddings API typically has higher throughput than chat completions
@@ -501,12 +508,17 @@ def embeddings_udf(
     @pandas_udf(returnType=ArrayType(FloatType()))
     def _embeddings_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
         pandas_ext.embeddings_model(model_name)
+        cache = AsyncBatchingMapProxy[str, np.ndarray](
+            batch_size=batch_size,
+            max_concurrency=max_concurrency,
+        )
 
-        for part in col:
-            embeddings: pd.Series = asyncio.run(
-                part.aio.embeddings(batch_size=batch_size, max_concurrency=max_concurrency)
-            )
-            yield embeddings.map(lambda x: x.tolist())
+        try:
+            for part in col:
+                embeddings: pd.Series = asyncio.run(part.aio.embeddings_with_cache(cache=cache))
+                yield embeddings.map(lambda x: x.tolist())
+        finally:
+            cache.clear()
 
     return _embeddings_udf
 
