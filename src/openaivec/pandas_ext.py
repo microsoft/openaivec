@@ -169,20 +169,16 @@ class OpenAIVecSeriesAccessor:
         Returns:
             pandas.Series: Series whose values are instances of ``response_format``.
         """
-        client: BatchResponses = BatchResponses(
+        client: BatchResponses = BatchResponses.of(
             client=CONTAINER.resolve(OpenAI),
             model_name=CONTAINER.resolve(ResponsesModelName).value,
             system_message=instructions,
             response_format=response_format,
             temperature=temperature,
             top_p=top_p,
+            batch_size=batch_size,
         )
-
-        return pd.Series(
-            client.parse(self._obj.tolist(), batch_size=batch_size),
-            index=self._obj.index,
-            name=self._obj.name,
-        )
+        return pd.Series(client.parse(self._obj.tolist()), index=self._obj.index, name=self._obj.name)
 
     def task(self, task: PreparedTask, batch_size: int = 128) -> pd.Series:
         """Execute a prepared task on every Series element.
@@ -215,14 +211,12 @@ class OpenAIVecSeriesAccessor:
                 response format, aligned with the original Series index.
         """
         client = BatchResponses.of_task(
-            client=CONTAINER.resolve(OpenAI), model_name=CONTAINER.resolve(ResponsesModelName).value, task=task
+            client=CONTAINER.resolve(OpenAI),
+            model_name=CONTAINER.resolve(ResponsesModelName).value,
+            task=task,
+            batch_size=batch_size,
         )
-
-        return pd.Series(
-            client.parse(self._obj.tolist(), batch_size=batch_size),
-            index=self._obj.index,
-            name=self._obj.name,
-        )
+        return pd.Series(client.parse(self._obj.tolist()), index=self._obj.index, name=self._obj.name)
 
     def embeddings(self, batch_size: int = 128) -> pd.Series:
         """Compute OpenAI embeddings for every Series element.
@@ -245,13 +239,14 @@ class OpenAIVecSeriesAccessor:
             pandas.Series: Series whose values are ``np.ndarray`` objects
                 (dtype ``float32``).
         """
-        client: BatchEmbeddings = BatchEmbeddings(
+        client: BatchEmbeddings = BatchEmbeddings.of(
             client=CONTAINER.resolve(OpenAI),
             model_name=CONTAINER.resolve(EmbeddingsModelName).value,
+            batch_size=batch_size,
         )
 
         return pd.Series(
-            client.create(self._obj.tolist(), batch_size=batch_size),
+            client.create(self._obj.tolist()),
             index=self._obj.index,
             name=self._obj.name,
         )
@@ -548,24 +543,20 @@ class AsyncOpenAIVecSeriesAccessor:
         Note:
             This is an asynchronous method and must be awaited.
         """
-        client: AsyncBatchResponses = AsyncBatchResponses(
+        client: AsyncBatchResponses = AsyncBatchResponses.of(
             client=CONTAINER.resolve(AsyncOpenAI),
             model_name=CONTAINER.resolve(ResponsesModelName).value,
             system_message=instructions,
             response_format=response_format,
             temperature=temperature,
             top_p=top_p,
+            batch_size=batch_size,
             max_concurrency=max_concurrency,
         )
-
         # Await the async operation
-        results = await client.parse(self._obj.tolist(), batch_size=batch_size)
+        results = await client.parse(self._obj.tolist())
 
-        return pd.Series(
-            results,
-            index=self._obj.index,
-            name=self._obj.name,
-        )
+        return pd.Series(results, index=self._obj.index, name=self._obj.name)
 
     async def embeddings(self, batch_size: int = 128, max_concurrency: int = 8) -> pd.Series:
         """Compute OpenAI embeddings for every Series element (asynchronously).
@@ -594,14 +585,15 @@ class AsyncOpenAIVecSeriesAccessor:
         Note:
             This is an asynchronous method and must be awaited.
         """
-        client: AsyncBatchEmbeddings = AsyncBatchEmbeddings(
+        client: AsyncBatchEmbeddings = AsyncBatchEmbeddings.of(
             client=CONTAINER.resolve(AsyncOpenAI),
             model_name=CONTAINER.resolve(EmbeddingsModelName).value,
+            batch_size=batch_size,
             max_concurrency=max_concurrency,
         )
 
         # Await the async operation
-        results = await client.create(self._obj.tolist(), batch_size=batch_size)
+        results = await client.create(self._obj.tolist())
 
         return pd.Series(
             results,
@@ -653,13 +645,9 @@ class AsyncOpenAIVecSeriesAccessor:
         )
 
         # Await the async operation
-        results = await client.parse(self._obj.tolist(), batch_size=batch_size)
+        results = await client.parse(self._obj.tolist())
 
-        return pd.Series(
-            results,
-            index=self._obj.index,
-            name=self._obj.name,
-        )
+        return pd.Series(results, index=self._obj.index, name=self._obj.name)
 
 
 @pd.api.extensions.register_dataframe_accessor("aio")

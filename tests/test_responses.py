@@ -70,12 +70,13 @@ class TestAsyncBatchResponses(TestCase):
         system_message = """
         just repeat the user message
         """.strip()
-        client = AsyncBatchResponses(
+        client = AsyncBatchResponses.of(
             client=self.openai_client,
             model_name=self.model_name,
             system_message=system_message,
+            batch_size=1,
         )
-        response: List[str] = asyncio.run(client.parse(["apple", "orange", "banana", "pineapple"], batch_size=1))
+        response: List[str] = asyncio.run(client.parse(["apple", "orange", "banana", "pineapple"]))
         self.assertListEqual(response, ["apple", "orange", "banana", "pineapple"])
 
     def test_parse_structured(self):
@@ -99,10 +100,14 @@ class TestAsyncBatchResponses(TestCase):
             color: str
             taste: str
 
-        client = AsyncBatchResponses(
-            client=self.openai_client, model_name=self.model_name, system_message=system_message, response_format=Fruit
+        client = AsyncBatchResponses.of(
+            client=self.openai_client,
+            model_name=self.model_name,
+            system_message=system_message,
+            response_format=Fruit,
+            batch_size=1,
         )
-        response: List[Fruit] = asyncio.run(client.parse(input_fruits, batch_size=1))
+        response: List[Fruit] = asyncio.run(client.parse(input_fruits))
         self.assertEqual(len(response), len(input_fruits))
         for i, item in enumerate(response):
             self.assertIsInstance(item, Fruit)
@@ -122,10 +127,14 @@ class TestAsyncBatchResponses(TestCase):
             color: str
             taste: str
 
-        client = AsyncBatchResponses(
-            client=self.openai_client, model_name=self.model_name, system_message=system_message, response_format=Fruit
+        client = AsyncBatchResponses.of(
+            client=self.openai_client,
+            model_name=self.model_name,
+            system_message=system_message,
+            response_format=Fruit,
+            batch_size=1,
         )
-        response: List[Fruit] = asyncio.run(client.parse([], batch_size=1))
+        response: List[Fruit] = asyncio.run(client.parse([]))
         self.assertListEqual(response, [])
 
     def test_parse_structured_batch_size(self):
@@ -149,10 +158,14 @@ class TestAsyncBatchResponses(TestCase):
             color: str
             taste: str
 
-        client = AsyncBatchResponses(
-            client=self.openai_client, model_name=self.model_name, system_message=system_message, response_format=Fruit
+        client_bs2 = AsyncBatchResponses.of(
+            client=self.openai_client,
+            model_name=self.model_name,
+            system_message=system_message,
+            response_format=Fruit,
+            batch_size=2,
         )
-        response_bs2: List[Fruit] = asyncio.run(client.parse(input_fruits, batch_size=2))
+        response_bs2: List[Fruit] = asyncio.run(client_bs2.parse(input_fruits))
         self.assertEqual(len(response_bs2), len(input_fruits))
         for i, item in enumerate(response_bs2):
             self.assertIsInstance(item, Fruit)
@@ -162,7 +175,14 @@ class TestAsyncBatchResponses(TestCase):
             self.assertIsInstance(item.taste, str)
             self.assertTrue(len(item.taste) > 0)
 
-        response_bs4: List[Fruit] = asyncio.run(client.parse(input_fruits, batch_size=4))
+        client_bs4 = AsyncBatchResponses.of(
+            client=self.openai_client,
+            model_name=self.model_name,
+            system_message=system_message,
+            response_format=Fruit,
+            batch_size=4,
+        )
+        response_bs4: List[Fruit] = asyncio.run(client_bs4.parse(input_fruits))
         self.assertEqual(len(response_bs4), len(input_fruits))
         for i, item in enumerate(response_bs4):
             self.assertIsInstance(item, Fruit)
