@@ -239,13 +239,14 @@ class OpenAIVecSeriesAccessor:
             pandas.Series: Series whose values are ``np.ndarray`` objects
                 (dtype ``float32``).
         """
-        client: BatchEmbeddings = BatchEmbeddings(
+        client: BatchEmbeddings = BatchEmbeddings.of(
             client=CONTAINER.resolve(OpenAI),
             model_name=CONTAINER.resolve(EmbeddingsModelName).value,
+            batch_size=batch_size,
         )
 
         return pd.Series(
-            client.create(self._obj.tolist(), batch_size=batch_size),
+            client.create(self._obj.tolist()),
             index=self._obj.index,
             name=self._obj.name,
         )
@@ -584,14 +585,15 @@ class AsyncOpenAIVecSeriesAccessor:
         Note:
             This is an asynchronous method and must be awaited.
         """
-        client: AsyncBatchEmbeddings = AsyncBatchEmbeddings(
+        client: AsyncBatchEmbeddings = AsyncBatchEmbeddings.of(
             client=CONTAINER.resolve(AsyncOpenAI),
             model_name=CONTAINER.resolve(EmbeddingsModelName).value,
+            batch_size=batch_size,
             max_concurrency=max_concurrency,
         )
 
         # Await the async operation
-        results = await client.create(self._obj.tolist(), batch_size=batch_size)
+        results = await client.create(self._obj.tolist())
 
         return pd.Series(
             results,
