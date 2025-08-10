@@ -129,13 +129,14 @@ from openai import OpenAI
 from openaivec import BatchResponses
 
 # Initialize the batch client
-client = BatchResponses(
+client = BatchResponses.of(
     client=OpenAI(),
     model_name="gpt-4.1-mini",
-    system_message="Please answer only with 'xx family' and do not output anything else."
+    system_message="Please answer only with 'xx family' and do not output anything else.",
+    batch_size=32,
 )
 
-result = client.parse(["panda", "rabbit", "koala"], batch_size=32)
+result = client.parse(["panda", "rabbit", "koala"])
 print(result)  # Expected output: ['bear family', 'rabbit family', 'koala family']
 ```
 

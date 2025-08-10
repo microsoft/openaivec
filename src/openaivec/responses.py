@@ -113,7 +113,7 @@ class BatchResponses(Generic[ResponseFormat]):
             model_name="gpt‑4o‑mini",
             system_message="You are a helpful assistant."
         )
-    answers = vector_llm.parse(questions)
+        answers = vector_llm.parse(questions)
         ```
 
     Attributes:
@@ -247,7 +247,6 @@ class BatchResponses(Generic[ResponseFormat]):
         Args:
             inputs (List[str]): All prompts that require a response.  Duplicate
                 entries are de‑duplicated under the hood to save tokens.
-            batch_size (int): Maximum number of *unique* prompts per LLM call.
 
         Returns:
             A list containing the assistant responses in the same order as
@@ -268,24 +267,26 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         ```python
         import asyncio
         from openai import AsyncOpenAI
-        from openaivec.aio.responses import AsyncBatchResponses
+        from openaivec import AsyncBatchResponses
 
-        # Assuming openai_async_client is an initialized AsyncOpenAI client
-        openai_async_client = AsyncOpenAI() # Replace with your actual client initialization
+        openai_async_client = AsyncOpenAI()  # initialize your client
 
-        vector_llm = AsyncBatchResponses(
+        vector_llm = AsyncBatchResponses.of(
             client=openai_async_client,
             model_name="gpt-4.1-mini",
             system_message="You are a helpful assistant.",
-            max_concurrency=5  # Limit concurrent requests
+            batch_size=64,
+            max_concurrency=5,
         )
-        questions = ["What is the capital of France?", "Explain quantum physics simply."]
-        # Asynchronous call
+        questions = [
+            "What is the capital of France?",
+            "Explain quantum physics simply.",
+        ]
+
         async def main():
             answers = await vector_llm.parse(questions)
             print(answers)
 
-        # Run the async function
         asyncio.run(main())
         ```
 
@@ -297,7 +298,6 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         top_p: Nucleus-sampling parameter.
         response_format: Expected Pydantic BaseModel subclass or str type for each assistant message
             (defaults to `str`).
-        max_concurrency: Maximum number of concurrent requests to the OpenAI API.
     """
 
     client: AsyncOpenAI
