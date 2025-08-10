@@ -337,7 +337,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
 
     @classmethod
     def of_task(
-        cls, client: AsyncOpenAI, model_name: str, task: PreparedTask, bach_size: int = 128, max_concurrency: int = 8
+        cls, client: AsyncOpenAI, model_name: str, task: PreparedTask, batch_size: int = 128, max_concurrency: int = 8
     ) -> "AsyncBatchResponses":
         """Create an AsyncBatchResponses instance from a PreparedTask."""
         return cls(
@@ -347,7 +347,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             temperature=task.temperature,
             top_p=task.top_p,
             response_format=task.response_format,
-            cache=AsyncBatchingMapProxy(batch_size=bach_size, max_concurrency=max_concurrency),
+            cache=AsyncBatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency),
         )
 
     def __post_init__(self):
