@@ -21,7 +21,7 @@ _LOGGER: Logger = getLogger(__name__)
 
 
 def _vectorize_system_message(system_message: str) -> str:
-    """Return the system prompt that instructs the model to work on a batch.
+    """Build a system prompt that instructs the model to work on batched inputs.
 
     The returned XML‐ish prompt explains two things to the LLM:
 
@@ -31,13 +31,12 @@ def _vectorize_system_message(system_message: str) -> str:
        that contains multiple user messages and how it must shape its output.
 
     Args:
-        system_message (str): A single‑instance system instruction the caller would
+        system_message (str): Single instance system instruction the caller would
             normally send to the model.
 
     Returns:
-        A long, composite system prompt with embedded examples that can be
-        supplied to the `instructions=` field of the OpenAI **JSON mode**
-        endpoint.
+        str: Composite system prompt with embedded examples for the JSON‑mode
+            endpoint (to be supplied via the ``instructions=`` field).
     """
     return f"""
 <SystemMessage>
@@ -117,13 +116,13 @@ class BatchResponses(Generic[ResponseFormat]):
         ```
 
     Attributes:
-        client: Initialised ``openai.OpenAI`` client.
-        model_name: Name of the model (or Azure deployment) to invoke.
-        system_message: System prompt prepended to every request.
-        temperature: Sampling temperature passed to the model.
-        top_p: Nucleus‑sampling parameter.
-        response_format: Expected Pydantic BaseModel subclass or str type for each assistant message
-            (defaults to ``str``).
+        client (OpenAI): Initialised OpenAI client.
+        model_name (str): Model (or Azure deployment) name to invoke.
+        system_message (str): System prompt prepended to every request.
+        temperature (float): Sampling temperature.
+        top_p (float): Nucleus‑sampling parameter.
+        response_format (Type[ResponseFormat]): Expected Pydantic model class or ``str`` for each assistant message.
+        cache (BatchingMapProxy[str, ResponseFormat]): Order‑preserving batching proxy with de‑duplication and caching.
 
     Notes:
         Internally the work is delegated to two helpers:
@@ -153,7 +152,20 @@ class BatchResponses(Generic[ResponseFormat]):
         response_format: Type[ResponseFormat] = str,
         batch_size: int = 128,
     ) -> "BatchResponses":
-        """Create a BatchResponses instance from basic parameters."""
+        """Factory constructor.
+
+        Args:
+            client (OpenAI): OpenAI client.
+            model_name (str): Model or deployment name.
+            system_message (str): System prompt for the model.
+            temperature (float, optional): Sampling temperature. Defaults to 0.0.
+            top_p (float, optional): Nucleus sampling parameter. Defaults to 1.0.
+            response_format (Type[ResponseFormat], optional): Expected output type. Defaults to ``str``.
+            batch_size (int, optional): Max unique prompts per API call. Defaults to 128.
+
+        Returns:
+            BatchResponses: Configured instance backed by a batching proxy.
+        """
         return cls(
             client=client,
             model_name=model_name,
@@ -166,7 +178,17 @@ class BatchResponses(Generic[ResponseFormat]):
 
     @classmethod
     def of_task(cls, client: OpenAI, model_name: str, task: PreparedTask, batch_size: int = 128) -> "BatchResponses":
-        """Create a BatchResponses instance from a PreparedTask."""
+        """Factory from a PreparedTask.
+
+        Args:
+            client (OpenAI): OpenAI client.
+            model_name (str): Model or deployment name.
+            task (PreparedTask): Prepared task with instructions and response format.
+            batch_size (int, optional): Max unique prompts per API call. Defaults to 128.
+
+        Returns:
+            BatchResponses: Configured instance backed by a batching proxy.
+        """
         return cls(
             client=client,
             model_name=model_name,
@@ -187,16 +209,15 @@ class BatchResponses(Generic[ResponseFormat]):
     @observe(_LOGGER)
     @backoff(exception=RateLimitError, scale=15, max_retries=8)
     def _request_llm(self, user_messages: List[Message[str]]) -> ParsedResponse[Response[ResponseFormat]]:
-        """Make a single call to the OpenAI *JSON mode* endpoint.
+        """Make a single call to the OpenAI JSON‑mode endpoint.
 
         Args:
-            user_messages (List[Message[str]]): Sequence of `Message[str]` objects representing the
+            user_messages (List[Message[str]]): Sequence of ``Message[str]`` representing the
                 prompts for this minibatch.  Each message carries a unique `id`
                 so we can restore ordering later.
 
         Returns:
-            ParsedResponse containing `Response[ResponseFormat]` which in turn holds the
-            assistant messages in arbitrary order.
+            ParsedResponse[Response[ResponseFormat]]: Parsed response containing assistant messages (arbitrary order).
 
         Raises:
             openai.RateLimitError: Transparently re‑raised after the
@@ -225,14 +246,13 @@ class BatchResponses(Generic[ResponseFormat]):
     def _predict_chunk(self, user_messages: List[str]) -> List[ResponseFormat | None]:
         """Helper executed for every unique minibatch.
 
-        This method:
-        1. Converts plain strings into `Message[str]` with stable indices.
-        2. Delegates the request to `_request_llm`.
-        3. Reorders the responses so they match the original indices.
+            This method:
+            1. Converts plain strings into `Message[str]` with stable indices.
+            2. Delegates the request to `_request_llm`.
+            3. Reorders the responses so they match the original indices.
 
-        The function is *pure* – it has no side‑effects and the result depends
-        only on its arguments – which allows it to be used safely in both
-        serial and parallel execution paths.
+        The function is pure – it has no side‑effects and the result depends
+        only on its arguments – which allows safe reuse.
         """
         messages = [Message(id=i, body=message) for i, message in enumerate(user_messages)]
         responses: ParsedResponse[Response[ResponseFormat]] = self._request_llm(messages)
@@ -242,15 +262,13 @@ class BatchResponses(Generic[ResponseFormat]):
 
     @observe(_LOGGER)
     def parse(self, inputs: List[str]) -> List[ResponseFormat | None]:
-        """Public API: batched predict.
+        """Batched predict.
 
         Args:
-            inputs (List[str]): All prompts that require a response.  Duplicate
-                entries are de‑duplicated under the hood to save tokens.
+            inputs (List[str]): Prompts that require responses. Duplicates are de‑duplicated.
 
         Returns:
-            A list containing the assistant responses in the same order as
-                *inputs*.
+            List[ResponseFormat | None]: Assistant responses aligned to ``inputs``.
         """
         return self.cache.map(inputs, self._predict_chunk)
 
@@ -291,13 +309,13 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         ```
 
     Attributes:
-        client: Initialised `openai.AsyncOpenAI` client.
-        model_name: Name of the model (or Azure deployment) to invoke.
-        system_message: System prompt prepended to every request.
-        temperature: Sampling temperature passed to the model.
-        top_p: Nucleus-sampling parameter.
-        response_format: Expected Pydantic BaseModel subclass or str type for each assistant message
-            (defaults to `str`).
+        client (AsyncOpenAI): Initialised OpenAI async client.
+        model_name (str): Model (or Azure deployment) name to invoke.
+        system_message (str): System prompt prepended to every request.
+        temperature (float): Sampling temperature.
+        top_p (float): Nucleus‑sampling parameter.
+        response_format (Type[ResponseFormat]): Expected Pydantic model class or ``str`` for each assistant message.
+        cache (AsyncBatchingMapProxy[str, ResponseFormat]): Async batching proxy with de‑duplication and concurrency control.
     """
 
     client: AsyncOpenAI
@@ -324,7 +342,21 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         batch_size: int = 128,
         max_concurrency: int = 8,
     ) -> "AsyncBatchResponses":
-        """Create an AsyncBatchResponses instance from basic parameters."""
+        """Factory constructor.
+
+        Args:
+            client (AsyncOpenAI): OpenAI async client.
+            model_name (str): Model or deployment name.
+            system_message (str): System prompt.
+            temperature (float, optional): Sampling temperature. Defaults to 0.0.
+            top_p (float, optional): Nucleus sampling parameter. Defaults to 1.0.
+            response_format (Type[ResponseFormat], optional): Expected output type. Defaults to ``str``.
+            batch_size (int, optional): Max unique prompts per API call. Defaults to 128.
+            max_concurrency (int, optional): Max concurrent API calls. Defaults to 8.
+
+        Returns:
+            AsyncBatchResponses: Configured instance backed by an async batching proxy.
+        """
         return cls(
             client=client,
             model_name=model_name,
@@ -339,7 +371,18 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
     def of_task(
         cls, client: AsyncOpenAI, model_name: str, task: PreparedTask, batch_size: int = 128, max_concurrency: int = 8
     ) -> "AsyncBatchResponses":
-        """Create an AsyncBatchResponses instance from a PreparedTask."""
+        """Factory from a PreparedTask.
+
+        Args:
+            client (AsyncOpenAI): OpenAI async client.
+            model_name (str): Model or deployment name.
+            task (PreparedTask): Prepared task with instructions and response format.
+            batch_size (int, optional): Max unique prompts per API call. Defaults to 128.
+            max_concurrency (int, optional): Max concurrent API calls. Defaults to 8.
+
+        Returns:
+            AsyncBatchResponses: Configured instance backed by an async batching proxy.
+        """
         return cls(
             client=client,
             model_name=model_name,
@@ -360,20 +403,16 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
     @observe(_LOGGER)
     @backoff_async(exception=RateLimitError, scale=15, max_retries=8)
     async def _request_llm(self, user_messages: List[Message[str]]) -> ParsedResponse[Response[ResponseFormat]]:
-        """Make a single async call to the OpenAI *JSON mode* endpoint, respecting concurrency limits.
+        """Make a single async call to the OpenAI JSON‑mode endpoint.
 
         Args:
-            user_messages (List[Message[str]]): Sequence of `Message[str]` objects representing the
-                prompts for this minibatch. Each message carries a unique `id`
-                so we can restore ordering later.
+            user_messages (List[Message[str]]): Sequence of ``Message[str]`` representing the minibatch prompts.
 
         Returns:
-            ParsedResponse containing `Response[ResponseFormat]` which in turn holds the
-            assistant messages in arbitrary order.
+            ParsedResponse[Response[ResponseFormat]]: Parsed response with assistant messages (arbitrary order).
 
         Raises:
-            openai.RateLimitError: Transparently re-raised after the
-                exponential back-off decorator exhausts all retries.
+            RateLimitError: Re‑raised after back‑off retries are exhausted.
         """
         response_format = self.response_format
 
@@ -396,15 +435,14 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
 
     @observe(_LOGGER)
     async def _predict_chunk(self, user_messages: List[str]) -> List[ResponseFormat | None]:
-        """Helper executed asynchronously for every unique minibatch.
+        """Async helper executed for every unique minibatch.
 
-        This method:
-        1. Converts plain strings into `Message[str]` with stable indices.
-        2. Delegates the request to `_request_llm`.
-        3. Reorders the responses so they match the original indices.
+            This method:
+            1. Converts plain strings into `Message[str]` with stable indices.
+            2. Delegates the request to `_request_llm`.
+            3. Reorders the responses so they match the original indices.
 
-        The function is *pure* – it has no side-effects and the result depends
-        only on its arguments.
+        The function is pure – it has no side‑effects and the result depends only on its arguments.
         """
         messages = [Message(id=i, body=message) for i, message in enumerate(user_messages)]
         responses: ParsedResponse[Response[ResponseFormat]] = await self._request_llm(messages)
@@ -415,14 +453,12 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
 
     @observe(_LOGGER)
     async def parse(self, inputs: List[str]) -> List[ResponseFormat | None]:
-        """Asynchronous public API: batched predict.
+        """Batched predict (async).
 
         Args:
-            inputs (List[str]): All prompts that require a response. Duplicate
-                entries are de-duplicated under the hood to save tokens.
+            inputs (List[str]): Prompts that require responses. Duplicates are de‑duplicated.
 
         Returns:
-            A list containing the assistant responses in the same order as
-                *inputs*.
+            List[ResponseFormat | None]: Assistant responses aligned to ``inputs``.
         """
         return await self.cache.map(inputs, self._predict_chunk)

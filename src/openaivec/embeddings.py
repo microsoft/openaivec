@@ -21,11 +21,12 @@ _LOGGER: Logger = getLogger(__name__)
 
 @dataclass(frozen=True)
 class BatchEmbeddings:
-    """Thin wrapper around the OpenAI /embeddings endpoint.
+    """Thin wrapper around the OpenAI embeddings endpoint (synchronous).
 
     Attributes:
-        client: An already‑configured ``openai.OpenAI`` client.
-        model_name: The model identifier, e.g. ``"text-embedding-3-small"``.
+        client (OpenAI): Configured OpenAI client.
+        model_name (str): Model identifier (e.g., ``"text-embedding-3-small"``).
+        cache (BatchingMapProxy[str, NDArray[np.float32]]): Batching proxy for ordered, cached mapping.
     """
 
     client: OpenAI
@@ -34,24 +35,32 @@ class BatchEmbeddings:
 
     @classmethod
     def of(cls, client: OpenAI, model_name: str, batch_size: int = 128) -> "BatchEmbeddings":
-        """Create a BatchEmbeddings instance configured with a batching proxy."""
+        """Factory constructor.
+
+        Args:
+            client (OpenAI): OpenAI client.
+            model_name (str): Embeddings model name.
+            batch_size (int, optional): Max unique inputs per API call. Defaults to 128.
+
+        Returns:
+            BatchEmbeddings: Configured instance backed by a batching proxy.
+        """
         return cls(client=client, model_name=model_name, cache=BatchingMapProxy(batch_size=batch_size))
 
     @observe(_LOGGER)
     @backoff(exception=RateLimitError, scale=15, max_retries=8)
     def _embed_chunk(self, inputs: List[str]) -> List[NDArray[np.float32]]:
-        """Embed one minibatch of sentences.
+        """Embed one minibatch of strings.
 
         This private helper is the unit of work used by the map/parallel
         utilities.  Exponential back‑off is applied automatically when
         ``openai.RateLimitError`` is raised.
 
         Args:
-            inputs (List[str]): Input strings to be embedded.  Duplicates are allowed; the
-                implementation may decide to de‑duplicate internally.
+            inputs (List[str]): Input strings to be embedded. Duplicates allowed.
 
         Returns:
-            List of embedding vectors with the same ordering as *sentences*.
+            List[NDArray[np.float32]]: Embedding vectors aligned to ``inputs``.
         """
         responses = self.client.embeddings.create(input=inputs, model=self.model_name)
         return [np.array(d.embedding, dtype=np.float32) for d in responses.data]
@@ -61,18 +70,17 @@ class BatchEmbeddings:
         """Generate embeddings for inputs using cached, ordered batching.
 
         Args:
-            inputs (List[str]): A list of input strings. Duplicates are allowed; the
-                implementation may de‑duplicate internally.
+            inputs (List[str]): Input strings. Duplicates allowed.
 
         Returns:
-            A list of ``np.ndarray`` objects (dtype ``float32``), aligned to inputs.
+            List[NDArray[np.float32]]: Embedding vectors aligned to ``inputs``.
         """
         return self.cache.map(inputs, self._embed_chunk)
 
 
 @dataclass(frozen=True)
 class AsyncBatchEmbeddings:
-    """Thin wrapper around the OpenAI /embeddings endpoint using async operations.
+    """Thin wrapper around the OpenAI embeddings endpoint (asynchronous).
 
     This class provides an asynchronous interface for generating embeddings using
     OpenAI models. It manages concurrency, handles rate limits automatically,
@@ -111,8 +119,9 @@ class AsyncBatchEmbeddings:
         ```
 
     Attributes:
-    client: An already‑configured ``openai.AsyncOpenAI`` client.
-    model_name: The model identifier, e.g. ``"text-embedding-3-small"``.
+        client (AsyncOpenAI): Configured OpenAI async client.
+        model_name (str): Embeddings model name.
+        cache (AsyncBatchingMapProxy[str, NDArray[np.float32]]): Async batching proxy.
     """
 
     client: AsyncOpenAI
@@ -129,7 +138,17 @@ class AsyncBatchEmbeddings:
         batch_size: int = 128,
         max_concurrency: int = 8,
     ) -> "AsyncBatchEmbeddings":
-        """Create an AsyncBatchEmbeddings instance configured with a batching proxy."""
+        """Factory constructor.
+
+        Args:
+            client (AsyncOpenAI): OpenAI async client.
+            model_name (str): Embeddings model name.
+            batch_size (int, optional): Max unique inputs per API call. Defaults to 128.
+            max_concurrency (int, optional): Max concurrent API calls. Defaults to 8.
+
+        Returns:
+            AsyncBatchEmbeddings: Configured instance with an async batching proxy.
+        """
         return cls(
             client=client,
             model_name=model_name,
@@ -139,26 +158,32 @@ class AsyncBatchEmbeddings:
     @observe(_LOGGER)
     @backoff_async(exception=RateLimitError, scale=15, max_retries=8)
     async def _embed_chunk(self, inputs: List[str]) -> List[NDArray[np.float32]]:
-        """Embed one minibatch of sentences asynchronously, respecting concurrency limits.
+        """Embed one minibatch of strings asynchronously.
 
         This private helper handles the actual API call for a batch of inputs.
         Exponential back-off is applied automatically when ``openai.RateLimitError``
         is raised.
 
         Args:
-            inputs (List[str]): Input strings to be embedded. Duplicates are allowed.
+            inputs (List[str]): Input strings to be embedded. Duplicates allowed.
 
         Returns:
-            List of embedding vectors (``np.ndarray`` with dtype ``float32``)
-            in the same order as *inputs*.
+            List[NDArray[np.float32]]: Embedding vectors aligned to ``inputs``.
 
         Raises:
-            openai.RateLimitError: Propagated if retries are exhausted.
+            RateLimitError: Propagated if retries are exhausted.
         """
         responses = await self.client.embeddings.create(input=inputs, model=self.model_name)
         return [np.array(d.embedding, dtype=np.float32) for d in responses.data]
 
     @observe(_LOGGER)
     async def create(self, inputs: List[str]) -> List[NDArray[np.float32]]:
-        """Asynchronous public API: generate embeddings for a list of inputs using proxy batching."""
+        """Generate embeddings for inputs using proxy batching (async).
+
+        Args:
+            inputs (List[str]): Input strings. Duplicates allowed.
+
+        Returns:
+            List[NDArray[np.float32]]: Embedding vectors aligned to ``inputs``.
+        """
         return await self.cache.map(inputs, self._embed_chunk)
