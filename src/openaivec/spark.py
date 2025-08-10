@@ -7,6 +7,10 @@ It supports UDFs for generating responses and creating embeddings asynchronously
 The UDFs operate on Spark DataFrames and leverage asyncio for potentially
 improved performance in I/O-bound operations.
 
+**Performance Optimization**: All response-generating UDFs (`responses_udf`, `task_udf`)
+automatically cache duplicate inputs within each partition, significantly reducing
+API calls and costs when processing datasets with overlapping content.
+
 ## Setup
 
 First, obtain a Spark session and configure authentication:
@@ -120,6 +124,8 @@ from pyspark.sql.types import ArrayType, BooleanType, FloatType, IntegerType, St
 from pyspark.sql.udf import UserDefinedFunction
 from typing_extensions import Literal
 
+from openaivec.proxy import AsyncBatchingMapProxy
+
 from . import pandas_ext
 from .model import PreparedTask, ResponseFormat
 from .serialize import deserialize_base_model, serialize_base_model
@@ -224,8 +230,11 @@ def responses_udf(
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF for generating responses.
 
-    Configures and builds UDFs that leverage `pandas_ext.aio.responses`
+    Configures and builds UDFs that leverage `pandas_ext.aio.responses_with_cache`
     to generate text or structured responses from OpenAI models asynchronously.
+    Each partition maintains its own cache to eliminate duplicate API calls within
+    the partition, significantly reducing API usage and costs when processing
+    datasets with overlapping content.
 
     Note:
         Authentication must be configured via SparkContext environment variables.
@@ -264,6 +273,8 @@ def responses_udf(
 
     Note:
         For optimal performance in distributed environments:
+        - **Automatic Caching**: Duplicate inputs within each partition are cached,
+          reducing API calls and costs significantly on datasets with repeated content
         - Monitor OpenAI API rate limits when scaling executor count
         - Consider your OpenAI tier limits: total_requests = max_concurrency × executors
         - Use Spark UI to optimize partition sizes relative to batch_size
@@ -275,19 +286,26 @@ def responses_udf(
         @pandas_udf(returnType=spark_schema)
         def structure_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
             pandas_ext.responses_model(model_name)
+            response_format = deserialize_base_model(json_schema_string)
+            cache = AsyncBatchingMapProxy[str, response_format](
+                batch_size=batch_size,
+                max_concurrency=max_concurrency,
+            )
 
-            for part in col:
-                predictions: pd.Series = asyncio.run(
-                    part.aio.responses(
-                        instructions=instructions,
-                        response_format=deserialize_base_model(json_schema_string),
-                        batch_size=batch_size,
-                        temperature=temperature,
-                        top_p=top_p,
-                        max_concurrency=max_concurrency,
+            try:
+                for part in col:
+                    predictions: pd.Series = asyncio.run(
+                        part.aio.responses_with_cache(
+                            instructions=instructions,
+                            response_format=response_format,
+                            temperature=temperature,
+                            top_p=top_p,
+                            cache=cache,
+                        )
                     )
-                )
-                yield pd.DataFrame(predictions.map(_safe_dump).tolist())
+                    yield pd.DataFrame(predictions.map(_safe_dump).tolist())
+            finally:
+                cache.clear()
 
         return structure_udf
 
@@ -296,19 +314,25 @@ def responses_udf(
         @pandas_udf(returnType=StringType())
         def string_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
             pandas_ext.responses_model(model_name)
+            cache = AsyncBatchingMapProxy[str, str](
+                batch_size=batch_size,
+                max_concurrency=max_concurrency,
+            )
 
-            for part in col:
-                predictions: pd.Series = asyncio.run(
-                    part.aio.responses(
-                        instructions=instructions,
-                        response_format=str,
-                        batch_size=batch_size,
-                        temperature=temperature,
-                        top_p=top_p,
-                        max_concurrency=max_concurrency,
+            try:
+                for part in col:
+                    predictions: pd.Series = asyncio.run(
+                        part.aio.responses_with_cache(
+                            instructions=instructions,
+                            response_format=str,
+                            temperature=temperature,
+                            top_p=top_p,
+                            cache=cache,
+                        )
                     )
-                )
-                yield predictions.map(_safe_cast_str)
+                    yield predictions.map(_safe_cast_str)
+            finally:
+                cache.clear()
 
         return string_udf
 
@@ -326,6 +350,9 @@ def task_udf(
 
     This function allows users to create UDFs from predefined tasks such as sentiment analysis,
     translation, or other common NLP operations defined in the openaivec.task module.
+    Each partition maintains its own cache to eliminate duplicate API calls within
+    the partition, significantly reducing API usage and costs when processing
+    datasets with overlapping content.
 
     Args:
         task (PreparedTask): A predefined task configuration containing instructions,
@@ -342,8 +369,9 @@ def task_udf(
 
     Returns:
         UserDefinedFunction: A Spark pandas UDF configured to execute the specified task
-            asynchronously. Output schema is StringType for str response format or
-            a struct derived from the task's response format for BaseModel.
+            asynchronously with automatic caching for duplicate inputs within each partition.
+            Output schema is StringType for str response format or a struct derived from
+            the task's response format for BaseModel.
 
     Example:
         ```python
@@ -353,6 +381,10 @@ def task_udf(
 
         spark.udf.register("analyze_sentiment", sentiment_udf)
         ```
+
+    Note:
+        **Automatic Caching**: Duplicate inputs within each partition are cached,
+        reducing API calls and costs significantly on datasets with repeated content.
     """
     # Serialize task parameters for Spark serialization compatibility
     task_instructions = task.instructions
@@ -369,19 +401,25 @@ def task_udf(
         @pandas_udf(returnType=spark_schema)
         def task_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
             pandas_ext.responses_model(model_name)
+            cache = AsyncBatchingMapProxy[str, response_format](
+                batch_size=batch_size,
+                max_concurrency=max_concurrency,
+            )
 
-            for part in col:
-                predictions: pd.Series = asyncio.run(
-                    part.aio.responses(
-                        instructions=task_instructions,
-                        response_format=response_format,
-                        batch_size=batch_size,
-                        temperature=task_temperature,
-                        top_p=task_top_p,
-                        max_concurrency=max_concurrency,
+            try:
+                for part in col:
+                    predictions: pd.Series = asyncio.run(
+                        part.aio.responses_with_cache(
+                            instructions=task_instructions,
+                            response_format=response_format,
+                            temperature=task_temperature,
+                            top_p=task_top_p,
+                            cache=cache,
+                        )
                     )
-                )
-                yield pd.DataFrame(predictions.map(_safe_dump).tolist())
+                    yield pd.DataFrame(predictions.map(_safe_dump).tolist())
+            finally:
+                cache.clear()
 
         return task_udf
 
@@ -390,19 +428,25 @@ def task_udf(
         @pandas_udf(returnType=StringType())
         def task_string_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
             pandas_ext.responses_model(model_name)
+            cache = AsyncBatchingMapProxy[str, str](
+                batch_size=batch_size,
+                max_concurrency=max_concurrency,
+            )
 
-            for part in col:
-                predictions: pd.Series = asyncio.run(
-                    part.aio.responses(
-                        instructions=task_instructions,
-                        response_format=str,
-                        batch_size=batch_size,
-                        temperature=task_temperature,
-                        top_p=task_top_p,
-                        max_concurrency=max_concurrency,
+            try:
+                for part in col:
+                    predictions: pd.Series = asyncio.run(
+                        part.aio.responses_with_cache(
+                            instructions=task_instructions,
+                            response_format=str,
+                            temperature=task_temperature,
+                            top_p=task_top_p,
+                            cache=cache,
+                        )
                     )
-                )
-                yield predictions.map(_safe_cast_str)
+                    yield predictions.map(_safe_cast_str)
+            finally:
+                cache.clear()
 
         return task_string_udf
 
