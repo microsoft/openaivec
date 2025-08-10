@@ -6,10 +6,9 @@ from openai import AsyncOpenAI, OpenAI, RateLimitError
 from openai.types.responses import ParsedResponse
 from pydantic import BaseModel
 
-from .proxy import AsyncBatchingMapProxy, BatchingMapProxy
-
 from .log import observe
 from .model import PreparedTask, ResponseFormat
+from .proxy import AsyncBatchingMapProxy, BatchingMapProxy
 from .util import backoff, backoff_async
 
 __all__ = [

@@ -6,9 +6,8 @@ import numpy as np
 from numpy.typing import NDArray
 from openai import AsyncOpenAI, OpenAI, RateLimitError
 
-from .proxy import AsyncBatchingMapProxy, BatchingMapProxy
-
 from .log import observe
+from .proxy import AsyncBatchingMapProxy, BatchingMapProxy
 from .util import backoff, backoff_async
 
 __all__ = [
