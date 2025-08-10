@@ -6,7 +6,7 @@ from openai import AsyncOpenAI, OpenAI, RateLimitError
 from openai.types.responses import ParsedResponse
 from pydantic import BaseModel
 
-from openaivec.proxy import AsyncBatchingMapProxy, BatchingMapProxy
+from .proxy import AsyncBatchingMapProxy, BatchingMapProxy
 
 from .log import observe
 from .model import PreparedTask, ResponseFormat
