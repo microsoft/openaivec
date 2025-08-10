@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from logging import Logger, getLogger
 from typing import Generic, List, Type, cast
 
-from openai import AsyncOpenAI, OpenAI, RateLimitError
+from openai import AsyncOpenAI, InternalServerError, OpenAI, RateLimitError
 from openai.types.responses import ParsedResponse
 from pydantic import BaseModel
 
@@ -206,7 +206,7 @@ class BatchResponses(Generic[ResponseFormat]):
         )
 
     @observe(_LOGGER)
-    @backoff(exception=RateLimitError, scale=15, max_retries=8)
+    @backoff(exceptions=[RateLimitError, InternalServerError], scale=15, max_retries=8)
     def _request_llm(self, user_messages: List[Message[str]]) -> ParsedResponse[Response[ResponseFormat]]:
         """Make a single call to the OpenAI JSON‑mode endpoint.
 
@@ -400,7 +400,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         )
 
     @observe(_LOGGER)
-    @backoff_async(exception=RateLimitError, scale=15, max_retries=8)
+    @backoff_async(exceptions=[RateLimitError, InternalServerError], scale=15, max_retries=8)
     async def _request_llm(self, user_messages: List[Message[str]]) -> ParsedResponse[Response[ResponseFormat]]:
         """Make a single async call to the OpenAI JSON‑mode endpoint.
 
