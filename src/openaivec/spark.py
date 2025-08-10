@@ -125,10 +125,9 @@ from pyspark.sql.types import ArrayType, BooleanType, FloatType, IntegerType, St
 from pyspark.sql.udf import UserDefinedFunction
 from typing_extensions import Literal
 
-from openaivec.proxy import AsyncBatchingMapProxy
-
 from . import pandas_ext
 from .model import PreparedTask, ResponseFormat
+from .proxy import AsyncBatchingMapProxy
 from .serialize import deserialize_base_model, serialize_base_model
 from .util import TextChunker
 
