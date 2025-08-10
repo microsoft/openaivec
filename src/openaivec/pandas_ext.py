@@ -49,6 +49,7 @@ from pydantic import BaseModel
 from .embeddings import AsyncBatchEmbeddings, BatchEmbeddings
 from .model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
 from .provider import CONTAINER
+from .proxy import AsyncBatchingMapProxy, BatchingMapProxy
 from .responses import AsyncBatchResponses, BatchResponses
 from .task.table import FillNaResponse, fillna
 
@@ -137,6 +138,68 @@ class OpenAIVecSeriesAccessor:
     def __init__(self, series_obj: pd.Series):
         self._obj = series_obj
 
+    def responses_with_cache(
+        self,
+        instructions: str,
+        cache: BatchingMapProxy[str, ResponseFormat],
+        response_format: Type[ResponseFormat] = str,
+        temperature: float = 0.0,
+        top_p: float = 1.0,
+    ) -> pd.Series:
+        client: BatchResponses = BatchResponses(
+            client=CONTAINER.resolve(OpenAI),
+            model_name=CONTAINER.resolve(ResponsesModelName).value,
+            system_message=instructions,
+            response_format=response_format,
+            cache=cache,
+            temperature=temperature,
+            top_p=top_p,
+        )
+
+        return pd.Series(client.parse(self._obj.tolist()), index=self._obj.index, name=self._obj.name)
+
+    def embeddings_with_cache(
+        self,
+        cache: BatchingMapProxy[str, np.ndarray],
+    ) -> pd.Series:
+        """Compute OpenAI embeddings for every Series element using a provided cache.
+
+        This method allows external control over caching behavior by accepting
+        a pre-configured BatchingMapProxy instance, enabling cache sharing
+        across multiple operations or custom batch size management.
+
+        Args:
+            cache (BatchingMapProxy[str, np.ndarray]): Pre-configured cache
+                instance for managing API call batching and deduplication.
+
+        Returns:
+            pandas.Series: Series whose values are ``np.ndarray`` objects
+                (dtype ``float32``).
+
+        Example:
+            ```python
+            from openaivec.proxy import BatchingMapProxy
+            import numpy as np
+
+            # Create a shared cache with custom batch size
+            shared_cache = BatchingMapProxy[str, np.ndarray](batch_size=64)
+
+            animals = pd.Series(["cat", "dog", "elephant"])
+            embeddings = animals.ai.embeddings_with_cache(cache=shared_cache)
+            ```
+        """
+        client: BatchEmbeddings = BatchEmbeddings(
+            client=CONTAINER.resolve(OpenAI),
+            model_name=CONTAINER.resolve(EmbeddingsModelName).value,
+            cache=cache,
+        )
+
+        return pd.Series(
+            client.create(self._obj.tolist()),
+            index=self._obj.index,
+            name=self._obj.name,
+        )
+
     def responses(
         self,
         instructions: str,
@@ -169,14 +232,58 @@ class OpenAIVecSeriesAccessor:
         Returns:
             pandas.Series: Series whose values are instances of ``response_format``.
         """
-        client: BatchResponses = BatchResponses.of(
-            client=CONTAINER.resolve(OpenAI),
-            model_name=CONTAINER.resolve(ResponsesModelName).value,
-            system_message=instructions,
+        return self.responses_with_cache(
+            instructions=instructions,
+            cache=BatchingMapProxy(batch_size=batch_size),
             response_format=response_format,
             temperature=temperature,
             top_p=top_p,
-            batch_size=batch_size,
+        )
+
+    def task_with_cache(
+        self,
+        task: PreparedTask,
+        cache: BatchingMapProxy[str, ResponseFormat],
+    ) -> pd.Series:
+        """Execute a prepared task on every Series element using a provided cache.
+
+        This method allows external control over caching behavior by accepting
+        a pre-configured BatchingMapProxy instance, enabling cache sharing
+        across multiple operations or custom batch size management.
+
+        Args:
+            task (PreparedTask): A pre-configured task containing instructions,
+                response format, and other parameters for processing the inputs.
+            cache (BatchingMapProxy[str, ResponseFormat]): Pre-configured cache
+                instance for managing API call batching and deduplication.
+
+        Returns:
+            pandas.Series: Series whose values are instances of the task's
+                response format, aligned with the original Series index.
+
+        Example:
+            ```python
+            from openaivec.model import PreparedTask
+            from openaivec.proxy import BatchingMapProxy
+
+            # Create a shared cache with custom batch size
+            shared_cache = BatchingMapProxy(batch_size=64)
+
+            # Assume you have a prepared task for sentiment analysis
+            sentiment_task = PreparedTask(...)
+
+            reviews = pd.Series(["Great product!", "Not satisfied", "Amazing quality"])
+            results = reviews.ai.task_with_cache(sentiment_task, cache=shared_cache)
+            ```
+        """
+        client = BatchResponses(
+            client=CONTAINER.resolve(OpenAI),
+            model_name=CONTAINER.resolve(ResponsesModelName).value,
+            system_message=task.instructions,
+            response_format=task.response_format,
+            cache=cache,
+            temperature=task.temperature,
+            top_p=task.top_p,
         )
         return pd.Series(client.parse(self._obj.tolist()), index=self._obj.index, name=self._obj.name)
 
@@ -210,13 +317,10 @@ class OpenAIVecSeriesAccessor:
             pandas.Series: Series whose values are instances of the task's
                 response format, aligned with the original Series index.
         """
-        client = BatchResponses.of_task(
-            client=CONTAINER.resolve(OpenAI),
-            model_name=CONTAINER.resolve(ResponsesModelName).value,
+        return self.task_with_cache(
             task=task,
-            batch_size=batch_size,
+            cache=BatchingMapProxy(batch_size=batch_size),
         )
-        return pd.Series(client.parse(self._obj.tolist()), index=self._obj.index, name=self._obj.name)
 
     def embeddings(self, batch_size: int = 128) -> pd.Series:
         """Compute OpenAI embeddings for every Series element.
@@ -239,16 +343,8 @@ class OpenAIVecSeriesAccessor:
             pandas.Series: Series whose values are ``np.ndarray`` objects
                 (dtype ``float32``).
         """
-        client: BatchEmbeddings = BatchEmbeddings.of(
-            client=CONTAINER.resolve(OpenAI),
-            model_name=CONTAINER.resolve(EmbeddingsModelName).value,
-            batch_size=batch_size,
-        )
-
-        return pd.Series(
-            client.create(self._obj.tolist()),
-            index=self._obj.index,
-            name=self._obj.name,
+        return self.embeddings_with_cache(
+            cache=BatchingMapProxy(batch_size=batch_size),
         )
 
     def count_tokens(self) -> pd.Series:
@@ -337,6 +433,64 @@ class OpenAIVecDataFrameAccessor:
             .pipe(lambda df: df.drop(columns=[column], axis=1))
         )
 
+    def responses_with_cache(
+        self,
+        instructions: str,
+        cache: BatchingMapProxy[str, ResponseFormat],
+        response_format: Type[ResponseFormat] = str,
+        temperature: float = 0.0,
+        top_p: float = 1.0,
+    ) -> pd.Series:
+        """Generate a response for each row after serialising it to JSON using a provided cache.
+
+        This method allows external control over caching behavior by accepting
+        a pre-configured BatchingMapProxy instance, enabling cache sharing
+        across multiple operations or custom batch size management.
+
+        Args:
+            instructions (str): System prompt for the assistant.
+            cache (BatchingMapProxy[str, ResponseFormat]): Pre-configured cache
+                instance for managing API call batching and deduplication.
+            response_format (Type[ResponseFormat], optional): Desired Python type of the
+                responses. Defaults to ``str``.
+            temperature (float, optional): Sampling temperature. Defaults to ``0.0``.
+            top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
+
+        Returns:
+            pandas.Series: Responses aligned with the DataFrame's original index.
+
+        Example:
+            ```python
+            from openaivec.proxy import BatchingMapProxy
+
+            # Create a shared cache with custom batch size
+            shared_cache = BatchingMapProxy(batch_size=64)
+
+            df = pd.DataFrame([
+                {"name": "cat", "legs": 4},
+                {"name": "dog", "legs": 4},
+                {"name": "elephant", "legs": 4},
+            ])
+            result = df.ai.responses_with_cache(
+                "what is the animal's name?",
+                cache=shared_cache
+            )
+            ```
+        """
+        return self._obj.pipe(
+            lambda df: (
+                df.pipe(lambda df: pd.Series(df.to_dict(orient="records"), index=df.index, name="record"))
+                .map(lambda x: json.dumps(x, ensure_ascii=False))
+                .ai.responses_with_cache(
+                    instructions=instructions,
+                    cache=cache,
+                    response_format=response_format,
+                    temperature=temperature,
+                    top_p=top_p,
+                )
+            )
+        )
+
     def responses(
         self,
         instructions: str,
@@ -372,20 +526,14 @@ class OpenAIVecDataFrameAccessor:
             top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
 
         Returns:
-            pandas.Series: Responses aligned with the DataFrame’s original index.
+            pandas.Series: Responses aligned with the DataFrame's original index.
         """
-        return self._obj.pipe(
-            lambda df: (
-                df.pipe(lambda df: pd.Series(df.to_dict(orient="records"), index=df.index, name="record"))
-                .map(lambda x: json.dumps(x, ensure_ascii=False))
-                .ai.responses(
-                    instructions=instructions,
-                    response_format=response_format,
-                    batch_size=batch_size,
-                    temperature=temperature,
-                    top_p=top_p,
-                )
-            )
+        return self.responses_with_cache(
+            instructions=instructions,
+            cache=BatchingMapProxy(batch_size=batch_size),
+            response_format=response_format,
+            temperature=temperature,
+            top_p=top_p,
         )
 
     def task(self, task: PreparedTask, batch_size: int = 128) -> pd.Series:
@@ -491,6 +639,30 @@ class OpenAIVecDataFrameAccessor:
         return df
 
     def similarity(self, col1: str, col2: str) -> pd.Series:
+        """Compute cosine similarity between two columns containing embedding vectors.
+
+        This method calculates the cosine similarity between vectors stored in
+        two columns of the DataFrame. The vectors should be numpy arrays or
+        array-like objects that support dot product operations.
+
+        Args:
+            col1 (str): Name of the first column containing embedding vectors.
+            col2 (str): Name of the second column containing embedding vectors.
+
+        Returns:
+            pandas.Series: Series containing cosine similarity scores between
+                corresponding vectors in col1 and col2, with values ranging
+                from -1 to 1, where 1 indicates identical direction.
+
+        Example:
+            ```python
+            df = pd.DataFrame({
+                'vec1': [np.array([1, 0, 0]), np.array([0, 1, 0])],
+                'vec2': [np.array([1, 0, 0]), np.array([1, 1, 0])]
+            })
+            similarities = df.ai.similarity('vec1', 'vec2')
+            ```
+        """
         return self._obj.apply(
             lambda row: np.dot(row[col1], row[col2]) / (np.linalg.norm(row[col1]) * np.linalg.norm(row[col2])),
             axis=1,
@@ -503,6 +675,173 @@ class AsyncOpenAIVecSeriesAccessor:
 
     def __init__(self, series_obj: pd.Series):
         self._obj = series_obj
+
+    async def responses_with_cache(
+        self,
+        instructions: str,
+        cache: AsyncBatchingMapProxy[str, ResponseFormat],
+        response_format: Type[ResponseFormat] = str,
+        temperature: float = 0.0,
+        top_p: float = 1.0,
+    ) -> pd.Series:
+        """Call an LLM once for every Series element using a provided cache (asynchronously).
+
+        This method allows external control over caching behavior by accepting
+        a pre-configured AsyncBatchingMapProxy instance, enabling cache sharing
+        across multiple operations or custom batch size management. The concurrency
+        is controlled by the cache instance itself.
+
+        Args:
+            instructions (str): System prompt prepended to every user message.
+            cache (AsyncBatchingMapProxy[str, ResponseFormat]): Pre-configured cache
+                instance for managing API call batching and deduplication.
+            response_format (Type[ResponseFormat], optional): Pydantic model or built‑in
+                type the assistant should return. Defaults to ``str``.
+            temperature (float, optional): Sampling temperature. Defaults to ``0.0``.
+            top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
+
+        Returns:
+            pandas.Series: Series whose values are instances of ``response_format``.
+
+        Example:
+            ```python
+            from openaivec.proxy import AsyncBatchingMapProxy
+
+            # Create a shared cache with custom batch size and concurrency
+            shared_cache = AsyncBatchingMapProxy(batch_size=64, max_concurrency=4)
+
+            animals = pd.Series(["cat", "dog", "elephant"])
+            # Must be awaited
+            result = await animals.aio.responses_with_cache(
+                "translate to French",
+                cache=shared_cache
+            )
+            ```
+
+        Note:
+            This is an asynchronous method and must be awaited.
+        """
+        client: AsyncBatchResponses = AsyncBatchResponses(
+            client=CONTAINER.resolve(AsyncOpenAI),
+            model_name=CONTAINER.resolve(ResponsesModelName).value,
+            system_message=instructions,
+            response_format=response_format,
+            cache=cache,
+            temperature=temperature,
+            top_p=top_p,
+        )
+        # Await the async operation
+        results = await client.parse(self._obj.tolist())
+
+        return pd.Series(results, index=self._obj.index, name=self._obj.name)
+
+    async def embeddings_with_cache(
+        self,
+        cache: AsyncBatchingMapProxy[str, np.ndarray],
+    ) -> pd.Series:
+        """Compute OpenAI embeddings for every Series element using a provided cache (asynchronously).
+
+        This method allows external control over caching behavior by accepting
+        a pre-configured AsyncBatchingMapProxy instance, enabling cache sharing
+        across multiple operations or custom batch size management. The concurrency
+        is controlled by the cache instance itself.
+
+        Args:
+            cache (AsyncBatchingMapProxy[str, np.ndarray]): Pre-configured cache
+                instance for managing API call batching and deduplication.
+
+        Returns:
+            pandas.Series: Series whose values are ``np.ndarray`` objects
+                (dtype ``float32``).
+
+        Example:
+            ```python
+            from openaivec.proxy import AsyncBatchingMapProxy
+            import numpy as np
+
+            # Create a shared cache with custom batch size and concurrency
+            shared_cache = AsyncBatchingMapProxy[str, np.ndarray](
+                batch_size=64, max_concurrency=4
+            )
+
+            animals = pd.Series(["cat", "dog", "elephant"])
+            # Must be awaited
+            embeddings = await animals.aio.embeddings_with_cache(cache=shared_cache)
+            ```
+
+        Note:
+            This is an asynchronous method and must be awaited.
+        """
+        client: AsyncBatchEmbeddings = AsyncBatchEmbeddings(
+            client=CONTAINER.resolve(AsyncOpenAI),
+            model_name=CONTAINER.resolve(EmbeddingsModelName).value,
+            cache=cache,
+        )
+
+        # Await the async operation
+        results = await client.create(self._obj.tolist())
+
+        return pd.Series(
+            results,
+            index=self._obj.index,
+            name=self._obj.name,
+        )
+
+    async def task_with_cache(
+        self,
+        task: PreparedTask,
+        cache: AsyncBatchingMapProxy[str, ResponseFormat],
+    ) -> pd.Series:
+        """Execute a prepared task on every Series element using a provided cache (asynchronously).
+
+        This method allows external control over caching behavior by accepting
+        a pre-configured AsyncBatchingMapProxy instance, enabling cache sharing
+        across multiple operations or custom batch size management. The concurrency
+        is controlled by the cache instance itself.
+
+        Args:
+            task (PreparedTask): A pre-configured task containing instructions,
+                response format, and other parameters for processing the inputs.
+            cache (AsyncBatchingMapProxy[str, ResponseFormat]): Pre-configured cache
+                instance for managing API call batching and deduplication.
+
+        Returns:
+            pandas.Series: Series whose values are instances of the task's
+                response format, aligned with the original Series index.
+
+        Example:
+            ```python
+            from openaivec.model import PreparedTask
+            from openaivec.proxy import AsyncBatchingMapProxy
+
+            # Create a shared cache with custom batch size and concurrency
+            shared_cache = AsyncBatchingMapProxy(batch_size=64, max_concurrency=4)
+
+            # Assume you have a prepared task for sentiment analysis
+            sentiment_task = PreparedTask(...)
+
+            reviews = pd.Series(["Great product!", "Not satisfied", "Amazing quality"])
+            # Must be awaited
+            results = await reviews.aio.task_with_cache(sentiment_task, cache=shared_cache)
+            ```
+
+        Note:
+            This is an asynchronous method and must be awaited.
+        """
+        client = AsyncBatchResponses(
+            client=CONTAINER.resolve(AsyncOpenAI),
+            model_name=CONTAINER.resolve(ResponsesModelName).value,
+            system_message=task.instructions,
+            response_format=task.response_format,
+            cache=cache,
+            temperature=task.temperature,
+            top_p=task.top_p,
+        )
+
+        # Await the async operation
+        results = await client.parse(self._obj.tolist())
+
+        return pd.Series(results, index=self._obj.index, name=self._obj.name)
 
     async def responses(
         self,
@@ -543,20 +882,13 @@ class AsyncOpenAIVecSeriesAccessor:
         Note:
             This is an asynchronous method and must be awaited.
         """
-        client: AsyncBatchResponses = AsyncBatchResponses.of(
-            client=CONTAINER.resolve(AsyncOpenAI),
-            model_name=CONTAINER.resolve(ResponsesModelName).value,
-            system_message=instructions,
+        return await self.responses_with_cache(
+            instructions=instructions,
+            cache=AsyncBatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency),
             response_format=response_format,
             temperature=temperature,
             top_p=top_p,
-            batch_size=batch_size,
-            max_concurrency=max_concurrency,
         )
-        # Await the async operation
-        results = await client.parse(self._obj.tolist())
-
-        return pd.Series(results, index=self._obj.index, name=self._obj.name)
 
     async def embeddings(self, batch_size: int = 128, max_concurrency: int = 8) -> pd.Series:
         """Compute OpenAI embeddings for every Series element (asynchronously).
@@ -585,20 +917,8 @@ class AsyncOpenAIVecSeriesAccessor:
         Note:
             This is an asynchronous method and must be awaited.
         """
-        client: AsyncBatchEmbeddings = AsyncBatchEmbeddings.of(
-            client=CONTAINER.resolve(AsyncOpenAI),
-            model_name=CONTAINER.resolve(EmbeddingsModelName).value,
-            batch_size=batch_size,
-            max_concurrency=max_concurrency,
-        )
-
-        # Await the async operation
-        results = await client.create(self._obj.tolist())
-
-        return pd.Series(
-            results,
-            index=self._obj.index,
-            name=self._obj.name,
+        return await self.embeddings_with_cache(
+            cache=AsyncBatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency),
         )
 
     async def task(self, task: PreparedTask, batch_size: int = 128, max_concurrency: int = 8) -> pd.Series:
@@ -637,17 +957,10 @@ class AsyncOpenAIVecSeriesAccessor:
         Note:
             This is an asynchronous method and must be awaited.
         """
-        client = AsyncBatchResponses.of_task(
-            client=CONTAINER.resolve(AsyncOpenAI),
-            model_name=CONTAINER.resolve(ResponsesModelName).value,
+        return await self.task_with_cache(
             task=task,
-            max_concurrency=max_concurrency,
+            cache=AsyncBatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency),
         )
-
-        # Await the async operation
-        results = await client.parse(self._obj.tolist())
-
-        return pd.Series(results, index=self._obj.index, name=self._obj.name)
 
 
 @pd.api.extensions.register_dataframe_accessor("aio")
@@ -656,6 +969,71 @@ class AsyncOpenAIVecDataFrameAccessor:
 
     def __init__(self, df_obj: pd.DataFrame):
         self._obj = df_obj
+
+    async def responses_with_cache(
+        self,
+        instructions: str,
+        cache: AsyncBatchingMapProxy[str, ResponseFormat],
+        response_format: Type[ResponseFormat] = str,
+        temperature: float = 0.0,
+        top_p: float = 1.0,
+    ) -> pd.Series:
+        """Generate a response for each row after serialising it to JSON using a provided cache (asynchronously).
+
+        This method allows external control over caching behavior by accepting
+        a pre-configured AsyncBatchingMapProxy instance, enabling cache sharing
+        across multiple operations or custom batch size management. The concurrency
+        is controlled by the cache instance itself.
+
+        Args:
+            instructions (str): System prompt for the assistant.
+            cache (AsyncBatchingMapProxy[str, ResponseFormat]): Pre-configured cache
+                instance for managing API call batching and deduplication.
+            response_format (Type[ResponseFormat], optional): Desired Python type of the
+                responses. Defaults to ``str``.
+            temperature (float, optional): Sampling temperature. Defaults to ``0.0``.
+            top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
+
+        Returns:
+            pandas.Series: Responses aligned with the DataFrame's original index.
+
+        Example:
+            ```python
+            from openaivec.proxy import AsyncBatchingMapProxy
+
+            # Create a shared cache with custom batch size and concurrency
+            shared_cache = AsyncBatchingMapProxy(batch_size=64, max_concurrency=4)
+
+            df = pd.DataFrame([
+                {"name": "cat", "legs": 4},
+                {"name": "dog", "legs": 4},
+                {"name": "elephant", "legs": 4},
+            ])
+            # Must be awaited
+            result = await df.aio.responses_with_cache(
+                "what is the animal's name?",
+                cache=shared_cache
+            )
+            ```
+
+        Note:
+            This is an asynchronous method and must be awaited.
+        """
+        series_of_json = self._obj.pipe(
+            lambda df: (
+                pd.Series(df.to_dict(orient="records"), index=df.index, name="record").map(
+                    lambda x: json.dumps(x, ensure_ascii=False)
+                )
+            )
+        )
+        # Await the call to the async Series method using .aio
+        return await series_of_json.aio.responses_with_cache(
+            instructions=instructions,
+            cache=cache,
+            response_format=response_format,
+            temperature=temperature,
+            top_p=top_p,
+        )
 
     async def responses(
         self,
@@ -696,26 +1074,17 @@ class AsyncOpenAIVecDataFrameAccessor:
                 requests. Defaults to ``8``.
 
         Returns:
-            pandas.Series: Responses aligned with the DataFrame’s original index.
+            pandas.Series: Responses aligned with the DataFrame's original index.
 
         Note:
             This is an asynchronous method and must be awaited.
         """
-        series_of_json = self._obj.pipe(
-            lambda df: (
-                pd.Series(df.to_dict(orient="records"), index=df.index, name="record").map(
-                    lambda x: json.dumps(x, ensure_ascii=False)
-                )
-            )
-        )
-        # Await the call to the async Series method using .aio
-        return await series_of_json.aio.responses(
+        return await self.responses_with_cache(
             instructions=instructions,
+            cache=AsyncBatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency),
             response_format=response_format,
-            batch_size=batch_size,
             temperature=temperature,
             top_p=top_p,
-            max_concurrency=max_concurrency,
         )
 
     async def task(self, task: PreparedTask, batch_size: int = 128, max_concurrency: int = 8) -> pd.Series:
