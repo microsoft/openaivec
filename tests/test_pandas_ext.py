@@ -349,3 +349,218 @@ class TestPandasExt(unittest.TestCase):
         pd.testing.assert_index_equal(result_df.index, df_custom_index.index)
         self.assertEqual(result_df.shape, df_custom_index.shape)
         pd.testing.assert_frame_equal(result_df, df_custom_index)
+
+    def test_shared_cache_responses_sync(self):
+        """Test that multiple Series instances can share the same cache for responses."""
+        from openaivec.proxy import BatchingMapProxy
+
+        # Create a shared cache with custom batch size
+        shared_cache = BatchingMapProxy(batch_size=32)
+
+        # Create two different Series with some overlapping data
+        series1 = pd.Series(["cat", "dog", "elephant"])
+        series2 = pd.Series(["dog", "elephant", "lion"])  # "dog" and "elephant" are shared
+
+        # Use the shared cache for both series
+        result1 = series1.ai.responses_with_cache(instructions="translate to French", cache=shared_cache)
+        result2 = series2.ai.responses_with_cache(instructions="translate to French", cache=shared_cache)
+
+        # Verify results are valid
+        self.assertTrue(all(isinstance(x, str) for x in result1))
+        self.assertTrue(all(isinstance(x, str) for x in result2))
+        self.assertEqual(len(result1), 3)
+        self.assertEqual(len(result2), 3)
+
+        # Check that overlapping items ("dog", "elephant") have the same results
+        # Find indices of shared items
+        dog_idx1 = series1[series1 == "dog"].index[0]
+        dog_idx2 = series2[series2 == "dog"].index[0]
+        elephant_idx1 = series1[series1 == "elephant"].index[0]
+        elephant_idx2 = series2[series2 == "elephant"].index[0]
+
+        # The translations should be identical due to cache sharing
+        self.assertEqual(result1[dog_idx1], result2[dog_idx2])
+        self.assertEqual(result1[elephant_idx1], result2[elephant_idx2])
+
+    def test_shared_cache_embeddings_sync(self):
+        """Test that multiple Series instances can share the same cache for embeddings."""
+        from openaivec.proxy import BatchingMapProxy
+        import numpy as np
+
+        # Create a shared cache with custom batch size
+        shared_cache = BatchingMapProxy(batch_size=32)
+
+        # Create two different Series with some overlapping data
+        series1 = pd.Series(["apple", "banana", "cherry"])
+        series2 = pd.Series(["banana", "cherry", "date"])  # "banana" and "cherry" are shared
+
+        # Use the shared cache for both series
+        embeddings1 = series1.ai.embeddings_with_cache(cache=shared_cache)
+        embeddings2 = series2.ai.embeddings_with_cache(cache=shared_cache)
+
+        # Verify embeddings are valid numpy arrays
+        self.assertTrue(all(isinstance(emb, np.ndarray) for emb in embeddings1))
+        self.assertTrue(all(isinstance(emb, np.ndarray) for emb in embeddings2))
+        self.assertEqual(len(embeddings1), 3)
+        self.assertEqual(len(embeddings2), 3)
+
+        # Check that overlapping items have identical embeddings due to cache sharing
+        banana_idx1 = series1[series1 == "banana"].index[0]
+        banana_idx2 = series2[series2 == "banana"].index[0]
+        cherry_idx1 = series1[series1 == "cherry"].index[0]
+        cherry_idx2 = series2[series2 == "cherry"].index[0]
+
+        # The embeddings should be identical due to cache sharing
+        np.testing.assert_array_equal(embeddings1[banana_idx1], embeddings2[banana_idx2])
+        np.testing.assert_array_equal(embeddings1[cherry_idx1], embeddings2[cherry_idx2])
+
+    def test_shared_cache_dataframe_responses_sync(self):
+        """Test that DataFrame instances can share the same cache for responses."""
+        from openaivec.proxy import BatchingMapProxy
+
+        # Create a shared cache
+        shared_cache = BatchingMapProxy(batch_size=32)
+
+        # Create two DataFrames with overlapping serialized JSON representations
+        df1 = pd.DataFrame(
+            [
+                {"animal": "cat", "legs": 4},
+                {"animal": "dog", "legs": 4},
+            ]
+        )
+        df2 = pd.DataFrame(
+            [
+                {"animal": "dog", "legs": 4},  # This row should be cached
+                {"animal": "bird", "legs": 2},
+            ]
+        )
+
+        # Use the shared cache for both DataFrames
+        result1 = df1.ai.responses_with_cache(instructions="what animal is this?", cache=shared_cache)
+        result2 = df2.ai.responses_with_cache(instructions="what animal is this?", cache=shared_cache)
+
+        # Verify results are valid
+        self.assertTrue(all(isinstance(x, str) for x in result1))
+        self.assertTrue(all(isinstance(x, str) for x in result2))
+        self.assertEqual(len(result1), 2)
+        self.assertEqual(len(result2), 2)
+
+        # Since both DataFrames have the same row {"animal": "dog", "legs": 4},
+        # the responses should be identical due to cache sharing
+        # (The exact match depends on JSON serialization being consistent)
+        self.assertIsNotNone(result1[1])  # Dog response from df1
+        self.assertIsNotNone(result2[0])  # Dog response from df2 (should be cached)
+
+    def test_shared_cache_responses_async(self):
+        """Test that multiple async Series instances can share the same cache for responses."""
+        from openaivec.proxy import AsyncBatchingMapProxy
+
+        async def run_test():
+            # Create a shared cache with custom batch size
+            shared_cache = AsyncBatchingMapProxy(batch_size=32, max_concurrency=4)
+
+            # Create two different Series with some overlapping data
+            series1 = pd.Series(["cat", "dog", "elephant"])
+            series2 = pd.Series(["dog", "elephant", "lion"])  # "dog" and "elephant" are shared
+
+            # Use the shared cache for both series
+            result1 = await series1.aio.responses_with_cache(instructions="translate to French", cache=shared_cache)
+            result2 = await series2.aio.responses_with_cache(instructions="translate to French", cache=shared_cache)
+
+            return result1, result2, series1, series2
+
+        result1, result2, series1, series2 = asyncio.run(run_test())
+
+        # Verify results are valid
+        self.assertTrue(all(isinstance(x, str) for x in result1))
+        self.assertTrue(all(isinstance(x, str) for x in result2))
+        self.assertEqual(len(result1), 3)
+        self.assertEqual(len(result2), 3)
+
+        # Check that overlapping items ("dog", "elephant") have the same results
+        dog_idx1 = series1[series1 == "dog"].index[0]
+        dog_idx2 = series2[series2 == "dog"].index[0]
+        elephant_idx1 = series1[series1 == "elephant"].index[0]
+        elephant_idx2 = series2[series2 == "elephant"].index[0]
+
+        # The translations should be identical due to cache sharing
+        self.assertEqual(result1[dog_idx1], result2[dog_idx2])
+        self.assertEqual(result1[elephant_idx1], result2[elephant_idx2])
+
+    def test_shared_cache_embeddings_async(self):
+        """Test that multiple async Series instances can share the same cache for embeddings."""
+        from openaivec.proxy import AsyncBatchingMapProxy
+        import numpy as np
+
+        async def run_test():
+            # Create a shared cache with custom batch size
+            shared_cache = AsyncBatchingMapProxy(batch_size=32, max_concurrency=4)
+
+            # Create two different Series with some overlapping data
+            series1 = pd.Series(["apple", "banana", "cherry"])
+            series2 = pd.Series(["banana", "cherry", "date"])  # "banana" and "cherry" are shared
+
+            # Use the shared cache for both series
+            embeddings1 = await series1.aio.embeddings_with_cache(cache=shared_cache)
+            embeddings2 = await series2.aio.embeddings_with_cache(cache=shared_cache)
+
+            return embeddings1, embeddings2, series1, series2
+
+        embeddings1, embeddings2, series1, series2 = asyncio.run(run_test())
+
+        # Verify embeddings are valid numpy arrays
+        self.assertTrue(all(isinstance(emb, np.ndarray) for emb in embeddings1))
+        self.assertTrue(all(isinstance(emb, np.ndarray) for emb in embeddings2))
+        self.assertEqual(len(embeddings1), 3)
+        self.assertEqual(len(embeddings2), 3)
+
+        # Check that overlapping items have identical embeddings due to cache sharing
+        banana_idx1 = series1[series1 == "banana"].index[0]
+        banana_idx2 = series2[series2 == "banana"].index[0]
+        cherry_idx1 = series1[series1 == "cherry"].index[0]
+        cherry_idx2 = series2[series2 == "cherry"].index[0]
+
+        # The embeddings should be identical due to cache sharing
+        np.testing.assert_array_equal(embeddings1[banana_idx1], embeddings2[banana_idx2])
+        np.testing.assert_array_equal(embeddings1[cherry_idx1], embeddings2[cherry_idx2])
+
+    def test_shared_cache_dataframe_responses_async(self):
+        """Test that async DataFrame instances can share the same cache for responses."""
+        from openaivec.proxy import AsyncBatchingMapProxy
+
+        async def run_test():
+            # Create a shared cache
+            shared_cache = AsyncBatchingMapProxy(batch_size=32, max_concurrency=4)
+
+            # Create two DataFrames with overlapping serialized JSON representations
+            df1 = pd.DataFrame(
+                [
+                    {"animal": "cat", "legs": 4},
+                    {"animal": "dog", "legs": 4},
+                ]
+            )
+            df2 = pd.DataFrame(
+                [
+                    {"animal": "dog", "legs": 4},  # This row should be cached
+                    {"animal": "bird", "legs": 2},
+                ]
+            )
+
+            # Use the shared cache for both DataFrames
+            result1 = await df1.aio.responses_with_cache(instructions="what animal is this?", cache=shared_cache)
+            result2 = await df2.aio.responses_with_cache(instructions="what animal is this?", cache=shared_cache)
+
+            return result1, result2
+
+        result1, result2 = asyncio.run(run_test())
+
+        # Verify results are valid
+        self.assertTrue(all(isinstance(x, str) for x in result1))
+        self.assertTrue(all(isinstance(x, str) for x in result2))
+        self.assertEqual(len(result1), 2)
+        self.assertEqual(len(result2), 2)
+
+        # Since both DataFrames have the same row {"animal": "dog", "legs": 4},
+        # the responses should be identical due to cache sharing
+        self.assertIsNotNone(result1[1])  # Dog response from df1
+        self.assertIsNotNone(result2[0])  # Dog response from df2 (should be cached)

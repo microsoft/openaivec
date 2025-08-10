@@ -395,6 +395,13 @@ Example Output (structure might vary slightly):
 
 When using openaivec with Spark, proper configuration of `batch_size` and `max_concurrency` is crucial for optimal performance:
 
+**Automatic Caching** (New):
+
+- **Duplicate Detection**: All response UDFs (`responses_udf`, `task_udf`) automatically cache duplicate inputs within each partition
+- **Cost Reduction**: Significantly reduces API calls and costs on datasets with repeated content
+- **Transparent**: Works automatically without code changes - your existing UDFs become more efficient
+- **Partition-Level**: Each partition maintains its own cache, optimal for distributed processing patterns
+
 **`batch_size`** (default: 128):
 
 - Controls how many rows are processed together in each API request within a partition
