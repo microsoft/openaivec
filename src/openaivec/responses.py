@@ -1,4 +1,3 @@
-import asyncio
 from dataclasses import dataclass, field
 from logging import Logger, getLogger
 from typing import Generic, List, Type, cast
@@ -7,11 +6,11 @@ from openai import AsyncOpenAI, OpenAI, RateLimitError
 from openai.types.responses import ParsedResponse
 from pydantic import BaseModel
 
-from openaivec.proxy import BatchingMapProxy
+from openaivec.proxy import AsyncBatchingMapProxy, BatchingMapProxy
 
 from .log import observe
 from .model import PreparedTask, ResponseFormat
-from .util import backoff, backoff_async, map_async
+from .util import backoff, backoff_async
 
 __all__ = [
     "BatchResponses",
@@ -134,12 +133,12 @@ class BatchResponses(Generic[ResponseFormat]):
     """
 
     client: OpenAI
-    cache: BatchingMapProxy[str, ResponseFormat]
     model_name: str  # it would be the name of deployment for Azure
     system_message: str
     temperature: float = 0.0
     top_p: float = 1.0
     response_format: Type[ResponseFormat] = str
+    cache: BatchingMapProxy[str, ResponseFormat] = field(default_factory=lambda: BatchingMapProxy(batch_size=128))
     _vectorized_system_message: str = field(init=False)
     _model_json_schema: dict = field(init=False)
 
@@ -157,12 +156,12 @@ class BatchResponses(Generic[ResponseFormat]):
         """Create a BatchResponses instance from basic parameters."""
         return cls(
             client=client,
-            cache=BatchingMapProxy(batch_size=batch_size),
             model_name=model_name,
             system_message=system_message,
             temperature=temperature,
             top_p=top_p,
             response_format=response_format,
+            cache=BatchingMapProxy(batch_size=batch_size),
         )
 
     @classmethod
@@ -170,12 +169,12 @@ class BatchResponses(Generic[ResponseFormat]):
         """Create a BatchResponses instance from a PreparedTask."""
         return cls(
             client=client,
-            cache=BatchingMapProxy(batch_size=batch_size),
             model_name=model_name,
             system_message=task.instructions,
             temperature=task.temperature,
             top_p=task.top_p,
             response_format=task.response_format,
+            cache=BatchingMapProxy(batch_size=batch_size),
         )
 
     def __post_init__(self):
@@ -307,14 +306,38 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
     temperature: float = 0.0
     top_p: float = 1.0
     response_format: Type[ResponseFormat] = str
-    max_concurrency: int = 8  # Default concurrency limit
+    cache: AsyncBatchingMapProxy[str, ResponseFormat] = field(
+        default_factory=lambda: AsyncBatchingMapProxy(batch_size=128, max_concurrency=8)
+    )
     _vectorized_system_message: str = field(init=False)
     _model_json_schema: dict = field(init=False)
-    _semaphore: asyncio.Semaphore = field(init=False, repr=False)
+
+    @classmethod
+    def of(
+        cls,
+        client: AsyncOpenAI,
+        model_name: str,
+        system_message: str,
+        temperature: float = 0.0,
+        top_p: float = 1.0,
+        response_format: Type[ResponseFormat] = str,
+        batch_size: int = 128,
+        max_concurrency: int = 8,
+    ) -> "AsyncBatchResponses":
+        """Create an AsyncBatchResponses instance from basic parameters."""
+        return cls(
+            client=client,
+            model_name=model_name,
+            system_message=system_message,
+            temperature=temperature,
+            top_p=top_p,
+            response_format=response_format,
+            cache=AsyncBatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency),
+        )
 
     @classmethod
     def of_task(
-        cls, client: AsyncOpenAI, model_name: str, task: PreparedTask, max_concurrency: int = 8
+        cls, client: AsyncOpenAI, model_name: str, task: PreparedTask, bach_size: int = 128, max_concurrency: int = 8
     ) -> "AsyncBatchResponses":
         """Create an AsyncBatchResponses instance from a PreparedTask."""
         return cls(
@@ -324,7 +347,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             temperature=task.temperature,
             top_p=task.top_p,
             response_format=task.response_format,
-            max_concurrency=max_concurrency,
+            cache=AsyncBatchingMapProxy(batch_size=bach_size, max_concurrency=max_concurrency),
         )
 
     def __post_init__(self):
@@ -333,9 +356,6 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             "_vectorized_system_message",
             _vectorize_system_message(self.system_message),
         )
-        # Initialize the semaphore after the object is created
-        # Use object.__setattr__ because the dataclass is frozen
-        object.__setattr__(self, "_semaphore", asyncio.Semaphore(self.max_concurrency))
 
     @observe(_LOGGER)
     @backoff_async(exception=RateLimitError, scale=15, max_retries=8)
@@ -364,18 +384,15 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         class ResponseT(BaseModel):
             assistant_messages: List[MessageT]
 
-        # Acquire semaphore before making the API call
-        async with self._semaphore:
-            # Directly await the async call instead of using asyncio.run()
-            completion: ParsedResponse[ResponseT] = await self.client.responses.parse(
-                model=self.model_name,
-                instructions=self._vectorized_system_message,
-                input=Request(user_messages=user_messages).model_dump_json(),
-                temperature=self.temperature,
-                top_p=self.top_p,
-                text_format=ResponseT,
-            )
-            return cast(ParsedResponse[Response[ResponseFormat]], completion)
+        completion: ParsedResponse[ResponseT] = await self.client.responses.parse(
+            model=self.model_name,
+            instructions=self._vectorized_system_message,
+            input=Request(user_messages=user_messages).model_dump_json(),
+            temperature=self.temperature,
+            top_p=self.top_p,
+            text_format=ResponseT,
+        )
+        return cast(ParsedResponse[Response[ResponseFormat]], completion)
 
     @observe(_LOGGER)
     async def _predict_chunk(self, user_messages: List[str]) -> List[ResponseFormat]:
@@ -410,8 +427,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
                 *inputs*.
         """
 
-        return await map_async(
+        return await self.cache.map(
             inputs=inputs,
             f=self._predict_chunk,
-            batch_size=batch_size,  # Use the batch_size argument passed to the method
         )
