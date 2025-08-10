@@ -233,14 +233,14 @@ class TestBackoffAsync(TestCase):
         try:
             from openai import RateLimitError, InternalServerError
             from unittest.mock import Mock
-            
+
             call_count = 0
 
             # Create a mock response object
             mock_response = Mock()
             mock_response.request = Mock()
             mock_response.status_code = 429  # For RateLimitError
-            
+
             @backoff_async(exceptions=[RateLimitError, InternalServerError], scale=0.01, max_retries=3)
             async def simulate_api_errors():
                 nonlocal call_count
@@ -260,3 +260,32 @@ class TestBackoffAsync(TestCase):
         except ImportError:
             # Skip test if OpenAI is not installed
             self.skipTest("OpenAI not installed")
+
+    def test_backoff_production_settings(self):
+        """Test backoff with production-like settings for OpenAI API."""
+        call_count = 0
+        call_times = []
+
+        @backoff(exceptions=[ValueError], scale=1, max_retries=12)
+        def simulate_rate_limit_scenario():
+            nonlocal call_count
+            call_count += 1
+            call_times.append(time.time())
+
+            # Simulate rate limit that clears after a few retries
+            if call_count < 4:
+                raise ValueError("Rate limit hit")
+            return "success"
+
+        start_time = time.time()
+        result = simulate_rate_limit_scenario()
+        total_time = time.time() - start_time
+
+        self.assertEqual(result, "success")
+        self.assertEqual(call_count, 4)
+        self.assertEqual(len(call_times), 4)
+
+        # With scale=1, total time should be reasonable (under 10 seconds)
+        # First attempt: immediate, then ~1s, ~2s, ~4s delays
+        self.assertLess(total_time, 10)
+        self.assertGreater(total_time, 0.5)  # Should have some delay

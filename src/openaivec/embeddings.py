@@ -47,7 +47,7 @@ class BatchEmbeddings:
         return cls(client=client, model_name=model_name, cache=BatchingMapProxy(batch_size=batch_size))
 
     @observe(_LOGGER)
-    @backoff(exceptions=[RateLimitError, InternalServerError], scale=15, max_retries=8)
+    @backoff(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
     def _embed_chunk(self, inputs: List[str]) -> List[NDArray[np.float32]]:
         """Embed one minibatch of strings.
 
@@ -155,7 +155,7 @@ class AsyncBatchEmbeddings:
         )
 
     @observe(_LOGGER)
-    @backoff_async(exceptions=[RateLimitError, InternalServerError], scale=15, max_retries=8)
+    @backoff_async(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
     async def _embed_chunk(self, inputs: List[str]) -> List[NDArray[np.float32]]:
         """Embed one minibatch of strings asynchronously.
 
