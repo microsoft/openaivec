@@ -113,7 +113,7 @@ class BatchResponses(Generic[ResponseFormat]):
             model_name="gpt‑4o‑mini",
             system_message="You are a helpful assistant."
         )
-        answers = vector_llm.parse(questions, batch_size=32)
+    answers = vector_llm.parse(questions)
         ```
 
     Attributes:
@@ -282,7 +282,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         questions = ["What is the capital of France?", "Explain quantum physics simply."]
         # Asynchronous call
         async def main():
-            answers = await vector_llm.parse(questions, batch_size=32)
+            answers = await vector_llm.parse(questions)
             print(answers)
 
         # Run the async function
@@ -414,20 +414,15 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         return sorted_responses
 
     @observe(_LOGGER)
-    async def parse(self, inputs: List[str], batch_size: int) -> List[ResponseFormat | None]:
+    async def parse(self, inputs: List[str]) -> List[ResponseFormat | None]:
         """Asynchronous public API: batched predict.
 
         Args:
             inputs (List[str]): All prompts that require a response. Duplicate
                 entries are de-duplicated under the hood to save tokens.
-            batch_size (int): Maximum number of *unique* prompts per LLM call.
 
         Returns:
             A list containing the assistant responses in the same order as
                 *inputs*.
         """
-
-        return await self.cache.map(
-            inputs=inputs,
-            f=self._predict_chunk,
-        )
+        return await self.cache.map(inputs, self._predict_chunk)
