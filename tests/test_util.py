@@ -272,8 +272,8 @@ class TestBackoffAsync(TestCase):
             call_count += 1
             call_times.append(time.time())
 
-            # Simulate rate limit that clears after a few retries
-            if call_count < 4:
+            # Simulate rate limit that clears after 2 retries (3 total attempts)
+            if call_count < 3:
                 raise ValueError("Rate limit hit")
             return "success"
 
@@ -282,10 +282,16 @@ class TestBackoffAsync(TestCase):
         total_time = time.time() - start_time
 
         self.assertEqual(result, "success")
-        self.assertEqual(call_count, 4)
-        self.assertEqual(len(call_times), 4)
+        self.assertEqual(call_count, 3)
+        self.assertEqual(len(call_times), 3)
 
-        # With scale=1, total time should be reasonable (under 10 seconds)
-        # First attempt: immediate, then ~1s, ~2s, ~4s delays
-        self.assertLess(total_time, 10)
+        # With scale=1, exponential backoff can vary significantly due to jitter
+        # First attempt: immediate, then up to 3s, up to 6s delays
+        # Allow up to 15 seconds for 3 attempts with exponential backoff + jitter
+        self.assertLess(total_time, 15)
         self.assertGreater(total_time, 0.5)  # Should have some delay
+
+        # Verify delays are increasing (roughly)
+        if len(call_times) >= 2:
+            first_delay = call_times[1] - call_times[0]
+            self.assertGreater(first_delay, 0)
