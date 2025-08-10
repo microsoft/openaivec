@@ -3,7 +3,7 @@ import functools
 import re
 import time
 from dataclasses import dataclass
-from typing import Awaitable, Callable, List, TypeVar
+from typing import Awaitable, Callable, List, Type, TypeVar
 
 import numpy as np
 import tiktoken
@@ -34,24 +34,28 @@ def get_exponential_with_cutoff(scale: float) -> float:
             return v
 
 
-def backoff(exception: type[Exception], scale: int | None = None, max_retries: int | None = None) -> Callable[..., V]:
+def backoff(
+    exceptions: List[Type[Exception]],
+    scale: int | None = None,
+    max_retries: int | None = None,
+) -> Callable[..., V]:
     """Decorator implementing exponential back‑off retry logic.
 
     Args:
-        exception (type[Exception]): Exception type that triggers a retry.
+        exceptions (List[Type[Exception]]): List of exception types that trigger a retry.
         scale (int | None): Initial scale parameter for the exponential jitter.
             This scale is used as the mean for the first delay's exponential
             distribution and doubles with each subsequent retry. If ``None``,
             an initial scale of 1.0 is used.
-        max_retries (Optional[int]): Maximum number of retries. ``None`` means
+        max_retries (int | None): Maximum number of retries. ``None`` means
             retry indefinitely.
 
     Returns:
         Callable[..., V]: A decorated function that retries on the specified
-            exception with exponential back‑off.
+            exceptions with exponential back‑off.
 
     Raises:
-        exception: Re‑raised when the maximum number of retries is exceeded.
+        Exception: Re‑raised when the maximum number of retries is exceeded.
     """
 
     def decorator(func: Callable[..., V]) -> Callable[..., V]:
@@ -65,7 +69,7 @@ def backoff(exception: type[Exception], scale: int | None = None, max_retries: i
             while True:
                 try:
                     return func(*args, **kwargs)
-                except exception:
+                except tuple(exceptions):
                     attempt += 1
                     if max_retries is not None and attempt >= max_retries:
                         raise
@@ -83,12 +87,14 @@ def backoff(exception: type[Exception], scale: int | None = None, max_retries: i
 
 
 def backoff_async(
-    exception: type[Exception], scale: int | None = None, max_retries: int | None = None
+    exceptions: List[Type[Exception]],
+    scale: int | None = None,
+    max_retries: int | None = None,
 ) -> Callable[..., Awaitable[V]]:
     """Asynchronous version of the backoff decorator.
 
     Args:
-        exception (type[Exception]): Exception type that triggers a retry.
+        exceptions (List[Type[Exception]]): List of exception types that trigger a retry.
         scale (int | None): Initial scale parameter for the exponential jitter.
             This scale is used as the mean for the first delay's exponential
             distribution and doubles with each subsequent retry. If ``None``,
@@ -98,10 +104,10 @@ def backoff_async(
 
     Returns:
         Callable[..., Awaitable[V]]: A decorated asynchronous function that
-            retries on the specified exception with exponential back‑off.
+            retries on the specified exceptions with exponential back‑off.
 
     Raises:
-        exception: Re‑raised when the maximum number of retries is exceeded.
+        Exception: Re‑raised when the maximum number of retries is exceeded.
     """
 
     def decorator(func: Callable[..., Awaitable[V]]) -> Callable[..., Awaitable[V]]:
@@ -115,7 +121,7 @@ def backoff_async(
             while True:
                 try:
                     return await func(*args, **kwargs)
-                except exception:
+                except tuple(exceptions):
                     attempt += 1
                     if max_retries is not None and attempt >= max_retries:
                         raise
