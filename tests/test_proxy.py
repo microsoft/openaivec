@@ -234,8 +234,7 @@ def test_internal_process_owned_batches_and_skip_cached():
 
     process_owned([0, 1, 2, 3, 4], mf)
     assert calls[0] == [0, 1]
-    assert calls[1] == [2]  # 3 was cached and skipped
-    assert calls[2] == [4]
+    assert calls[1] == [2, 4]  # 3 was cached and skipped, 2,4 batched together for efficiency
     # cache should contain all keys now
     for k in [0, 1, 2, 3, 4]:
         assert k in cache
@@ -427,6 +426,71 @@ def test_sync_clear_releases_memory_and_recomputes():
     assert len(calls) >= 2
 
 
+def test_batch_size_maximization_with_cache_hits():
+    """Test that batch_size is maximized even when some items are cached."""
+    from openaivec.proxy import BatchingMapProxy
+
+    calls: list[list[int]] = []
+
+    def mf(xs: list[int]) -> list[int]:
+        calls.append(xs[:])
+        return xs
+
+    p = BatchingMapProxy[int, int](batch_size=3)
+
+    # Pre-cache some items: 2, 5, 8
+    p.map([2], mf)
+    p.map([5], mf)
+    p.map([8], mf)
+    calls.clear()
+
+    # Process items [0,1,2,3,4,5,6,7,8,9] where 2,5,8 are cached
+    # Expected behavior: accumulate uncached items to maximize batch_size
+    # Uncached items: [0,1,3,4,6,7,9] should be batched as [0,1,3] + [4,6,7] + [9]
+    items = list(range(10))
+    result = p.map(items, mf)
+
+    assert result == items
+    # Should make 3 calls with maximized batch sizes
+    assert len(calls) == 3
+    assert calls[0] == [0, 1, 3]  # First batch: 3 items
+    assert calls[1] == [4, 6, 7]  # Second batch: 3 items
+    assert calls[2] == [9]  # Final batch: 1 item (remainder)
+
+
+def test_batch_size_maximization_complex_scenario():
+    """Test batch_size maximization with more complex cache hit patterns."""
+    from openaivec.proxy import BatchingMapProxy
+
+    calls: list[list[int]] = []
+
+    def mf(xs: list[int]) -> list[int]:
+        calls.append(xs[:])
+        return [x * 2 for x in xs]
+
+    p = BatchingMapProxy[int, int](batch_size=4)
+
+    # Pre-cache items: 1, 3, 6, 8, 11
+    for item in [1, 3, 6, 8, 11]:
+        p.map([item], mf)
+    calls.clear()
+
+    # Process items [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14]
+    # Uncached: [0,2,4,5,7,9,10,12,13,14] (10 items)
+    # Should batch as [0,2,4,5] + [7,9,10,12] + [13,14]
+    items = list(range(15))
+    result = p.map(items, mf)
+
+    expected = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28]
+    assert result == expected
+
+    # Should make 3 calls
+    assert len(calls) == 3
+    assert calls[0] == [0, 2, 4, 5]  # 4 items (full batch)
+    assert calls[1] == [7, 9, 10, 12]  # 4 items (full batch)
+    assert calls[2] == [13, 14]  # 2 items (remainder)
+
+
 @pytest.mark.asyncio
 async def test_async_clear_releases_memory_and_recomputes():
     calls: list[list[int]] = []
@@ -446,3 +510,72 @@ async def test_async_clear_releases_memory_and_recomputes():
     out2 = await p.map([1, 2, 3], af)
     assert out2 == [1, 2, 3]
     assert len(calls) >= 2
+
+
+@pytest.mark.asyncio
+async def test_async_batch_size_maximization_with_cache_hits():
+    """Test that batch_size is maximized even when some items are cached (async version)."""
+    from openaivec.proxy import AsyncBatchingMapProxy
+
+    calls: list[list[int]] = []
+
+    async def mf(xs: list[int]) -> list[int]:
+        calls.append(xs[:])
+        await asyncio.sleep(0.01)
+        return xs
+
+    p = AsyncBatchingMapProxy[int, int](batch_size=3)
+
+    # Pre-cache some items: 2, 5, 8
+    await p.map([2], mf)
+    await p.map([5], mf)
+    await p.map([8], mf)
+    calls.clear()
+
+    # Process items [0,1,2,3,4,5,6,7,8,9] where 2,5,8 are cached
+    # Expected behavior: accumulate uncached items to maximize batch_size
+    # Uncached items: [0,1,3,4,6,7,9] should be batched as [0,1,3] + [4,6,7] + [9]
+    items = list(range(10))
+    result = await p.map(items, mf)
+
+    assert result == items
+    # Should make 3 calls with maximized batch sizes
+    assert len(calls) == 3
+    assert calls[0] == [0, 1, 3]  # First batch: 3 items
+    assert calls[1] == [4, 6, 7]  # Second batch: 3 items
+    assert calls[2] == [9]  # Final batch: 1 item (remainder)
+
+
+@pytest.mark.asyncio
+async def test_async_batch_size_maximization_complex_scenario():
+    """Test batch_size maximization with more complex cache hit patterns (async version)."""
+    from openaivec.proxy import AsyncBatchingMapProxy
+
+    calls: list[list[int]] = []
+
+    async def mf(xs: list[int]) -> list[int]:
+        calls.append(xs[:])
+        await asyncio.sleep(0.01)
+        return [x * 2 for x in xs]
+
+    p = AsyncBatchingMapProxy[int, int](batch_size=4)
+
+    # Pre-cache items: 1, 3, 6, 8, 11
+    for item in [1, 3, 6, 8, 11]:
+        await p.map([item], mf)
+    calls.clear()
+
+    # Process items [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14]
+    # Uncached: [0,2,4,5,7,9,10,12,13,14] (10 items)
+    # Should batch as [0,2,4,5] + [7,9,10,12] + [13,14]
+    items = list(range(15))
+    result = await p.map(items, mf)
+
+    expected = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28]
+    assert result == expected
+
+    # Should make 3 calls
+    assert len(calls) == 3
+    assert calls[0] == [0, 2, 4, 5]  # 4 items (full batch)
+    assert calls[1] == [7, 9, 10, 12]  # 4 items (full batch)
+    assert calls[2] == [13, 14]  # 2 items (remainder)

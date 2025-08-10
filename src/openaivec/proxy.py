@@ -199,9 +199,11 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         """Process owned items in mini-batches and fill the cache.
 
         Before calling ``map_func`` for each batch, the cache is re-checked
-        to skip any items that may have been filled in the meantime. On
-        exceptions raised by ``map_func``, all corresponding in-flight events
-        are released to prevent deadlocks, and the exception is propagated.
+        to skip any items that may have been filled in the meantime. Items
+        are accumulated across multiple original batches to maximize batch
+        size utilization when some items are cached. On exceptions raised
+        by ``map_func``, all corresponding in-flight events are released
+        to prevent deadlocks, and the exception is propagated.
 
         Args:
             owned (list[S]): Items for which the current thread has computation
@@ -213,13 +215,37 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         if not owned:
             return
         batch_size = self.__normalized_batch_size(len(owned))
+
+        # Accumulate uncached items to maximize batch size utilization
+        pending_to_call: List[S] = []
+
         for i in range(0, len(owned), batch_size):
             batch = owned[i : i + batch_size]
-            # Double-check cache right before calling map_func
+            # Double-check cache right before processing
             with self.__lock:
-                to_call = [x for x in batch if x not in self.__cache]
-            if not to_call:
-                continue
+                uncached_in_batch = [x for x in batch if x not in self.__cache]
+
+            pending_to_call.extend(uncached_in_batch)
+
+            # Process accumulated items when we reach batch_size or at the end
+            is_last_batch = i + batch_size >= len(owned)
+            if len(pending_to_call) >= batch_size or (is_last_batch and pending_to_call):
+                # Take up to batch_size items to process
+                to_call = pending_to_call[:batch_size]
+                pending_to_call = pending_to_call[batch_size:]
+
+                try:
+                    results = map_func(to_call)
+                except Exception:
+                    self.__finalize_failure(to_call)
+                    raise
+                self.__finalize_success(to_call, results)
+
+        # Process any remaining items
+        while pending_to_call:
+            to_call = pending_to_call[:batch_size]
+            pending_to_call = pending_to_call[batch_size:]
+
             try:
                 results = map_func(to_call)
             except Exception:
@@ -457,8 +483,10 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         """Process owned keys in mini-batches, re-checking cache before awaits.
 
         Before calling ``map_func`` for each batch, the cache is re-checked to
-        skip any keys that may have been filled in the meantime. On exceptions
-        raised by ``map_func``, all corresponding in-flight events are released
+        skip any keys that may have been filled in the meantime. Items
+        are accumulated across multiple original batches to maximize batch
+        size utilization when some items are cached. On exceptions raised
+        by ``map_func``, all corresponding in-flight events are released
         to prevent deadlocks, and the exception is propagated.
 
         Args:
@@ -471,12 +499,43 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         if not owned:
             return
         batch_size = self.__normalized_batch_size(len(owned))
+
+        # Accumulate uncached items to maximize batch size utilization
+        pending_to_call: List[S] = []
+
         for i in range(0, len(owned), batch_size):
             batch = owned[i : i + batch_size]
             async with self.__lock:
-                to_call = [x for x in batch if x not in self.__cache]
-            if not to_call:
-                continue
+                uncached_in_batch = [x for x in batch if x not in self.__cache]
+
+            pending_to_call.extend(uncached_in_batch)
+
+            # Process accumulated items when we reach batch_size or at the end
+            is_last_batch = i + batch_size >= len(owned)
+            if len(pending_to_call) >= batch_size or (is_last_batch and pending_to_call):
+                # Take up to batch_size items to process
+                to_call = pending_to_call[:batch_size]
+                pending_to_call = pending_to_call[batch_size:]
+
+                acquired = False
+                try:
+                    if self.__sema:
+                        await self.__sema.acquire()
+                        acquired = True
+                    results = await map_func(to_call)
+                except Exception:
+                    await self.__finalize_failure(to_call)
+                    raise
+                finally:
+                    if self.__sema and acquired:
+                        self.__sema.release()
+                await self.__finalize_success(to_call, results)
+
+        # Process any remaining items
+        while pending_to_call:
+            to_call = pending_to_call[:batch_size]
+            pending_to_call = pending_to_call[batch_size:]
+
             acquired = False
             try:
                 if self.__sema:
