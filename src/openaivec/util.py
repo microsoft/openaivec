@@ -3,7 +3,7 @@ import functools
 import re
 import time
 from dataclasses import dataclass
-from typing import Awaitable, Callable, Dict, List, TypeVar
+from typing import Awaitable, Callable, List, TypeVar
 
 import numpy as np
 import tiktoken
@@ -174,71 +174,3 @@ class TextChunker:
             chunks.append(sentence)
 
         return chunks
-
-
-async def map_async(inputs: List[T], f: Callable[[List[T]], Awaitable[List[U]]], batch_size: int = 128) -> List[U]:
-    """Asynchronously map a function `f` over a list of inputs in batches.
-
-    This function divides the input list into smaller batches and applies the
-    asynchronous function `f` to each batch concurrently. It gathers the results
-    and returns them in the same order as the original inputs.
-
-    Args:
-        inputs (List[T]): List of inputs to be processed.
-        f (Callable[[List[T]], Awaitable[List[U]]]): Asynchronous function to apply.
-            It takes a batch of inputs (List[T]) and must return a list of
-            corresponding outputs (List[U]) of the same size.
-        batch_size (int): Size of each batch for processing.
-
-    Returns:
-        List[U]: List of outputs corresponding to the original inputs, in order.
-    """
-    original_hashes: List[int] = [hash(str(v)) for v in inputs]  # Use str(v) for hash if T is not hashable
-    hash_inputs: Dict[int, T] = {k: v for k, v in zip(original_hashes, inputs)}
-    unique_hashes: List[int] = list(hash_inputs.keys())
-    unique_inputs: List[T] = list(hash_inputs.values())
-    input_batches: List[List[T]] = [unique_inputs[i : i + batch_size] for i in range(0, len(unique_inputs), batch_size)]
-    # Ensure f is awaited correctly within gather
-    tasks = [f(batch) for batch in input_batches]
-    output_batches: List[List[U]] = await asyncio.gather(*tasks)
-    unique_outputs: List[U] = [u for batch in output_batches for u in batch]
-    if len(unique_hashes) != len(unique_outputs):
-        raise ValueError(
-            f"Number of unique inputs ({len(unique_hashes)}) does not match number of unique outputs ({len(unique_outputs)}). Check the function f."
-        )
-    hash_outputs: Dict[int, U] = {k: v for k, v in zip(unique_hashes, unique_outputs)}
-    outputs: List[U] = [hash_outputs[k] for k in original_hashes]
-    return outputs
-
-
-def map(inputs: List[T], f: Callable[[List[T]], List[U]], batch_size: int = 128) -> List[U]:
-    """Map a function `f` over a list of inputs in batches.
-
-    This function divides the input list into smaller batches and applies the
-    function `f` to each batch. It gathers the results and returns them in the
-    same order as the original inputs.
-
-    Args:
-        inputs (List[T]): List of inputs to be processed.
-        f (Callable[[List[T]], List[U]]): Function to apply. It takes a batch of
-            inputs (List[T]) and must return a list of corresponding outputs
-            (List[U]) of the same size.
-        batch_size (int): Size of each batch for processing.
-
-    Returns:
-        List[U]: List of outputs corresponding to the original inputs, in order.
-    """
-    original_hashes: List[int] = [hash(str(v)) for v in inputs]  # Use str(v) for hash if T is not hashable
-    hash_inputs: Dict[int, T] = {k: v for k, v in zip(original_hashes, inputs)}
-    unique_hashes: List[int] = list(hash_inputs.keys())
-    unique_inputs: List[T] = list(hash_inputs.values())
-    input_batches: List[List[T]] = [unique_inputs[i : i + batch_size] for i in range(0, len(unique_inputs), batch_size)]
-    output_batches: List[List[U]] = [f(batch) for batch in input_batches]
-    unique_outputs: List[U] = [u for batch in output_batches for u in batch]
-    if len(unique_hashes) != len(unique_outputs):
-        raise ValueError(
-            f"Number of unique inputs ({len(unique_hashes)}) does not match number of unique outputs ({len(unique_outputs)}). Check the function f."
-        )
-    hash_outputs: Dict[int, U] = {k: v for k, v in zip(unique_hashes, unique_outputs)}
-    outputs: List[U] = [hash_outputs[k] for k in original_hashes]
-    return outputs
