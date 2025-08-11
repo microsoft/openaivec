@@ -24,7 +24,7 @@ class BatchEmbeddings:
 
     Attributes:
         client (OpenAI): Configured OpenAI client.
-        model_name (str): Model identifier (e.g., ``"text-embedding-3-small"``).
+        model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name (e.g., ``"text-embedding-3-small"``).
         cache (BatchingMapProxy[str, NDArray[np.float32]]): Batching proxy for ordered, cached mapping.
     """
 
@@ -38,7 +38,7 @@ class BatchEmbeddings:
 
         Args:
             client (OpenAI): OpenAI client.
-            model_name (str): Embeddings model name.
+            model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
             batch_size (int, optional): Max unique inputs per API call. Defaults to 128.
 
         Returns:
@@ -90,7 +90,7 @@ class AsyncBatchEmbeddings:
         import asyncio
         import numpy as np
         from openai import AsyncOpenAI
-    from openaivec import AsyncBatchEmbeddings
+        from openaivec import AsyncBatchEmbeddings
 
         # Assuming openai_async_client is an initialized AsyncOpenAI client
         openai_async_client = AsyncOpenAI() # Replace with your actual client initialization
@@ -119,7 +119,7 @@ class AsyncBatchEmbeddings:
 
     Attributes:
         client (AsyncOpenAI): Configured OpenAI async client.
-        model_name (str): Embeddings model name.
+        model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
         cache (AsyncBatchingMapProxy[str, NDArray[np.float32]]): Async batching proxy.
     """
 
@@ -141,7 +141,7 @@ class AsyncBatchEmbeddings:
 
         Args:
             client (AsyncOpenAI): OpenAI async client.
-            model_name (str): Embeddings model name.
+            model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
             batch_size (int, optional): Max unique inputs per API call. Defaults to 128.
             max_concurrency (int, optional): Max concurrent API calls. Defaults to 8.
 

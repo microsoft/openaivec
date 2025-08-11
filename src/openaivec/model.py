@@ -59,29 +59,65 @@ class PreparedTask:
 
 @dataclass(frozen=True)
 class ResponsesModelName:
+    """Container for responses model name configuration.
+
+    Attributes:
+        value (str): The model name for OpenAI responses API.
+    """
+
     value: str
 
 
 @dataclass(frozen=True)
 class EmbeddingsModelName:
+    """Container for embeddings model name configuration.
+
+    Attributes:
+        value (str): The model name for OpenAI embeddings API.
+    """
+
     value: str
 
 
 @dataclass(frozen=True)
 class OpenAIAPIKey:
+    """Container for OpenAI API key configuration.
+
+    Attributes:
+        value (str): The API key for OpenAI services.
+    """
+
     value: str
 
 
 @dataclass(frozen=True)
 class AzureOpenAIAPIKey:
+    """Container for Azure OpenAI API key configuration.
+
+    Attributes:
+        value (str): The API key for Azure OpenAI services.
+    """
+
     value: str
 
 
 @dataclass(frozen=True)
-class AzureOpenAIEndpoint:
+class AzureOpenAIBaseURL:
+    """Container for Azure OpenAI base URL configuration.
+
+    Attributes:
+        value (str): The base URL for Azure OpenAI services.
+    """
+
     value: str
 
 
 @dataclass(frozen=True)
 class AzureOpenAIAPIVersion:
+    """Container for Azure OpenAI API version configuration.
+
+    Attributes:
+        value (str): The API version for Azure OpenAI services.
+    """
+
     value: str

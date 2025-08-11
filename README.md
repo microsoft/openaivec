@@ -156,8 +156,8 @@ from openaivec import pandas_ext
 os.environ["OPENAI_API_KEY"] = "your-api-key-here"
 # Or for Azure OpenAI:
 # os.environ["AZURE_OPENAI_API_KEY"] = "your-azure-key"
-# os.environ["AZURE_OPENAI_API_ENDPOINT"] = "https://<your-resource-name>.services.ai.azure.com"
-# os.environ["AZURE_OPENAI_API_VERSION"] = "2025-04-01-preview"
+# os.environ["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
+# os.environ["AZURE_OPENAI_API_VERSION"] = "preview"
 
 # Authentication Option 2: Custom client (optional)
 # from openai import OpenAI, AsyncOpenAI
@@ -166,6 +166,7 @@ os.environ["OPENAI_API_KEY"] = "your-api-key-here"
 # pandas_ext.use_async(AsyncOpenAI())
 
 # Configure model (optional - defaults to gpt-4.1-mini)
+# For Azure OpenAI: use your deployment name, for OpenAI: use model name
 pandas_ext.responses_model("gpt-4.1-mini")
 
 # Create your data
@@ -186,6 +187,27 @@ result = df.assign(
 | koala  | marsupial family | tree    | Sleeps 22 hours per day    |
 
 📓 **[Interactive pandas examples →](https://microsoft.github.io/openaivec/examples/pandas/)**
+
+### Using with Reasoning Models
+
+When using reasoning models (o1-preview, o1-mini, o3-mini, etc.), you must set `temperature=None` to avoid API errors:
+
+```python
+# For reasoning models like o1-preview, o1-mini, o3-mini
+pandas_ext.responses_model("o1-mini")  # Set your reasoning model
+
+# MUST use temperature=None with reasoning models
+result = df.assign(
+    analysis=lambda df: df.text.ai.responses(
+        "Analyze this text step by step",
+        temperature=None  # Required for reasoning models
+    )
+)
+```
+
+**Why this is needed**: Reasoning models don't support temperature parameters and will return an error if temperature is specified. The library automatically detects these errors and provides guidance on how to fix them.
+
+**Reference**: [Azure OpenAI Reasoning Models](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/reasoning)
 
 ### Using Pre-configured Tasks
 
@@ -298,7 +320,7 @@ sc.environment["OPENAI_API_KEY"] = os.environ.get("OPENAI_API_KEY")
 
 # Option 2: Using Azure OpenAI
 # sc.environment["AZURE_OPENAI_API_KEY"] = os.environ.get("AZURE_OPENAI_API_KEY")
-# sc.environment["AZURE_OPENAI_API_ENDPOINT"] = os.environ.get("AZURE_OPENAI_API_ENDPOINT")
+# sc.environment["AZURE_OPENAI_BASE_URL"] = os.environ.get("AZURE_OPENAI_BASE_URL")
 # sc.environment["AZURE_OPENAI_API_VERSION"] = os.environ.get("AZURE_OPENAI_API_VERSION")
 ```
 
@@ -353,6 +375,16 @@ spark.udf.register(
     "classify_intent",
     task_udf(
         task=customer_support.INTENT_ANALYSIS
+    )
+)
+
+# --- Register UDF for Reasoning Models ---
+# For reasoning models (o1-preview, o1-mini, o3, etc.), set temperature=None
+spark.udf.register(
+    "reasoning_analysis",
+    responses_udf(
+        instructions="Analyze this step by step with detailed reasoning",
+        temperature=None  # Required for reasoning models
     )
 )
 
@@ -642,15 +674,15 @@ steps:
 
      # Configure Azure OpenAI authentication
      sc.environment["AZURE_OPENAI_API_KEY"] = "<your-api-key>"
-     sc.environment["AZURE_OPENAI_API_ENDPOINT"] = "https://<your-resource-name>.services.ai.azure.com"
-     sc.environment["AZURE_OPENAI_API_VERSION"] = "2025-04-01-preview"
+     sc.environment["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
+     sc.environment["AZURE_OPENAI_API_VERSION"] = "preview"
 
      # Register UDFs
      spark.udf.register(
          "analyze_text",
          responses_udf(
              instructions="Analyze the sentiment of the text",
-             model_name="<your-deployment-name>"
+             model_name="gpt-4.1-mini"  # Use your Azure deployment name here
          )
      )
      ```

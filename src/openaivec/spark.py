@@ -28,8 +28,8 @@ sc.environment["OPENAI_API_KEY"] = "your-openai-api-key"
 
 # Option 2: Using Azure OpenAI
 # sc.environment["AZURE_OPENAI_API_KEY"] = "your-azure-openai-api-key"
-# sc.environment["AZURE_OPENAI_API_ENDPOINT"] = "your-azure-openai-endpoint"
-# sc.environment["AZURE_OPENAI_API_VERSION"] = "your-azure-openai-api-version"
+# sc.environment["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
+# sc.environment["AZURE_OPENAI_API_VERSION"] = "preview"
 ```
 
 Next, create UDFs and register them:
@@ -50,7 +50,7 @@ spark.udf.register(
     responses_udf(
         instructions="Translate the text to multiple languages.",
         response_format=Translation,
-        model_name="gpt-4.1-mini",  # Optional, defaults to gpt-4.1-mini
+        model_name="gpt-4.1-mini",  # For Azure: deployment name, for OpenAI: model name
         batch_size=64,              # Rows per API request within partition
         max_concurrency=8           # Concurrent requests PER EXECUTOR
     ),
@@ -67,7 +67,7 @@ spark.udf.register(
 spark.udf.register(
     "embed_async",
     embeddings_udf(
-        model_name="text-embedding-3-small",  # Optional, defaults to text-embedding-3-small
+        model_name="text-embedding-3-small",  # For Azure: deployment name, for OpenAI: model name
         batch_size=128,                       # Larger batches for embeddings
         max_concurrency=8                     # Concurrent requests PER EXECUTOR
     ),
@@ -224,7 +224,7 @@ def responses_udf(
     response_format: Type[ResponseFormat] = str,
     model_name: str = "gpt-4.1-mini",
     batch_size: int = 128,
-    temperature: float = 0.0,
+    temperature: float | None = 0.0,
     top_p: float = 1.0,
     max_concurrency: int = 8,
 ) -> UserDefinedFunction:
@@ -245,15 +245,15 @@ def responses_udf(
 
         For Azure OpenAI:
             sc.environment["AZURE_OPENAI_API_KEY"] = "your-azure-openai-api-key"
-            sc.environment["AZURE_OPENAI_API_ENDPOINT"] = "your-azure-openai-endpoint"
-            sc.environment["AZURE_OPENAI_API_VERSION"] = "your-azure-openai-api-version"
+            sc.environment["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
+            sc.environment["AZURE_OPENAI_API_VERSION"] = "preview"
 
     Args:
         instructions (str): The system prompt or instructions for the model.
         response_format (Type[ResponseFormat]): The desired output format. Either `str` for plain text
             or a Pydantic `BaseModel` for structured JSON output. Defaults to `str`.
-        model_name (str): Deployment name (Azure) or model name (OpenAI) for responses.
-            Defaults to "gpt-4.1-mini".
+        model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
+            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to "gpt-4.1-mini".
         batch_size (int): Number of rows per async batch request within each partition.
             Larger values reduce API call overhead but increase memory usage.
             Recommended: 32-128 depending on data complexity. Defaults to 128.
@@ -357,8 +357,8 @@ def task_udf(
     Args:
         task (PreparedTask): A predefined task configuration containing instructions,
             response format, temperature, and top_p settings.
-        model_name (str): Deployment name (Azure) or model name (OpenAI) for responses.
-            Defaults to "gpt-4.1-mini".
+        model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
+            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to "gpt-4.1-mini".
         batch_size (int): Number of rows per async batch request within each partition.
             Larger values reduce API call overhead but increase memory usage.
             Recommended: 32-128 depending on task complexity. Defaults to 128.
@@ -474,12 +474,12 @@ def embeddings_udf(
 
         For Azure OpenAI:
             sc.environment["AZURE_OPENAI_API_KEY"] = "your-azure-openai-api-key"
-            sc.environment["AZURE_OPENAI_API_ENDPOINT"] = "your-azure-openai-endpoint"
-            sc.environment["AZURE_OPENAI_API_VERSION"] = "your-azure-openai-api-version"
+            sc.environment["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
+            sc.environment["AZURE_OPENAI_API_VERSION"] = "preview"
 
     Args:
-        model_name (str): Deployment name (Azure) or model name (OpenAI) for embeddings.
-            Defaults to "text-embedding-3-small".
+        model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-embedding-deployment").
+            For OpenAI, use the model name (e.g., "text-embedding-3-small"). Defaults to "text-embedding-3-small".
         batch_size (int): Number of rows per async batch request within each partition.
             Larger values reduce API call overhead but increase memory usage.
             Embeddings typically handle larger batches efficiently.

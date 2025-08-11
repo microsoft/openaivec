@@ -7,7 +7,7 @@ from openaivec import pandas_ext
 
 # Option 1: Use environment variables (automatic detection)
 # Set OPENAI_API_KEY or Azure OpenAI environment variables
-# (AZURE_OPENAI_API_KEY, AZURE_OPENAI_API_ENDPOINT, AZURE_OPENAI_API_VERSION)
+# (AZURE_OPENAI_API_KEY, AZURE_OPENAI_BASE_URL, AZURE_OPENAI_API_VERSION)
 # No explicit setup needed - clients are automatically created
 
 # Option 2: Use an existing OpenAI client instance
@@ -17,14 +17,18 @@ pandas_ext.use(client)
 # Option 3: Use an existing Azure OpenAI client instance
 azure_client = AzureOpenAI(
     api_key="your-azure-key",
-    azure_endpoint="https://<your-resource-name>.services.ai.azure.com",
-    api_version="2025-04-01-preview"
+    base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
+    api_version="preview"
 )
 pandas_ext.use(azure_client)
 
-# Option 4: Use async clients
-async_client = AsyncOpenAI(api_key="your-api-key")
-pandas_ext.use_async(async_client)
+# Option 4: Use async Azure OpenAI client instance
+async_azure_client = AsyncAzureOpenAI(
+    api_key="your-azure-key",
+    base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
+    api_version="preview"
+)
+pandas_ext.use_async(async_azure_client)
 
 # Set up model names (optional, defaults shown)
 pandas_ext.responses_model("gpt-4.1-mini")
@@ -48,7 +52,7 @@ from pydantic import BaseModel
 
 from .embeddings import AsyncBatchEmbeddings, BatchEmbeddings
 from .model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
-from .provider import CONTAINER
+from .provider import CONTAINER, _check_azure_v1_api_url
 from .proxy import AsyncBatchingMapProxy, BatchingMapProxy
 from .responses import AsyncBatchResponses, BatchResponses
 from .task.table import FillNaResponse, fillna
@@ -74,6 +78,10 @@ def use(client: OpenAI) -> None:
             `openai.AzureOpenAI` instance.
             The same instance is reused by every helper in this module.
     """
+    # Check Azure v1 API URL if using AzureOpenAI client
+    if client.__class__.__name__ == "AzureOpenAI" and hasattr(client, "base_url"):
+        _check_azure_v1_api_url(str(client.base_url))
+
     CONTAINER.register(OpenAI, lambda: client)
 
 
@@ -85,6 +93,10 @@ def use_async(client: AsyncOpenAI) -> None:
             `openai.AsyncAzureOpenAI` instance.
             The same instance is reused by every helper in this module.
     """
+    # Check Azure v1 API URL if using AsyncAzureOpenAI client
+    if client.__class__.__name__ == "AsyncAzureOpenAI" and hasattr(client, "base_url"):
+        _check_azure_v1_api_url(str(client.base_url))
+
     CONTAINER.register(AsyncOpenAI, lambda: client)
 
 
@@ -92,7 +104,7 @@ def responses_model(name: str) -> None:
     """Override the model used for text responses.
 
     Args:
-        name (str): Model name as listed in the OpenAI API
+        name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name
             (for example, ``gpt-4.1-mini``).
     """
     CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName(name))
@@ -102,7 +114,8 @@ def embeddings_model(name: str) -> None:
     """Override the model used for text embeddings.
 
     Args:
-        name (str): Embedding model name, e.g. ``text-embedding-3-small``.
+        name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name,
+            e.g. ``text-embedding-3-small``.
     """
     CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName(name))
 
@@ -143,7 +156,7 @@ class OpenAIVecSeriesAccessor:
         instructions: str,
         cache: BatchingMapProxy[str, ResponseFormat],
         response_format: Type[ResponseFormat] = str,
-        temperature: float = 0.0,
+        temperature: float | None = 0.0,
         top_p: float = 1.0,
     ) -> pd.Series:
         client: BatchResponses = BatchResponses(
@@ -205,7 +218,7 @@ class OpenAIVecSeriesAccessor:
         instructions: str,
         response_format: Type[ResponseFormat] = str,
         batch_size: int = 128,
-        temperature: float = 0.0,
+        temperature: float | None = 0.0,
         top_p: float = 1.0,
     ) -> pd.Series:
         """Call an LLM once for every Series element.
@@ -438,7 +451,7 @@ class OpenAIVecDataFrameAccessor:
         instructions: str,
         cache: BatchingMapProxy[str, ResponseFormat],
         response_format: Type[ResponseFormat] = str,
-        temperature: float = 0.0,
+        temperature: float | None = 0.0,
         top_p: float = 1.0,
     ) -> pd.Series:
         """Generate a response for each row after serialising it to JSON using a provided cache.
@@ -496,7 +509,7 @@ class OpenAIVecDataFrameAccessor:
         instructions: str,
         response_format: Type[ResponseFormat] = str,
         batch_size: int = 128,
-        temperature: float = 0.0,
+        temperature: float | None = 0.0,
         top_p: float = 1.0,
     ) -> pd.Series:
         """Generate a response for each row after serialising it to JSON.
@@ -681,7 +694,7 @@ class AsyncOpenAIVecSeriesAccessor:
         instructions: str,
         cache: AsyncBatchingMapProxy[str, ResponseFormat],
         response_format: Type[ResponseFormat] = str,
-        temperature: float = 0.0,
+        temperature: float | None = 0.0,
         top_p: float = 1.0,
     ) -> pd.Series:
         """Call an LLM once for every Series element using a provided cache (asynchronously).
@@ -848,7 +861,7 @@ class AsyncOpenAIVecSeriesAccessor:
         instructions: str,
         response_format: Type[ResponseFormat] = str,
         batch_size: int = 128,
-        temperature: float = 0.0,
+        temperature: float | None = 0.0,
         top_p: float = 1.0,
         max_concurrency: int = 8,
     ) -> pd.Series:
@@ -975,7 +988,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         instructions: str,
         cache: AsyncBatchingMapProxy[str, ResponseFormat],
         response_format: Type[ResponseFormat] = str,
-        temperature: float = 0.0,
+        temperature: float | None = 0.0,
         top_p: float = 1.0,
     ) -> pd.Series:
         """Generate a response for each row after serialising it to JSON using a provided cache (asynchronously).
@@ -1040,7 +1053,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         instructions: str,
         response_format: Type[ResponseFormat] = str,
         batch_size: int = 128,
-        temperature: float = 0.0,
+        temperature: float | None = 0.0,
         top_p: float = 1.0,
         max_concurrency: int = 8,
     ) -> pd.Series:

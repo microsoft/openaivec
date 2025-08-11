@@ -1,8 +1,9 @@
+import warnings
 from dataclasses import dataclass, field
 from logging import Logger, getLogger
 from typing import Generic, List, Type, cast
 
-from openai import AsyncOpenAI, InternalServerError, OpenAI, RateLimitError
+from openai import AsyncOpenAI, BadRequestError, InternalServerError, OpenAI, RateLimitError
 from openai.types.responses import ParsedResponse
 from pydantic import BaseModel
 
@@ -17,6 +18,35 @@ __all__ = [
 ]
 
 _LOGGER: Logger = getLogger(__name__)
+
+
+def _handle_temperature_error(error: BadRequestError, model_name: str, temperature: float) -> None:
+    """Handle temperature-related errors for reasoning models.
+
+    Detects when a model doesn't support temperature parameter and provides guidance.
+
+    Args:
+        error (BadRequestError): The OpenAI API error.
+        model_name (str): The model that caused the error.
+        temperature (float): The temperature value that was rejected.
+    """
+    error_message = str(error)
+    if "temperature" in error_message.lower() and "not supported" in error_message.lower():
+        guidance_message = (
+            f"🔧 Model '{model_name}' rejected temperature parameter (value: {temperature}). "
+            f"This typically happens with reasoning models (o1-preview, o1-mini, o3, etc.). "
+            f"To fix this, you MUST explicitly set temperature=None:\n"
+            f"• For pandas: df.col.ai.responses('prompt', temperature=None)\n"
+            f"• For Spark UDFs: responses_udf('prompt', temperature=None)\n"
+            f"• For direct API: BatchResponses.of(client, model, temperature=None)\n"
+            f"• Original error: {error_message}\n"
+            f"See: https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/reasoning"
+        )
+        warnings.warn(guidance_message, UserWarning, stacklevel=5)
+
+        # Re-raise with enhanced message
+        enhanced_message = f"{error_message}\n\nSUGGESTION: Set temperature=None to resolve this error."
+        raise BadRequestError(message=enhanced_message, response=error.response, body=error.body)
 
 
 def _vectorize_system_message(system_message: str) -> str:
@@ -116,7 +146,7 @@ class BatchResponses(Generic[ResponseFormat]):
 
     Attributes:
         client (OpenAI): Initialised OpenAI client.
-        model_name (str): Model (or Azure deployment) name to invoke.
+        model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
         system_message (str): System prompt prepended to every request.
         temperature (float): Sampling temperature.
         top_p (float): Nucleus‑sampling parameter.
@@ -131,9 +161,9 @@ class BatchResponses(Generic[ResponseFormat]):
     """
 
     client: OpenAI
-    model_name: str  # it would be the name of deployment for Azure
+    model_name: str  # For Azure: deployment name, for OpenAI: model name
     system_message: str
-    temperature: float = 0.0
+    temperature: float | None = 0.0
     top_p: float = 1.0
     response_format: Type[ResponseFormat] = str
     cache: BatchingMapProxy[str, ResponseFormat] = field(default_factory=lambda: BatchingMapProxy(batch_size=128))
@@ -146,7 +176,7 @@ class BatchResponses(Generic[ResponseFormat]):
         client: OpenAI,
         model_name: str,
         system_message: str,
-        temperature: float = 0.0,
+        temperature: float | None = 0.0,
         top_p: float = 1.0,
         response_format: Type[ResponseFormat] = str,
         batch_size: int = 128,
@@ -155,7 +185,7 @@ class BatchResponses(Generic[ResponseFormat]):
 
         Args:
             client (OpenAI): OpenAI client.
-            model_name (str): Model or deployment name.
+            model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
             system_message (str): System prompt for the model.
             temperature (float, optional): Sampling temperature. Defaults to 0.0.
             top_p (float, optional): Nucleus sampling parameter. Defaults to 1.0.
@@ -181,7 +211,7 @@ class BatchResponses(Generic[ResponseFormat]):
 
         Args:
             client (OpenAI): OpenAI client.
-            model_name (str): Model or deployment name.
+            model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
             task (PreparedTask): Prepared task with instructions and response format.
             batch_size (int, optional): Max unique prompts per API call. Defaults to 128.
 
@@ -231,14 +261,23 @@ class BatchResponses(Generic[ResponseFormat]):
         class ResponseT(BaseModel):
             assistant_messages: List[MessageT]
 
-        completion: ParsedResponse[ResponseT] = self.client.responses.parse(
-            model=self.model_name,
-            instructions=self._vectorized_system_message,
-            input=Request(user_messages=user_messages).model_dump_json(),
-            temperature=self.temperature,
-            top_p=self.top_p,
-            text_format=ResponseT,
-        )
+        # Prepare API parameters, excluding temperature if None (for reasoning models)
+        api_params = {
+            "model": self.model_name,
+            "instructions": self._vectorized_system_message,
+            "input": Request(user_messages=user_messages).model_dump_json(),
+            "top_p": self.top_p,
+            "text_format": ResponseT,
+        }
+        if self.temperature is not None:
+            api_params["temperature"] = self.temperature
+
+        try:
+            completion: ParsedResponse[ResponseT] = self.client.responses.parse(**api_params)
+        except BadRequestError as e:
+            _handle_temperature_error(e, self.model_name, self.temperature or 0.0)
+            raise  # Re-raise if it wasn't a temperature error
+
         return cast(ParsedResponse[Response[ResponseFormat]], completion)
 
     @observe(_LOGGER)
@@ -309,7 +348,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
 
     Attributes:
         client (AsyncOpenAI): Initialised OpenAI async client.
-        model_name (str): Model (or Azure deployment) name to invoke.
+        model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
         system_message (str): System prompt prepended to every request.
         temperature (float): Sampling temperature.
         top_p (float): Nucleus‑sampling parameter.
@@ -318,9 +357,9 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
     """
 
     client: AsyncOpenAI
-    model_name: str  # it would be the name of deployment for Azure
+    model_name: str  # For Azure: deployment name, for OpenAI: model name
     system_message: str
-    temperature: float = 0.0
+    temperature: float | None = 0.0
     top_p: float = 1.0
     response_format: Type[ResponseFormat] = str
     cache: AsyncBatchingMapProxy[str, ResponseFormat] = field(
@@ -335,7 +374,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         client: AsyncOpenAI,
         model_name: str,
         system_message: str,
-        temperature: float = 0.0,
+        temperature: float | None = 0.0,
         top_p: float = 1.0,
         response_format: Type[ResponseFormat] = str,
         batch_size: int = 128,
@@ -345,7 +384,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
 
         Args:
             client (AsyncOpenAI): OpenAI async client.
-            model_name (str): Model or deployment name.
+            model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
             system_message (str): System prompt.
             temperature (float, optional): Sampling temperature. Defaults to 0.0.
             top_p (float, optional): Nucleus sampling parameter. Defaults to 1.0.
@@ -374,7 +413,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
 
         Args:
             client (AsyncOpenAI): OpenAI async client.
-            model_name (str): Model or deployment name.
+            model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
             task (PreparedTask): Prepared task with instructions and response format.
             batch_size (int, optional): Max unique prompts per API call. Defaults to 128.
             max_concurrency (int, optional): Max concurrent API calls. Defaults to 8.
@@ -422,14 +461,23 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         class ResponseT(BaseModel):
             assistant_messages: List[MessageT]
 
-        completion: ParsedResponse[ResponseT] = await self.client.responses.parse(
-            model=self.model_name,
-            instructions=self._vectorized_system_message,
-            input=Request(user_messages=user_messages).model_dump_json(),
-            temperature=self.temperature,
-            top_p=self.top_p,
-            text_format=ResponseT,
-        )
+        # Prepare API parameters, excluding temperature if None (for reasoning models)
+        api_params = {
+            "model": self.model_name,
+            "instructions": self._vectorized_system_message,
+            "input": Request(user_messages=user_messages).model_dump_json(),
+            "top_p": self.top_p,
+            "text_format": ResponseT,
+        }
+        if self.temperature is not None:
+            api_params["temperature"] = self.temperature
+
+        try:
+            completion: ParsedResponse[ResponseT] = await self.client.responses.parse(**api_params)
+        except BadRequestError as e:
+            _handle_temperature_error(e, self.model_name, self.temperature or 0.0)
+            raise  # Re-raise if it wasn't a temperature error
+
         return cast(ParsedResponse[Response[ResponseFormat]], completion)
 
     @observe(_LOGGER)
