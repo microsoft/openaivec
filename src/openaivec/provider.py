@@ -72,7 +72,7 @@ CONTAINER.register(AzureOpenAIAPIKey, lambda: AzureOpenAIAPIKey(os.getenv("AZURE
 CONTAINER.register(AzureOpenAIBaseURL, lambda: AzureOpenAIBaseURL(os.getenv("AZURE_OPENAI_BASE_URL")))
 CONTAINER.register(
     cls=AzureOpenAIAPIVersion,
-    provider=lambda: AzureOpenAIAPIVersion(os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview")),
+    provider=lambda: AzureOpenAIAPIVersion(os.getenv("AZURE_OPENAI_API_VERSION", "preview")),
 )
 CONTAINER.register(OpenAI, provide_openai_client)
 CONTAINER.register(AsyncOpenAI, provide_async_openai_client)
