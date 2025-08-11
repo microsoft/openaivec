@@ -28,7 +28,7 @@ sc.environment["OPENAI_API_KEY"] = "your-openai-api-key"
 
 # Option 2: Using Azure OpenAI
 # sc.environment["AZURE_OPENAI_API_KEY"] = "your-azure-openai-api-key"
-# sc.environment["AZURE_OPENAI_API_ENDPOINT"] = "your-azure-openai-endpoint"
+# sc.environment["AZURE_OPENAI_BASE_URL"] = "your-azure-openai-base-url"
 # sc.environment["AZURE_OPENAI_API_VERSION"] = "your-azure-openai-api-version"
 ```
 
@@ -245,7 +245,7 @@ def responses_udf(
 
         For Azure OpenAI:
             sc.environment["AZURE_OPENAI_API_KEY"] = "your-azure-openai-api-key"
-            sc.environment["AZURE_OPENAI_API_ENDPOINT"] = "your-azure-openai-endpoint"
+            sc.environment["AZURE_OPENAI_BASE_URL"] = "your-azure-openai-base-url"
             sc.environment["AZURE_OPENAI_API_VERSION"] = "your-azure-openai-api-version"
 
     Args:
@@ -474,7 +474,7 @@ def embeddings_udf(
 
         For Azure OpenAI:
             sc.environment["AZURE_OPENAI_API_KEY"] = "your-azure-openai-api-key"
-            sc.environment["AZURE_OPENAI_API_ENDPOINT"] = "your-azure-openai-endpoint"
+            sc.environment["AZURE_OPENAI_BASE_URL"] = "your-azure-openai-base-url"
             sc.environment["AZURE_OPENAI_API_VERSION"] = "your-azure-openai-api-version"
 
     Args:

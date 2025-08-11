@@ -7,7 +7,7 @@ from openaivec import pandas_ext
 
 # Option 1: Use environment variables (automatic detection)
 # Set OPENAI_API_KEY or Azure OpenAI environment variables
-# (AZURE_OPENAI_API_KEY, AZURE_OPENAI_API_ENDPOINT, AZURE_OPENAI_API_VERSION)
+# (AZURE_OPENAI_API_KEY, AZURE_OPENAI_BASE_URL, AZURE_OPENAI_API_VERSION)
 # No explicit setup needed - clients are automatically created
 
 # Option 2: Use an existing OpenAI client instance

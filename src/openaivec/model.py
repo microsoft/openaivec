@@ -78,7 +78,7 @@ class AzureOpenAIAPIKey:
 
 
 @dataclass(frozen=True)
-class AzureOpenAIEndpoint:
+class AzureOpenAIBaseURL:
     value: str
 
 

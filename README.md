@@ -156,7 +156,7 @@ from openaivec import pandas_ext
 os.environ["OPENAI_API_KEY"] = "your-api-key-here"
 # Or for Azure OpenAI:
 # os.environ["AZURE_OPENAI_API_KEY"] = "your-azure-key"
-# os.environ["AZURE_OPENAI_API_ENDPOINT"] = "https://<your-resource-name>.services.ai.azure.com"
+# os.environ["AZURE_OPENAI_BASE_URL"] = "https://<your-resource-name>.services.ai.azure.com"
 # os.environ["AZURE_OPENAI_API_VERSION"] = "2025-04-01-preview"
 
 # Authentication Option 2: Custom client (optional)
@@ -298,7 +298,7 @@ sc.environment["OPENAI_API_KEY"] = os.environ.get("OPENAI_API_KEY")
 
 # Option 2: Using Azure OpenAI
 # sc.environment["AZURE_OPENAI_API_KEY"] = os.environ.get("AZURE_OPENAI_API_KEY")
-# sc.environment["AZURE_OPENAI_API_ENDPOINT"] = os.environ.get("AZURE_OPENAI_API_ENDPOINT")
+# sc.environment["AZURE_OPENAI_BASE_URL"] = os.environ.get("AZURE_OPENAI_BASE_URL")
 # sc.environment["AZURE_OPENAI_API_VERSION"] = os.environ.get("AZURE_OPENAI_API_VERSION")
 ```
 
@@ -642,7 +642,7 @@ steps:
 
      # Configure Azure OpenAI authentication
      sc.environment["AZURE_OPENAI_API_KEY"] = "<your-api-key>"
-     sc.environment["AZURE_OPENAI_API_ENDPOINT"] = "https://<your-resource-name>.services.ai.azure.com"
+     sc.environment["AZURE_OPENAI_BASE_URL"] = "https://<your-resource-name>.services.ai.azure.com"
      sc.environment["AZURE_OPENAI_API_VERSION"] = "2025-04-01-preview"
 
      # Register UDFs
