@@ -224,7 +224,7 @@ def responses_udf(
     response_format: Type[ResponseFormat] = str,
     model_name: str = "gpt-4.1-mini",
     batch_size: int = 128,
-    temperature: float = 0.0,
+    temperature: float | None = 0.0,
     top_p: float = 1.0,
     max_concurrency: int = 8,
 ) -> UserDefinedFunction:

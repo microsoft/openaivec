@@ -1,5 +1,6 @@
 import os
 import unittest
+import warnings
 
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
 
@@ -357,3 +358,57 @@ class TestProviderIntegration(unittest.TestCase):
 
         # We can't easily test the internal configuration without accessing private attributes,
         # but the fact that they're created without exception indicates proper configuration
+
+
+class TestAzureV1ApiWarning(unittest.TestCase):
+    """Test Azure v1 API URL warning functionality."""
+
+    def test_check_azure_v1_api_url_no_warning_for_v1_url(self):
+        """Test that v1 API URLs don't trigger warnings."""
+        from openaivec.provider import _check_azure_v1_api_url
+
+        v1_urls = [
+            "https://myresource.services.ai.azure.com/openai/v1/",
+            "https://myresource.services.ai.azure.com/openai/v1",
+            "https://test.openai.azure.com/openai/v1/",
+        ]
+
+        for url in v1_urls:
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                _check_azure_v1_api_url(url)
+                self.assertEqual(len(w), 0, f"Unexpected warning for URL: {url}")
+
+    def test_check_azure_v1_api_url_warning_for_legacy_url(self):
+        """Test that legacy API URLs trigger warnings."""
+        from openaivec.provider import _check_azure_v1_api_url
+
+        legacy_urls = [
+            "https://myresource.services.ai.azure.com/",
+            "https://myresource.openai.azure.com/",
+            "https://test.openai.azure.com/openai/",
+        ]
+
+        for url in legacy_urls:
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                _check_azure_v1_api_url(url)
+                self.assertGreater(len(w), 0, f"Expected warning for URL: {url}")
+                self.assertIn("v1 API is recommended", str(w[0].message))
+                self.assertIn("learn.microsoft.com", str(w[0].message))
+
+    def test_pandas_ext_use_azure_warning(self):
+        """Test that pandas_ext.use() shows warning for legacy Azure URLs."""
+        from openai import AzureOpenAI
+        from openaivec import pandas_ext
+
+        # Test with legacy URL
+        legacy_client = AzureOpenAI(
+            api_key="test-key", base_url="https://test.openai.azure.com/", api_version="2024-02-01"
+        )
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            pandas_ext.use(legacy_client)
+            self.assertGreater(len(w), 0, "Expected warning for legacy Azure URL")
+            self.assertIn("v1 API is recommended", str(w[0].message))

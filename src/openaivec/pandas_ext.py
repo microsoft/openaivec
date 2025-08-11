@@ -52,7 +52,7 @@ from pydantic import BaseModel
 
 from .embeddings import AsyncBatchEmbeddings, BatchEmbeddings
 from .model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
-from .provider import CONTAINER
+from .provider import CONTAINER, _check_azure_v1_api_url
 from .proxy import AsyncBatchingMapProxy, BatchingMapProxy
 from .responses import AsyncBatchResponses, BatchResponses
 from .task.table import FillNaResponse, fillna
@@ -78,6 +78,10 @@ def use(client: OpenAI) -> None:
             `openai.AzureOpenAI` instance.
             The same instance is reused by every helper in this module.
     """
+    # Check Azure v1 API URL if using AzureOpenAI client
+    if client.__class__.__name__ == "AzureOpenAI" and hasattr(client, "base_url"):
+        _check_azure_v1_api_url(str(client.base_url))
+
     CONTAINER.register(OpenAI, lambda: client)
 
 
@@ -89,6 +93,10 @@ def use_async(client: AsyncOpenAI) -> None:
             `openai.AsyncAzureOpenAI` instance.
             The same instance is reused by every helper in this module.
     """
+    # Check Azure v1 API URL if using AsyncAzureOpenAI client
+    if client.__class__.__name__ == "AsyncAzureOpenAI" and hasattr(client, "base_url"):
+        _check_azure_v1_api_url(str(client.base_url))
+
     CONTAINER.register(AsyncOpenAI, lambda: client)
 
 
@@ -148,7 +156,7 @@ class OpenAIVecSeriesAccessor:
         instructions: str,
         cache: BatchingMapProxy[str, ResponseFormat],
         response_format: Type[ResponseFormat] = str,
-        temperature: float = 0.0,
+        temperature: float | None = 0.0,
         top_p: float = 1.0,
     ) -> pd.Series:
         client: BatchResponses = BatchResponses(
@@ -210,7 +218,7 @@ class OpenAIVecSeriesAccessor:
         instructions: str,
         response_format: Type[ResponseFormat] = str,
         batch_size: int = 128,
-        temperature: float = 0.0,
+        temperature: float | None = 0.0,
         top_p: float = 1.0,
     ) -> pd.Series:
         """Call an LLM once for every Series element.
@@ -443,7 +451,7 @@ class OpenAIVecDataFrameAccessor:
         instructions: str,
         cache: BatchingMapProxy[str, ResponseFormat],
         response_format: Type[ResponseFormat] = str,
-        temperature: float = 0.0,
+        temperature: float | None = 0.0,
         top_p: float = 1.0,
     ) -> pd.Series:
         """Generate a response for each row after serialising it to JSON using a provided cache.
@@ -501,7 +509,7 @@ class OpenAIVecDataFrameAccessor:
         instructions: str,
         response_format: Type[ResponseFormat] = str,
         batch_size: int = 128,
-        temperature: float = 0.0,
+        temperature: float | None = 0.0,
         top_p: float = 1.0,
     ) -> pd.Series:
         """Generate a response for each row after serialising it to JSON.
@@ -686,7 +694,7 @@ class AsyncOpenAIVecSeriesAccessor:
         instructions: str,
         cache: AsyncBatchingMapProxy[str, ResponseFormat],
         response_format: Type[ResponseFormat] = str,
-        temperature: float = 0.0,
+        temperature: float | None = 0.0,
         top_p: float = 1.0,
     ) -> pd.Series:
         """Call an LLM once for every Series element using a provided cache (asynchronously).
@@ -853,7 +861,7 @@ class AsyncOpenAIVecSeriesAccessor:
         instructions: str,
         response_format: Type[ResponseFormat] = str,
         batch_size: int = 128,
-        temperature: float = 0.0,
+        temperature: float | None = 0.0,
         top_p: float = 1.0,
         max_concurrency: int = 8,
     ) -> pd.Series:
@@ -980,7 +988,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         instructions: str,
         cache: AsyncBatchingMapProxy[str, ResponseFormat],
         response_format: Type[ResponseFormat] = str,
-        temperature: float = 0.0,
+        temperature: float | None = 0.0,
         top_p: float = 1.0,
     ) -> pd.Series:
         """Generate a response for each row after serialising it to JSON using a provided cache (asynchronously).
@@ -1045,7 +1053,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         instructions: str,
         response_format: Type[ResponseFormat] = str,
         batch_size: int = 128,
-        temperature: float = 0.0,
+        temperature: float | None = 0.0,
         top_p: float = 1.0,
         max_concurrency: int = 8,
     ) -> pd.Series:

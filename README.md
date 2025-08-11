@@ -188,6 +188,27 @@ result = df.assign(
 
 📓 **[Interactive pandas examples →](https://microsoft.github.io/openaivec/examples/pandas/)**
 
+### Using with Reasoning Models
+
+When using reasoning models (o1-preview, o1-mini, o3-mini, etc.), you must set `temperature=None` to avoid API errors:
+
+```python
+# For reasoning models like o1-preview, o1-mini, o3-mini
+pandas_ext.responses_model("o1-mini")  # Set your reasoning model
+
+# MUST use temperature=None with reasoning models
+result = df.assign(
+    analysis=lambda df: df.text.ai.responses(
+        "Analyze this text step by step",
+        temperature=None  # Required for reasoning models
+    )
+)
+```
+
+**Why this is needed**: Reasoning models don't support temperature parameters and will return an error if temperature is specified. The library automatically detects these errors and provides guidance on how to fix them.
+
+**Reference**: [Azure OpenAI Reasoning Models](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/reasoning)
+
 ### Using Pre-configured Tasks
 
 For common text processing operations, openaivec provides ready-to-use tasks that eliminate the need to write custom prompts:
@@ -354,6 +375,16 @@ spark.udf.register(
     "classify_intent",
     task_udf(
         task=customer_support.INTENT_ANALYSIS
+    )
+)
+
+# --- Register UDF for Reasoning Models ---
+# For reasoning models (o1-preview, o1-mini, o3, etc.), set temperature=None
+spark.udf.register(
+    "reasoning_analysis",
+    responses_udf(
+        instructions="Analyze this step by step with detailed reasoning",
+        temperature=None  # Required for reasoning models
     )
 )
 

@@ -1,4 +1,5 @@
 import os
+import warnings
 
 import tiktoken
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
@@ -17,6 +18,29 @@ from .util import TextChunker
 CONTAINER = di.Container()
 
 
+def _check_azure_v1_api_url(base_url: str) -> None:
+    """Check if Azure OpenAI base URL uses the recommended v1 API format.
+
+    Issues a warning if the URL doesn't end with '/openai/v1/' to encourage
+    migration to the v1 API format as recommended by Microsoft.
+
+    Reference: https://learn.microsoft.com/en-us/azure/ai-foundry/openai/api-version-lifecycle
+
+    Args:
+        base_url (str): The Azure OpenAI base URL to check.
+    """
+    if base_url and not base_url.rstrip("/").endswith("/openai/v1"):
+        warnings.warn(
+            "⚠️  Azure OpenAI v1 API is recommended. Your base URL should end with '/openai/v1/'. "
+            f"Current URL: '{base_url}'. "
+            "Consider updating to: 'https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/' "
+            "for better performance and future compatibility. "
+            "See: https://learn.microsoft.com/en-us/azure/ai-foundry/openai/api-version-lifecycle",
+            UserWarning,
+            stacklevel=3,
+        )
+
+
 def provide_openai_client() -> OpenAI:
     """Provide OpenAI client based on environment variables. Prioritizes OpenAI over Azure."""
     openai_api_key = CONTAINER.resolve(OpenAIAPIKey)
@@ -28,6 +52,7 @@ def provide_openai_client() -> OpenAI:
     azure_api_version = CONTAINER.resolve(AzureOpenAIAPIVersion)
 
     if all(param.value for param in [azure_api_key, azure_base_url, azure_api_version]):
+        _check_azure_v1_api_url(azure_base_url.value)
         return AzureOpenAI(
             api_key=azure_api_key.value,
             base_url=azure_base_url.value,
@@ -52,6 +77,7 @@ def provide_async_openai_client() -> AsyncOpenAI:
     azure_api_version = CONTAINER.resolve(AzureOpenAIAPIVersion)
 
     if all(param.value for param in [azure_api_key, azure_base_url, azure_api_version]):
+        _check_azure_v1_api_url(azure_base_url.value)
         return AsyncAzureOpenAI(
             api_key=azure_api_key.value,
             base_url=azure_base_url.value,
