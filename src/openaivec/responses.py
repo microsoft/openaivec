@@ -116,7 +116,7 @@ class BatchResponses(Generic[ResponseFormat]):
 
     Attributes:
         client (OpenAI): Initialised OpenAI client.
-        model_name (str): Model (or Azure deployment) name to invoke.
+        model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
         system_message (str): System prompt prepended to every request.
         temperature (float): Sampling temperature.
         top_p (float): Nucleus‑sampling parameter.
@@ -131,7 +131,7 @@ class BatchResponses(Generic[ResponseFormat]):
     """
 
     client: OpenAI
-    model_name: str  # it would be the name of deployment for Azure
+    model_name: str  # For Azure: deployment name, for OpenAI: model name
     system_message: str
     temperature: float = 0.0
     top_p: float = 1.0
@@ -155,7 +155,7 @@ class BatchResponses(Generic[ResponseFormat]):
 
         Args:
             client (OpenAI): OpenAI client.
-            model_name (str): Model or deployment name.
+            model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
             system_message (str): System prompt for the model.
             temperature (float, optional): Sampling temperature. Defaults to 0.0.
             top_p (float, optional): Nucleus sampling parameter. Defaults to 1.0.
@@ -181,7 +181,7 @@ class BatchResponses(Generic[ResponseFormat]):
 
         Args:
             client (OpenAI): OpenAI client.
-            model_name (str): Model or deployment name.
+            model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
             task (PreparedTask): Prepared task with instructions and response format.
             batch_size (int, optional): Max unique prompts per API call. Defaults to 128.
 
@@ -309,7 +309,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
 
     Attributes:
         client (AsyncOpenAI): Initialised OpenAI async client.
-        model_name (str): Model (or Azure deployment) name to invoke.
+        model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
         system_message (str): System prompt prepended to every request.
         temperature (float): Sampling temperature.
         top_p (float): Nucleus‑sampling parameter.
@@ -318,7 +318,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
     """
 
     client: AsyncOpenAI
-    model_name: str  # it would be the name of deployment for Azure
+    model_name: str  # For Azure: deployment name, for OpenAI: model name
     system_message: str
     temperature: float = 0.0
     top_p: float = 1.0
@@ -345,7 +345,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
 
         Args:
             client (AsyncOpenAI): OpenAI async client.
-            model_name (str): Model or deployment name.
+            model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
             system_message (str): System prompt.
             temperature (float, optional): Sampling temperature. Defaults to 0.0.
             top_p (float, optional): Nucleus sampling parameter. Defaults to 1.0.
@@ -374,7 +374,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
 
         Args:
             client (AsyncOpenAI): OpenAI async client.
-            model_name (str): Model or deployment name.
+            model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
             task (PreparedTask): Prepared task with instructions and response format.
             batch_size (int, optional): Max unique prompts per API call. Defaults to 128.
             max_concurrency (int, optional): Max concurrent API calls. Defaults to 8.

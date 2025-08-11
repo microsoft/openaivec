@@ -96,7 +96,7 @@ def responses_model(name: str) -> None:
     """Override the model used for text responses.
 
     Args:
-        name (str): Model name as listed in the OpenAI API
+        name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name
             (for example, ``gpt-4.1-mini``).
     """
     CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName(name))
@@ -106,7 +106,8 @@ def embeddings_model(name: str) -> None:
     """Override the model used for text embeddings.
 
     Args:
-        name (str): Embedding model name, e.g. ``text-embedding-3-small``.
+        name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name,
+            e.g. ``text-embedding-3-small``.
     """
     CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName(name))
 

@@ -166,6 +166,7 @@ os.environ["OPENAI_API_KEY"] = "your-api-key-here"
 # pandas_ext.use_async(AsyncOpenAI())
 
 # Configure model (optional - defaults to gpt-4.1-mini)
+# For Azure OpenAI: use your deployment name, for OpenAI: use model name
 pandas_ext.responses_model("gpt-4.1-mini")
 
 # Create your data
@@ -650,7 +651,7 @@ steps:
          "analyze_text",
          responses_udf(
              instructions="Analyze the sentiment of the text",
-             model_name="<your-deployment-name>"
+             model_name="gpt-4.1-mini"  # Use your Azure deployment name here
          )
      )
      ```
