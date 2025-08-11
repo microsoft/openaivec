@@ -90,7 +90,7 @@ class AsyncBatchEmbeddings:
         import asyncio
         import numpy as np
         from openai import AsyncOpenAI
-    from openaivec import AsyncBatchEmbeddings
+        from openaivec import AsyncBatchEmbeddings
 
         # Assuming openai_async_client is an initialized AsyncOpenAI client
         openai_async_client = AsyncOpenAI() # Replace with your actual client initialization

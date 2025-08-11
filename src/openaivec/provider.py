@@ -42,7 +42,20 @@ def _check_azure_v1_api_url(base_url: str) -> None:
 
 
 def provide_openai_client() -> OpenAI:
-    """Provide OpenAI client based on environment variables. Prioritizes OpenAI over Azure."""
+    """Provide OpenAI client based on environment variables.
+
+    Automatically detects and prioritizes OpenAI over Azure OpenAI configuration.
+    Checks the following environment variables in order:
+    1. OPENAI_API_KEY - if set, creates standard OpenAI client
+    2. Azure OpenAI variables (AZURE_OPENAI_API_KEY, AZURE_OPENAI_BASE_URL,
+       AZURE_OPENAI_API_VERSION) - if all set, creates Azure OpenAI client
+
+    Returns:
+        OpenAI: Configured OpenAI or AzureOpenAI client instance.
+
+    Raises:
+        ValueError: If no valid environment variables are found for either service.
+    """
     openai_api_key = CONTAINER.resolve(OpenAIAPIKey)
     if openai_api_key.value:
         return OpenAI()
@@ -67,7 +80,20 @@ def provide_openai_client() -> OpenAI:
 
 
 def provide_async_openai_client() -> AsyncOpenAI:
-    """Provide async OpenAI client based on environment variables. Prioritizes OpenAI over Azure."""
+    """Provide asynchronous OpenAI client based on environment variables.
+
+    Automatically detects and prioritizes OpenAI over Azure OpenAI configuration.
+    Checks the following environment variables in order:
+    1. OPENAI_API_KEY - if set, creates standard AsyncOpenAI client
+    2. Azure OpenAI variables (AZURE_OPENAI_API_KEY, AZURE_OPENAI_BASE_URL,
+       AZURE_OPENAI_API_VERSION) - if all set, creates AsyncAzureOpenAI client
+
+    Returns:
+        AsyncOpenAI: Configured AsyncOpenAI or AsyncAzureOpenAI client instance.
+
+    Raises:
+        ValueError: If no valid environment variables are found for either service.
+    """
     openai_api_key = CONTAINER.resolve(OpenAIAPIKey)
     if openai_api_key.value:
         return AsyncOpenAI()
