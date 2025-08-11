@@ -17,14 +17,18 @@ pandas_ext.use(client)
 # Option 3: Use an existing Azure OpenAI client instance
 azure_client = AzureOpenAI(
     api_key="your-azure-key",
-    azure_endpoint="https://<your-resource-name>.services.ai.azure.com",
-    api_version="2025-04-01-preview"
+    base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
+    api_version="preview"
 )
 pandas_ext.use(azure_client)
 
-# Option 4: Use async clients
-async_client = AsyncOpenAI(api_key="your-api-key")
-pandas_ext.use_async(async_client)
+# Option 4: Use async Azure OpenAI client instance
+async_azure_client = AsyncAzureOpenAI(
+    api_key="your-azure-key",
+    base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
+    api_version="preview"
+)
+pandas_ext.use_async(async_azure_client)
 
 # Set up model names (optional, defaults shown)
 pandas_ext.responses_model("gpt-4.1-mini")

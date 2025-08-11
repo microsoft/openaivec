@@ -156,8 +156,8 @@ from openaivec import pandas_ext
 os.environ["OPENAI_API_KEY"] = "your-api-key-here"
 # Or for Azure OpenAI:
 # os.environ["AZURE_OPENAI_API_KEY"] = "your-azure-key"
-# os.environ["AZURE_OPENAI_BASE_URL"] = "https://<your-resource-name>.services.ai.azure.com"
-# os.environ["AZURE_OPENAI_API_VERSION"] = "2025-04-01-preview"
+# os.environ["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
+# os.environ["AZURE_OPENAI_API_VERSION"] = "preview"
 
 # Authentication Option 2: Custom client (optional)
 # from openai import OpenAI, AsyncOpenAI
@@ -642,8 +642,8 @@ steps:
 
      # Configure Azure OpenAI authentication
      sc.environment["AZURE_OPENAI_API_KEY"] = "<your-api-key>"
-     sc.environment["AZURE_OPENAI_BASE_URL"] = "https://<your-resource-name>.services.ai.azure.com"
-     sc.environment["AZURE_OPENAI_API_VERSION"] = "2025-04-01-preview"
+     sc.environment["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
+     sc.environment["AZURE_OPENAI_API_VERSION"] = "preview"
 
      # Register UDFs
      spark.udf.register(

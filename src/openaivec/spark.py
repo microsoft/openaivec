@@ -28,8 +28,8 @@ sc.environment["OPENAI_API_KEY"] = "your-openai-api-key"
 
 # Option 2: Using Azure OpenAI
 # sc.environment["AZURE_OPENAI_API_KEY"] = "your-azure-openai-api-key"
-# sc.environment["AZURE_OPENAI_BASE_URL"] = "your-azure-openai-base-url"
-# sc.environment["AZURE_OPENAI_API_VERSION"] = "your-azure-openai-api-version"
+# sc.environment["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
+# sc.environment["AZURE_OPENAI_API_VERSION"] = "preview"
 ```
 
 Next, create UDFs and register them:
@@ -245,8 +245,8 @@ def responses_udf(
 
         For Azure OpenAI:
             sc.environment["AZURE_OPENAI_API_KEY"] = "your-azure-openai-api-key"
-            sc.environment["AZURE_OPENAI_BASE_URL"] = "your-azure-openai-base-url"
-            sc.environment["AZURE_OPENAI_API_VERSION"] = "your-azure-openai-api-version"
+            sc.environment["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
+            sc.environment["AZURE_OPENAI_API_VERSION"] = "preview"
 
     Args:
         instructions (str): The system prompt or instructions for the model.
@@ -474,8 +474,8 @@ def embeddings_udf(
 
         For Azure OpenAI:
             sc.environment["AZURE_OPENAI_API_KEY"] = "your-azure-openai-api-key"
-            sc.environment["AZURE_OPENAI_BASE_URL"] = "your-azure-openai-base-url"
-            sc.environment["AZURE_OPENAI_API_VERSION"] = "your-azure-openai-api-version"
+            sc.environment["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
+            sc.environment["AZURE_OPENAI_API_VERSION"] = "preview"
 
     Args:
         model_name (str): Deployment name (Azure) or model name (OpenAI) for embeddings.

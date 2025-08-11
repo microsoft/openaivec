@@ -30,7 +30,7 @@ def provide_openai_client() -> OpenAI:
     if all(param.value for param in [azure_api_key, azure_base_url, azure_api_version]):
         return AzureOpenAI(
             api_key=azure_api_key.value,
-            azure_endpoint=azure_base_url.value,
+            base_url=azure_base_url.value,
             api_version=azure_api_version.value,
         )
 
@@ -54,7 +54,7 @@ def provide_async_openai_client() -> AsyncOpenAI:
     if all(param.value for param in [azure_api_key, azure_base_url, azure_api_version]):
         return AsyncAzureOpenAI(
             api_key=azure_api_key.value,
-            azure_endpoint=azure_base_url.value,
+            base_url=azure_base_url.value,
             api_version=azure_api_version.value,
         )
 
@@ -92,7 +92,7 @@ def reset_environment_registrations():
     CONTAINER.register(AzureOpenAIBaseURL, lambda: AzureOpenAIBaseURL(os.getenv("AZURE_OPENAI_BASE_URL")))
     CONTAINER.register(
         cls=AzureOpenAIAPIVersion,
-        provider=lambda: AzureOpenAIAPIVersion(os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview")),
+        provider=lambda: AzureOpenAIAPIVersion(os.getenv("AZURE_OPENAI_API_VERSION", "preview")),
     )
     CONTAINER.register(OpenAI, provide_openai_client)
     CONTAINER.register(AsyncOpenAI, provide_async_openai_client)
