@@ -579,3 +579,159 @@ async def test_async_batch_size_maximization_complex_scenario():
     assert calls[0] == [0, 2, 4, 5]  # 4 items (full batch)
     assert calls[1] == [7, 9, 10, 12]  # 4 items (full batch)
     assert calls[2] == [13, 14]  # 2 items (remainder)
+
+
+# -------------------- Progress Bar Tests --------------------
+
+
+def test_notebook_environment_detection():
+    """Test notebook environment detection functionality."""
+    from openaivec.proxy import ProxyBase
+
+    proxy = ProxyBase()
+    # The method should return a boolean and not raise an exception
+    result = proxy._is_notebook_environment()
+    assert isinstance(result, bool)
+
+
+def test_progress_bar_methods():
+    """Test progress bar creation and management methods."""
+    from openaivec.proxy import ProxyBase
+
+    proxy = ProxyBase()
+    proxy.show_progress = True
+
+    # Test progress bar creation (may return None if tqdm not available or not in notebook)
+    progress_bar = proxy._create_progress_bar(100, "Testing")
+
+    # Test update and close methods don't raise exceptions
+    proxy._update_progress_bar(progress_bar, 10)
+    proxy._close_progress_bar(progress_bar)
+
+
+def test_batching_proxy_with_progress_disabled():
+    """Test BatchingMapProxy with progress disabled (default)."""
+    calls: list[list[int]] = []
+
+    def mf(xs: list[int]) -> list[int]:
+        calls.append(xs[:])
+        return xs
+
+    proxy = BatchingMapProxy[int, int](batch_size=3, show_progress=False)
+    items = list(range(6))
+    result = proxy.map(items, mf)
+
+    assert result == items
+    assert len(calls) == 2  # Should batch as [0,1,2] + [3,4,5]
+
+
+def test_batching_proxy_with_progress_enabled():
+    """Test BatchingMapProxy with progress enabled."""
+    calls: list[list[int]] = []
+
+    def mf(xs: list[int]) -> list[int]:
+        calls.append(xs[:])
+        return xs
+
+    proxy = BatchingMapProxy[int, int](batch_size=3, show_progress=True)
+    items = list(range(6))
+    result = proxy.map(items, mf)
+
+    assert result == items
+    assert len(calls) == 2  # Should batch as [0,1,2] + [3,4,5]
+
+
+@pytest.mark.asyncio
+async def test_async_batching_proxy_with_progress_disabled():
+    """Test AsyncBatchingMapProxy with progress disabled (default)."""
+    calls: list[list[int]] = []
+
+    async def mf(xs: list[int]) -> list[int]:
+        calls.append(xs[:])
+        await asyncio.sleep(0.01)
+        return xs
+
+    proxy = AsyncBatchingMapProxy[int, int](batch_size=3, show_progress=False)
+    items = list(range(6))
+    result = await proxy.map(items, mf)
+
+    assert result == items
+    assert len(calls) == 2  # Should batch as [0,1,2] + [3,4,5]
+
+
+@pytest.mark.asyncio
+async def test_async_batching_proxy_with_progress_enabled():
+    """Test AsyncBatchingMapProxy with progress enabled."""
+    calls: list[list[int]] = []
+
+    async def mf(xs: list[int]) -> list[int]:
+        calls.append(xs[:])
+        await asyncio.sleep(0.01)
+        return xs
+
+    proxy = AsyncBatchingMapProxy[int, int](batch_size=3, show_progress=True)
+    items = list(range(6))
+    result = await proxy.map(items, mf)
+
+    assert result == items
+    assert len(calls) == 2  # Should batch as [0,1,2] + [3,4,5]
+
+
+def test_progress_bar_with_forced_notebook_environment():
+    """Test progress bar functionality with forced notebook environment."""
+    from openaivec.proxy import ProxyBase
+
+    # Monkey patch the notebook detection to return True
+    original_method = ProxyBase._is_notebook_environment
+    ProxyBase._is_notebook_environment = lambda self: True
+
+    try:
+        calls: list[list[int]] = []
+
+        def mf(xs: list[int]) -> list[int]:
+            calls.append(xs[:])
+            return xs
+
+        # Create proxy with progress enabled
+        proxy = BatchingMapProxy[int, int](batch_size=3, show_progress=True)
+        items = list(range(10))
+        result = proxy.map(items, mf)
+
+        assert result == items
+        # Should batch as [0,1,2] + [3,4,5] + [6,7,8] + [9]
+        assert len(calls) == 4
+
+    finally:
+        # Restore original method
+        ProxyBase._is_notebook_environment = original_method
+
+
+@pytest.mark.asyncio
+async def test_async_progress_bar_with_forced_notebook_environment():
+    """Test async progress bar functionality with forced notebook environment."""
+    from openaivec.proxy import ProxyBase
+
+    # Monkey patch the notebook detection to return True
+    original_method = ProxyBase._is_notebook_environment
+    ProxyBase._is_notebook_environment = lambda self: True
+
+    try:
+        calls: list[list[int]] = []
+
+        async def mf(xs: list[int]) -> list[int]:
+            calls.append(xs[:])
+            await asyncio.sleep(0.01)
+            return xs
+
+        # Create proxy with progress enabled
+        proxy = AsyncBatchingMapProxy[int, int](batch_size=3, show_progress=True)
+        items = list(range(10))
+        result = await proxy.map(items, mf)
+
+        assert result == items
+        # Should batch as [0,1,2] + [3,4,5] + [6,7,8] + [9]
+        assert len(calls) == 4
+
+    finally:
+        # Restore original method
+        ProxyBase._is_notebook_environment = original_method
