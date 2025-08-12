@@ -628,6 +628,9 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         # Setup progress bar
         progress_bar = self._create_progress_bar(len(owned))
 
+        # Collect all batches to process
+        batches_to_process: List[List[S]] = []
+
         for i in range(0, len(owned), batch_size):
             batch = owned[i : i + batch_size]
             async with self.__lock:
@@ -641,48 +644,49 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                 # Take up to batch_size items to process
                 to_call = pending_to_call[:batch_size]
                 pending_to_call = pending_to_call[batch_size:]
-
-                acquired = False
-                try:
-                    if self.__sema:
-                        await self.__sema.acquire()
-                        acquired = True
-                    results = await map_func(to_call)
-                except Exception:
-                    await self.__finalize_failure(to_call)
-                    raise
-                finally:
-                    if self.__sema and acquired:
-                        self.__sema.release()
-                await self.__finalize_success(to_call, results)
-
-                # Update progress bar
-                self._update_progress_bar(progress_bar, len(to_call))
+                if to_call:  # Only add non-empty batches
+                    batches_to_process.append(to_call)
 
         # Process any remaining items
         while pending_to_call:
             to_call = pending_to_call[:batch_size]
             pending_to_call = pending_to_call[batch_size:]
+            if to_call:  # Only add non-empty batches
+                batches_to_process.append(to_call)
 
-            acquired = False
-            try:
-                if self.__sema:
-                    await self.__sema.acquire()
-                    acquired = True
-                results = await map_func(to_call)
-            except Exception:
-                await self.__finalize_failure(to_call)
-                raise
-            finally:
-                if self.__sema and acquired:
-                    self.__sema.release()
-            await self.__finalize_success(to_call, results)
+        # Process all batches concurrently
+        if batches_to_process:
+            tasks = []
+            for batch in batches_to_process:
+                task = self.__process_single_batch(batch, map_func, progress_bar)
+                tasks.append(task)
 
-            # Update progress bar
-            self._update_progress_bar(progress_bar, len(to_call))
+            # Wait for all batches to complete
+            await asyncio.gather(*tasks)
 
         # Close progress bar
         self._close_progress_bar(progress_bar)
+
+    async def __process_single_batch(
+        self, to_call: List[S], map_func: Callable[[List[S]], Awaitable[List[T]]], progress_bar
+    ) -> None:
+        """Process a single batch with semaphore control."""
+        acquired = False
+        try:
+            if self.__sema:
+                await self.__sema.acquire()
+                acquired = True
+            results = await map_func(to_call)
+        except Exception:
+            await self.__finalize_failure(to_call)
+            raise
+        finally:
+            if self.__sema and acquired:
+                self.__sema.release()
+        await self.__finalize_success(to_call, results)
+
+        # Update progress bar
+        self._update_progress_bar(progress_bar, len(to_call))
 
     async def __wait_for(self, keys: List[S], map_func: Callable[[List[S]], Awaitable[List[T]]]) -> None:
         """Wait for computations owned by other coroutines to complete.

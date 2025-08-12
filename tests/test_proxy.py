@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import List
 
 import pytest
@@ -735,3 +736,96 @@ async def test_async_progress_bar_with_forced_notebook_environment():
     finally:
         # Restore original method
         ProxyBase._is_notebook_environment = original_method
+
+
+@pytest.mark.asyncio
+async def test_async_concurrent_batch_processing():
+    """Test that AsyncBatchingMapProxy processes batches concurrently."""
+    calls: list[list[int]] = []
+    start_times: list[float] = []
+
+    async def timing_mf(xs: list[int]) -> list[int]:
+        import time
+
+        calls.append(xs[:])
+        start_times.append(time.time())
+        await asyncio.sleep(0.1)  # Simulate network latency
+        return xs
+
+    proxy = AsyncBatchingMapProxy[int, int](batch_size=5, max_concurrency=5)
+    items = list(range(25))  # 5 batches of 5 items each
+
+    start = time.time()
+    result = await proxy.map(items, timing_mf)
+    end = time.time()
+
+    assert result == items
+    assert len(calls) == 5  # Should have 5 batches
+
+    # Check that batches started concurrently (within a short time window)
+    if len(start_times) >= 2:
+        time_diff = max(start_times) - min(start_times)
+        assert time_diff < 0.05, f"Batches should start concurrently, but time diff was {time_diff:.3f}s"
+
+    # Total time should be close to single batch time when max_concurrency >= num_batches
+    assert end - start < 0.2, f"Expected ~0.1s with concurrent processing, got {end - start:.3f}s"
+
+
+@pytest.mark.asyncio
+async def test_async_max_concurrency_limit():
+    """Test that max_concurrency properly limits concurrent batch processing."""
+    active_count = 0
+    max_active = 0
+    lock = asyncio.Lock()
+
+    async def tracking_mf(xs: list[int]) -> list[int]:
+        nonlocal active_count, max_active
+
+        async with lock:
+            active_count += 1
+            max_active = max(max_active, active_count)
+
+        await asyncio.sleep(0.1)
+
+        async with lock:
+            active_count -= 1
+
+        return xs
+
+    proxy = AsyncBatchingMapProxy[int, int](batch_size=1, max_concurrency=3)
+    items = list(range(10))  # 10 batches of 1 item each
+
+    result = await proxy.map(items, tracking_mf)
+
+    assert result == items
+    assert max_active <= 3, f"Expected max 3 concurrent batches, but got {max_active}"
+    assert max_active >= 3, f"Should reach max concurrency of 3, but only got {max_active}"
+
+
+@pytest.mark.asyncio
+async def test_async_performance_improvement():
+    """Test that async version with concurrency is faster than sequential."""
+
+    async def slow_mf(xs: list[int]) -> list[int]:
+        await asyncio.sleep(0.05)  # 50ms per batch
+        return xs
+
+    items = list(range(20))  # 4 batches of 5 items each
+
+    # Test with max_concurrency=1 (sequential)
+    proxy_seq = AsyncBatchingMapProxy[int, int](batch_size=5, max_concurrency=1)
+    start = time.time()
+    result_seq = await proxy_seq.map(items, slow_mf)
+    time_seq = time.time() - start
+
+    # Test with max_concurrency=4 (concurrent)
+    proxy_conc = AsyncBatchingMapProxy[int, int](batch_size=5, max_concurrency=4)
+    start = time.time()
+    result_conc = await proxy_conc.map(items, slow_mf)
+    time_conc = time.time() - start
+
+    assert result_seq == result_conc == items
+
+    # Concurrent version should be significantly faster
+    speedup = time_seq / time_conc
+    assert speedup > 2.5, f"Expected >2.5x speedup with concurrency, got {speedup:.1f}x"
