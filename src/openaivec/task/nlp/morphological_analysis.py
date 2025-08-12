@@ -53,7 +53,7 @@ from typing import List
 
 from pydantic import BaseModel, Field
 
-from ...model import PreparedTask
+from openaivec.model import PreparedTask
 
 __all__ = ["MORPHOLOGICAL_ANALYSIS"]
 

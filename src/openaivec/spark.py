@@ -125,11 +125,11 @@ from pyspark.sql.types import ArrayType, BooleanType, FloatType, IntegerType, St
 from pyspark.sql.udf import UserDefinedFunction
 from typing_extensions import Literal
 
-from . import pandas_ext
-from .model import PreparedTask, ResponseFormat
-from .proxy import AsyncBatchingMapProxy
-from .serialize import deserialize_base_model, serialize_base_model
-from .util import TextChunker
+from openaivec import pandas_ext
+from openaivec.model import PreparedTask, ResponseFormat
+from openaivec.proxy import AsyncBatchingMapProxy
+from openaivec.serialize import deserialize_base_model, serialize_base_model
+from openaivec.util import TextChunker
 
 __all__ = [
     "responses_udf",
@@ -578,7 +578,7 @@ def similarity_udf() -> UserDefinedFunction:
             Cosine similarity between the two vectors.
         """
         # Import pandas_ext to ensure .ai accessor is available in Spark workers
-        from . import pandas_ext  # noqa: F401
+        from openaivec import pandas_ext  # noqa: F401
 
         return pd.DataFrame({"a": a, "b": b}).ai.similarity("a", "b")
 

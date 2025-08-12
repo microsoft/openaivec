@@ -384,8 +384,9 @@ class TestPandasExt(unittest.TestCase):
 
     def test_shared_cache_embeddings_sync(self):
         """Test that multiple Series instances can share the same cache for embeddings."""
-        from openaivec.proxy import BatchingMapProxy
         import numpy as np
+
+        from openaivec.proxy import BatchingMapProxy
 
         # Create a shared cache with custom batch size
         shared_cache = BatchingMapProxy(batch_size=32)
@@ -489,8 +490,9 @@ class TestPandasExt(unittest.TestCase):
 
     def test_shared_cache_embeddings_async(self):
         """Test that multiple async Series instances can share the same cache for embeddings."""
-        from openaivec.proxy import AsyncBatchingMapProxy
         import numpy as np
+
+        from openaivec.proxy import AsyncBatchingMapProxy
 
         async def run_test():
             # Create a shared cache with custom batch size

@@ -11,14 +11,14 @@ are created once and reused across multiple resolve calls.
 Example:
     ```python
     from openaivec.di import Container
-    
+
     class DatabaseService:
         def __init__(self):
             self.connection = "database://localhost"
-    
+
     container = Container()
     container.register(DatabaseService, lambda: DatabaseService())
-    
+
     db1 = container.resolve(DatabaseService)
     db2 = container.resolve(DatabaseService)
     print(db1 is db2)  # True - same instance

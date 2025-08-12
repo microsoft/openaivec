@@ -5,16 +5,16 @@ from pydantic import BaseModel
 from pyspark.sql.session import SparkSession
 from pyspark.sql.types import ArrayType, FloatType, IntegerType, StringType, StructField, StructType
 
+from openaivec.model import PreparedTask
 from openaivec.spark import (
-    embeddings_udf,
-    responses_udf,
-    task_udf,
     _pydantic_to_spark_schema,
     count_tokens_udf,
+    embeddings_udf,
+    responses_udf,
     similarity_udf,
+    task_udf,
 )
 from openaivec.task import nlp
-from openaivec.model import PreparedTask
 
 
 class TestSparkUDFs(TestCase):

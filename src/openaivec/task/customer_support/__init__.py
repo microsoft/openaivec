@@ -1,18 +1,12 @@
 # Function imports
-from .inquiry_classification import inquiry_classification
-from .urgency_analysis import urgency_analysis
-from .customer_sentiment import customer_sentiment
-from .intent_analysis import intent_analysis
-from .inquiry_summary import inquiry_summary
-from .response_suggestion import response_suggestion
+from .customer_sentiment import CUSTOMER_SENTIMENT, customer_sentiment
 
 # Backward compatibility - constant imports
-from .inquiry_classification import INQUIRY_CLASSIFICATION
-from .urgency_analysis import URGENCY_ANALYSIS
-from .customer_sentiment import CUSTOMER_SENTIMENT
-from .intent_analysis import INTENT_ANALYSIS
-from .inquiry_summary import INQUIRY_SUMMARY
-from .response_suggestion import RESPONSE_SUGGESTION
+from .inquiry_classification import INQUIRY_CLASSIFICATION, inquiry_classification
+from .inquiry_summary import INQUIRY_SUMMARY, inquiry_summary
+from .intent_analysis import INTENT_ANALYSIS, intent_analysis
+from .response_suggestion import RESPONSE_SUGGESTION, response_suggestion
+from .urgency_analysis import URGENCY_ANALYSIS, urgency_analysis
 
 __all__ = [
     # Configurable functions (recommended)

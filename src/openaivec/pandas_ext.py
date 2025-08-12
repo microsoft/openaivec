@@ -50,12 +50,12 @@ import tiktoken
 from openai import AsyncOpenAI, OpenAI
 from pydantic import BaseModel
 
-from .embeddings import AsyncBatchEmbeddings, BatchEmbeddings
-from .model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
-from .provider import CONTAINER, _check_azure_v1_api_url
-from .proxy import AsyncBatchingMapProxy, BatchingMapProxy
-from .responses import AsyncBatchResponses, BatchResponses
-from .task.table import FillNaResponse, fillna
+from openaivec.embeddings import AsyncBatchEmbeddings, BatchEmbeddings
+from openaivec.model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
+from openaivec.provider import CONTAINER, _check_azure_v1_api_url
+from openaivec.proxy import AsyncBatchingMapProxy, BatchingMapProxy
+from openaivec.responses import AsyncBatchResponses, BatchResponses
+from openaivec.task.table import FillNaResponse, fillna
 
 __all__ = [
     "use",

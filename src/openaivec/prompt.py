@@ -51,8 +51,8 @@ from openai import OpenAI
 from openai.types.responses import ParsedResponse
 from pydantic import BaseModel
 
-from .model import ResponsesModelName
-from .provider import CONTAINER
+from openaivec.model import ResponsesModelName
+from openaivec.provider import CONTAINER
 
 __all__ = [
     "FewShotPrompt",

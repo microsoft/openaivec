@@ -4,8 +4,8 @@ import warnings
 import tiktoken
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
 
-from . import di
-from .model import (
+from openaivec import di
+from openaivec.model import (
     AzureOpenAIAPIKey,
     AzureOpenAIAPIVersion,
     AzureOpenAIBaseURL,
@@ -13,7 +13,7 @@ from .model import (
     OpenAIAPIKey,
     ResponsesModelName,
 )
-from .util import TextChunker
+from openaivec.util import TextChunker
 
 CONTAINER = di.Container()
 

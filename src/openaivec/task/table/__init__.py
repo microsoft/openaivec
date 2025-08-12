@@ -1,3 +1,3 @@
-from .fillna import fillna, FillNaResponse
+from .fillna import FillNaResponse, fillna
 
 __all__ = ["fillna", "FillNaResponse"]

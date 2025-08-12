@@ -25,7 +25,7 @@ Example:
     ```
 """
 
-from typing import Any, Dict, List, Type, Literal
+from typing import Any, Dict, List, Literal, Type
 
 from pydantic import BaseModel, Field, create_model
 
