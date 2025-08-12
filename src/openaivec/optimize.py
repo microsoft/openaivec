@@ -1,4 +1,5 @@
 import time
+from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import List
@@ -18,9 +19,7 @@ class BatchSizeSuggester:
     max_duration: float = 60.0
     step_ratio: float = 0.1
     sample_size: int = 10
-    _history: List[PerformanceMetric] = field(default_factory=list)
-
-    _MAX_HISTORY_SIZE: int = 1024
+    _history: deque[PerformanceMetric] = field(default_factory=lambda: deque(maxlen=1024))
 
     def __post_init__(self) -> None:
         if self.min_batch_size <= 0:
@@ -35,8 +34,6 @@ class BatchSizeSuggester:
             raise ValueError("min_duration and max_duration must be > 0")
         if self.min_duration >= self.max_duration:
             raise ValueError("min_duration must be < max_duration")
-        if self._MAX_HISTORY_SIZE <= 0:
-            raise ValueError("_MAX_HISTORY_SIZE must be > 0")
 
     @contextmanager
     def record(self):
@@ -50,7 +47,6 @@ class BatchSizeSuggester:
         finally:
             duration = time.perf_counter() - start_time
             self._history.append(PerformanceMetric(duration, exception=caught_exception))
-            self._history = self._history[-self._MAX_HISTORY_SIZE :]
 
     @property
     def samples(self) -> List[PerformanceMetric]:
