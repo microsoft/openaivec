@@ -21,6 +21,108 @@ class ProxyBase(Generic[S, T]):
     """
 
     batch_size: Optional[int] = None  # subclasses may override via dataclass
+    show_progress: bool = False  # Enable progress bar display
+
+    def _is_notebook_environment(self) -> bool:
+        """Check if running in a Jupyter notebook environment.
+
+        Returns:
+            bool: True if running in a notebook, False otherwise.
+        """
+        try:
+            from IPython import get_ipython
+
+            ipython = get_ipython()
+            if ipython is not None:
+                # Check for different notebook environments
+                class_name = ipython.__class__.__name__
+                module_name = ipython.__class__.__module__
+
+                # Standard Jupyter notebook/lab
+                if class_name == "ZMQInteractiveShell":
+                    return True
+
+                # JupyterLab and newer environments
+                if "zmq" in module_name.lower() or "jupyter" in module_name.lower():
+                    return True
+
+                # Google Colab
+                if "google.colab" in module_name:
+                    return True
+
+                # VS Code notebooks and others
+                if hasattr(ipython, "kernel"):
+                    return True
+
+        except ImportError:
+            pass
+
+        # Check for other notebook indicators
+        # Check for common notebook environment variables
+        import os
+        import sys
+
+        notebook_vars = [
+            "JUPYTER_CONFIG_DIR",
+            "JUPYTERLAB_DIR",
+            "COLAB_GPU",
+            "VSCODE_PID",  # VS Code
+        ]
+
+        for var in notebook_vars:
+            if var in os.environ:
+                return True
+
+        # Check if running in IPython without terminal
+        if "IPython" in sys.modules:
+            try:
+                # If we can import display from IPython, likely in notebook
+                import importlib.util
+
+                if importlib.util.find_spec("IPython.display") is not None:
+                    return True
+            except ImportError:
+                pass
+
+        return False
+
+    def _create_progress_bar(self, total: int, desc: str = "Processing batches") -> Optional[object]:
+        """Create a progress bar if conditions are met.
+
+        Args:
+            total (int): Total number of items to process.
+            desc (str): Description for the progress bar.
+
+        Returns:
+            Optional[object]: Progress bar instance or None if not available.
+        """
+        try:
+            from tqdm.auto import tqdm as tqdm_progress
+
+            if self.show_progress and self._is_notebook_environment():
+                return tqdm_progress(total=total, desc=desc, unit="item")
+        except ImportError:
+            pass
+        return None
+
+    def _update_progress_bar(self, progress_bar: Optional[object], increment: int) -> None:
+        """Update progress bar with the given increment.
+
+        Args:
+            progress_bar (Optional[object]): Progress bar instance.
+            increment (int): Number of items to increment.
+        """
+        if progress_bar:
+            progress_bar.update(increment)
+
+    def _close_progress_bar(self, progress_bar: Optional[object]) -> None:
+        """Close the progress bar.
+
+        Args:
+            progress_bar (Optional[object]): Progress bar instance.
+        """
+        if progress_bar:
+            progress_bar.close()
 
     @staticmethod
     def __unique_in_order(seq: List[S]) -> List[S]:
@@ -77,6 +179,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
 
     # Number of items to process per call to map_func. If None or <= 0, process all at once.
     batch_size: Optional[int] = None
+    show_progress: bool = False
     __cache: Dict[S, T] = field(default_factory=dict)
     # Thread-safety primitives (not part of public API)
     __lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
@@ -86,6 +189,9 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     # expose base helpers under subclass private names for compatibility
     __unique_in_order = staticmethod(ProxyBase._ProxyBase__unique_in_order)
     __normalized_batch_size = ProxyBase._ProxyBase__normalized_batch_size
+    _create_progress_bar = ProxyBase._create_progress_bar
+    _update_progress_bar = ProxyBase._update_progress_bar
+    _close_progress_bar = ProxyBase._close_progress_bar
 
     def __all_cached(self, items: List[S]) -> bool:
         """Check whether all items are present in the cache.
@@ -219,6 +325,9 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         # Accumulate uncached items to maximize batch size utilization
         pending_to_call: List[S] = []
 
+        # Setup progress bar
+        progress_bar = self._create_progress_bar(len(owned))
+
         for i in range(0, len(owned), batch_size):
             batch = owned[i : i + batch_size]
             # Double-check cache right before processing
@@ -241,6 +350,9 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                     raise
                 self.__finalize_success(to_call, results)
 
+                # Update progress bar
+                self._update_progress_bar(progress_bar, len(to_call))
+
         # Process any remaining items
         while pending_to_call:
             to_call = pending_to_call[:batch_size]
@@ -252,6 +364,12 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                 self.__finalize_failure(to_call)
                 raise
             self.__finalize_success(to_call, results)
+
+            # Update progress bar
+            self._update_progress_bar(progress_bar, len(to_call))
+
+        # Close progress bar
+        self._close_progress_bar(progress_bar)
 
     def __wait_for(self, keys: List[S], map_func: Callable[[List[S]], List[T]]) -> None:
         """Wait for other threads to complete computations for the given keys.
@@ -346,6 +464,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
 
     batch_size: Optional[int] = None
     max_concurrency: int = 8
+    show_progress: bool = False
 
     # internals
     __cache: Dict[S, T] = field(default_factory=dict, repr=False)
@@ -375,6 +494,9 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     # expose base helpers under subclass private names for compatibility
     __unique_in_order = staticmethod(ProxyBase._ProxyBase__unique_in_order)
     __normalized_batch_size = ProxyBase._ProxyBase__normalized_batch_size
+    _create_progress_bar = ProxyBase._create_progress_bar
+    _update_progress_bar = ProxyBase._update_progress_bar
+    _close_progress_bar = ProxyBase._close_progress_bar
 
     async def __all_cached(self, items: List[S]) -> bool:
         """Check whether all items are present in the cache.
@@ -503,6 +625,9 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         # Accumulate uncached items to maximize batch size utilization
         pending_to_call: List[S] = []
 
+        # Setup progress bar
+        progress_bar = self._create_progress_bar(len(owned))
+
         for i in range(0, len(owned), batch_size):
             batch = owned[i : i + batch_size]
             async with self.__lock:
@@ -531,6 +656,9 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                         self.__sema.release()
                 await self.__finalize_success(to_call, results)
 
+                # Update progress bar
+                self._update_progress_bar(progress_bar, len(to_call))
+
         # Process any remaining items
         while pending_to_call:
             to_call = pending_to_call[:batch_size]
@@ -549,6 +677,12 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                 if self.__sema and acquired:
                     self.__sema.release()
             await self.__finalize_success(to_call, results)
+
+            # Update progress bar
+            self._update_progress_bar(progress_bar, len(to_call))
+
+        # Close progress bar
+        self._close_progress_bar(progress_bar)
 
     async def __wait_for(self, keys: List[S], map_func: Callable[[List[S]], Awaitable[List[T]]]) -> None:
         """Wait for computations owned by other coroutines to complete.
