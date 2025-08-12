@@ -43,6 +43,9 @@ class BatchSizeSuggester:
             return 0.0
         return sum(metric.duration for metric in self.samples) / len(self.samples)
 
+    def clear_metrics(self):
+        self._metrics.clear()
+
     def suggest_batch_size(self) -> int:
         if len(self._metrics) < self.sample_size:
             return self.current_batch_size
