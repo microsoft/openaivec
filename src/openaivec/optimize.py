@@ -54,9 +54,11 @@ class BatchSizeSuggester:
 
         if average_duration < self.min_duration:
             new_batch_size = int(self.current_batch_size * (1 + self.step_ratio))
+            self.clear_metrics()
 
         elif average_duration > self.max_duration:
             new_batch_size = int(self.current_batch_size * (1 - self.step_ratio))
+            self.clear_metrics()
 
         else:
             new_batch_size = self.current_batch_size
