@@ -77,13 +77,15 @@ class IntentAnalysis(BaseModel):
         "request_feature",
         "provide_feedback",
     ] = Field(
-        description="Primary customer intent (get_help, make_purchase, cancel_service, get_refund, report_issue, seek_information, request_feature, provide_feedback)"
+        description="Primary customer intent (get_help, make_purchase, cancel_service, "
+        "get_refund, report_issue, seek_information, request_feature, provide_feedback)"
     )
     secondary_intents: List[str] = Field(description="Additional intents if multiple goals are present")
     action_required: Literal[
         "provide_information", "troubleshoot", "process_request", "escalate", "redirect", "schedule_callback"
     ] = Field(
-        description="Required action (provide_information, troubleshoot, process_request, escalate, redirect, schedule_callback)"
+        description="Required action (provide_information, troubleshoot, process_request, "
+        "escalate, redirect, schedule_callback)"
     )
     intent_confidence: float = Field(description="Confidence in intent detection (0.0-1.0)")
     success_likelihood: Literal["very_high", "high", "medium", "low", "very_low"] = Field(
@@ -161,7 +163,11 @@ Pay attention to:
 - Urgency indicators: Time pressure affects resolution approach
 - Previous interactions: References to prior support contacts
 
-IMPORTANT: Provide analysis responses in the same language as the input text, except for the predefined categorical fields (primary_intent, action_required, success_likelihood, resolution_complexity) which must use the exact English values specified above. For example, if the input is in Japanese, provide customer_goal, implicit_needs, blocking_factors, next_steps, and reasoning in Japanese, but use English values like "get_help" for primary_intent.
+IMPORTANT: Provide analysis responses in the same language as the input text, except for the
+predefined categorical fields (primary_intent, action_required, success_likelihood,
+resolution_complexity) which must use the exact English values specified above. For example,
+if the input is in Japanese, provide customer_goal, implicit_needs, blocking_factors,
+next_steps, and reasoning in Japanese, but use English values like "get_help" for primary_intent.
 
 Provide comprehensive intent analysis with actionable recommendations."""
 

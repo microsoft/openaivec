@@ -73,7 +73,9 @@ class DependencyParsing(BaseModel):
 
 
 DEPENDENCY_PARSING = PreparedTask(
-    instructions="Parse the syntactic dependencies in the following text. Identify dependency relations between words, determine the root word, and provide a tree representation of the syntactic structure.",
+    instructions="Parse the syntactic dependencies in the following text. Identify dependency "
+    "relations between words, determine the root word, and provide a tree representation of the "
+    "syntactic structure.",
     response_format=DependencyParsing,
     temperature=0.0,
     top_p=1.0,

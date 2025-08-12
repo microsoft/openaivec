@@ -206,7 +206,9 @@ _PROMPT: str = """
   "iterations": [
     {
       "id": 1,
-      "analysis": "The original purpose was vague and did not explicitly state the main objective. This ambiguity could lead to confusion about the task. In this iteration, we refined the purpose to clearly specify that the goal is to determine the correct category for a given word based on its context.",
+      "analysis": "The original purpose was vague and did not explicitly state the main objective.
+        This ambiguity could lead to confusion about the task. In this iteration, we refined the purpose to
+        clearly specify that the goal is to determine the correct category for a given word based on its context.",
       "prompt": {
         "purpose": "Determine the correct category for a given word by analyzing its context for clear meaning.",
         "cautions": [
@@ -228,7 +230,10 @@ _PROMPT: str = """
     },
     {
       "id": 2,
-      "analysis": "Next, we focused solely on the cautions section. The original cautions were generic and did not mention potential pitfalls like homonyms or polysemy. Failing to address these could result in misclassification. Therefore, we added a specific caution regarding homonyms while keeping the purpose and examples unchanged.",
+      "analysis": "Next, we focused solely on the cautions section. The original cautions were generic and
+        did not mention potential pitfalls like homonyms or polysemy. Failing to address these could result in
+        misclassification. Therefore, we added a specific caution regarding homonyms while keeping the purpose
+        and examples unchanged.",
       "prompt": {
         "purpose": "Determine the correct category for a given word by analyzing its context for clear meaning.",
         "cautions": [
@@ -251,7 +256,10 @@ _PROMPT: str = """
     },
     {
       "id": 3,
-      "analysis": "In this step, we improved the examples section to cover a broader range of scenarios and address potential ambiguities. By adding examples that include words with multiple interpretations (such as 'Mercury' for both a planet and an element), we enhance clarity and ensure better coverage. This iteration only modifies the examples section, leaving purpose and cautions intact.",
+      "analysis": "In this step, we improved the examples section to cover a broader range of scenarios and
+        address potential ambiguities. By adding examples that include words with multiple interpretations
+        (such as 'Mercury' for both a planet and an element), we enhance clarity and ensure better coverage.
+        This iteration only modifies the examples section, leaving purpose and cautions intact.",
       "prompt": {
         "purpose": "Determine the correct category for a given word by analyzing its context for clear meaning.",
         "cautions": [

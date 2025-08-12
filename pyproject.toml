@@ -70,9 +70,7 @@ select = [
     "I",     # isort
     "TID",   # flake8-tidy-imports
 ]
-ignore = [
-    "E501",  # line-too-long - ドキュメント文字列や長いURLで頻繁に発生
-]
+# ignore = []  # グローバルではE501を有効化
 
 [tool.ruff.lint.flake8-tidy-imports]
 # Enforce absolute imports - ban relative imports (except in __init__.py files)
@@ -81,6 +79,8 @@ ban-relative-imports = "all"
 [tool.ruff.lint.per-file-ignores]
 # Allow relative imports in __init__.py files
 "**/__init__.py" = ["TID252"]
+# Test files contain long test data - ignore line length
+"tests/**/*.py" = ["E501"]
 
 [project.urls]
 Homepage = "https://microsoft.github.io/openaivec/"

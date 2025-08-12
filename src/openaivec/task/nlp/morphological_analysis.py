@@ -68,7 +68,9 @@ class MorphologicalAnalysis(BaseModel):
 
 
 MORPHOLOGICAL_ANALYSIS = PreparedTask(
-    instructions="Perform morphological analysis on the following text. Break it down into tokens, identify part-of-speech tags, provide lemmatized forms, and extract morphological features for each token.",
+    instructions="Perform morphological analysis on the following text. Break it down into tokens, "
+    "identify part-of-speech tags, provide lemmatized forms, and extract morphological features "
+    "for each token.",
     response_format=MorphologicalAnalysis,
     temperature=0.0,
     top_p=1.0,

@@ -353,7 +353,8 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         temperature (float): Sampling temperature.
         top_p (float): Nucleus‑sampling parameter.
         response_format (Type[ResponseFormat]): Expected Pydantic model class or ``str`` for each assistant message.
-        cache (AsyncBatchingMapProxy[str, ResponseFormat]): Async batching proxy with de‑duplication and concurrency control.
+        cache (AsyncBatchingMapProxy[str, ResponseFormat]): Async batching proxy with de‑duplication
+            and concurrency control.
     """
 
     client: AsyncOpenAI

@@ -71,7 +71,12 @@ class SentimentAnalysis(BaseModel):
 
 
 SENTIMENT_ANALYSIS = PreparedTask(
-    instructions="Analyze the sentiment and emotions in the following text. Provide overall sentiment classification, confidence scores, detected emotions, polarity, and subjectivity measures.\n\nIMPORTANT: Provide all analysis in the same language as the input text, except for the predefined categorical fields (sentiment, emotions) which must use the exact English values specified (positive/negative/neutral for sentiment, and joy/sadness/anger/fear/surprise/disgust for emotions).",
+    instructions="Analyze the sentiment and emotions in the following text. Provide overall "
+    "sentiment classification, confidence scores, detected emotions, polarity, and subjectivity "
+    "measures.\n\nIMPORTANT: Provide all analysis in the same language as the input text, except "
+    "for the predefined categorical fields (sentiment, emotions) which must use the exact "
+    "English values specified (positive/negative/neutral for sentiment, and "
+    "joy/sadness/anger/fear/surprise/disgust for emotions).",
     response_format=SentimentAnalysis,
     temperature=0.0,
     top_p=1.0,

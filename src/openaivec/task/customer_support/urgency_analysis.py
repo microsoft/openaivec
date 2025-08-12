@@ -111,7 +111,8 @@ class UrgencyAnalysis(BaseModel):
     )
     urgency_score: float = Field(description="Urgency score from 0.0 (not urgent) to 1.0 (extremely urgent)")
     response_time: Literal["immediate", "within_1_hour", "within_4_hours", "within_24_hours"] = Field(
-        description="Recommended response time from configured times (immediate, within_1_hour, within_4_hours, within_24_hours)"
+        description="Recommended response time from configured times "
+        "(immediate, within_1_hour, within_4_hours, within_24_hours)"
     )
     escalation_required: bool = Field(description="Whether this inquiry requires escalation to management")
     urgency_indicators: List[str] = Field(description="Specific words or phrases that indicate urgency")
@@ -278,7 +279,11 @@ Consider:
 - Revenue or operational impact
 - Compliance or legal implications
 
-IMPORTANT: Provide analysis responses in the same language as the input text, except for the predefined categorical fields (urgency_level, response_time, business_impact, customer_tier) which must use the exact English values specified above. For example, if the input is in French, provide urgency_indicators and reasoning in French, but use English values like "critical" for urgency_level.
+IMPORTANT: Provide analysis responses in the same language as the input text, except for the
+predefined categorical fields (urgency_level, response_time, business_impact, customer_tier)
+which must use the exact English values specified above. For example, if the input is in French,
+provide urgency_indicators and reasoning in French, but use English values like "critical" for
+urgency_level.
 
 Provide detailed analysis with clear reasoning for urgency level and response time recommendations."""
 

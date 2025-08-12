@@ -24,7 +24,8 @@ class BatchEmbeddings:
 
     Attributes:
         client (OpenAI): Configured OpenAI client.
-        model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name (e.g., ``"text-embedding-3-small"``).
+        model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name
+            (e.g., ``"text-embedding-3-small"``).
         cache (BatchingMapProxy[str, NDArray[np.float32]]): Batching proxy for ordered, cached mapping.
     """
 
