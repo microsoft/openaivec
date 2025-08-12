@@ -566,7 +566,7 @@ improved_prompt: str = (
     .example("Apple", "Color")
     .example("Apple", "Animal")
     # improve the prompt with OpenAI's API
-    .improve(client, model_name)
+    .improve()
     .build()
 )
 print(improved_prompt)

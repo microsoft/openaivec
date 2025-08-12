@@ -93,3 +93,47 @@ class TestAtomicPromptBuilder(unittest.TestCase):
         )
 
         logging.info(prompt)
+
+    def test_improve_without_args(self):
+        """Test improve method using DI container (no explicit client/model_name)."""
+        prompt: str = (
+            FewShotPromptBuilder()
+            .purpose("Classify the given text by sentiment")
+            .caution("Consider context and nuance")
+            .example("I love this!", "positive")
+            .example("This is terrible", "negative")
+            .example("It's okay", "neutral")
+            .improve()  # Uses DI container with environment variables
+            .build()
+        )
+
+        # Should complete without error if OPENAI_API_KEY is set
+        self.assertIsNotNone(prompt)
+        logging.info("Improved prompt (DI): %s", prompt)
+
+    def test_explain_without_improve(self):
+        """Test explain method called without prior improve() call."""
+        import io
+        import sys
+
+        # Capture stdout
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+
+        builder = (
+            FewShotPromptBuilder()
+            .purpose("Test purpose")
+            .example("input", "output")
+            .explain()  # Should handle gracefully
+        )
+
+        # Restore stdout
+        sys.stdout = sys.__stdout__
+
+        # Check that appropriate message was printed
+        output = captured_output.getvalue()
+        self.assertIn("No improvement steps available", output)
+
+        # Builder should still be usable
+        prompt = builder.build()
+        self.assertIsNotNone(prompt)

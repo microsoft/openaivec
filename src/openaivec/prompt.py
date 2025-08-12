@@ -51,6 +51,9 @@ from openai import OpenAI
 from openai.types.responses import ParsedResponse
 from pydantic import BaseModel
 
+from .model import ResponsesModelName
+from .provider import CONTAINER
+
 __all__ = [
     "FewShotPrompt",
     "FewShotPromptBuilder",
@@ -409,28 +412,34 @@ class FewShotPromptBuilder:
 
     def improve(
         self,
-        client: OpenAI,
-        model_name: str,
-        temperature: float = 0.0,
-        top_p: float = 1.0,
+        client: OpenAI | None = None,
+        model_name: str | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
     ) -> "FewShotPromptBuilder":
         """Iteratively refine the prompt using an LLM.
 
         The method calls a single LLM request that returns multiple
         editing steps and stores each step for inspection.
 
+        When client is None, automatically creates a client using environment variables:
+        - For OpenAI: ``OPENAI_API_KEY``
+        - For Azure OpenAI: ``AZURE_OPENAI_API_KEY``, ``AZURE_OPENAI_BASE_URL``, ``AZURE_OPENAI_API_VERSION``
+
         Args:
-            client (openai.OpenAI): Configured OpenAI client.
-            model_name (str): Model identifier (e.g. ``gpt-4.1-mini``).
-            temperature (float, optional): Sampling temperature. Defaults to 0.0.
-            top_p (float, optional): Nucleus sampling parameter. Defaults to 1.0.
+            client (OpenAI | None): Configured OpenAI client. If None, uses DI container with environment variables.
+            model_name (str | None): Model identifier. If None, uses default ``gpt-4.1-mini``.
+            temperature (float | None): Sampling temperature. If None, uses model default.
+            top_p (float | None): Nucleus sampling parameter. If None, uses model default.
 
         Returns:
             FewShotPromptBuilder: The current builder instance containing the refined prompt and iteration history.
         """
+        _client = client or CONTAINER.resolve(OpenAI)
+        _model_name = model_name or CONTAINER.resolve(ResponsesModelName).value
 
-        response: ParsedResponse[Response] = client.responses.parse(
-            model=model_name,
+        response: ParsedResponse[Response] = _client.responses.parse(
+            model=_model_name,
             instructions=_PROMPT,
             input=Request(prompt=self._prompt).model_dump_json(),
             temperature=temperature,
@@ -456,6 +465,10 @@ class FewShotPromptBuilder:
         Returns:
             FewShotPromptBuilder: The current builder instance.
         """
+        if not hasattr(self, "_steps") or not self._steps:
+            print("No improvement steps available. Call improve() first.")
+            return self
+
         for previous, current in zip(self._steps, self._steps[1:]):
             print(f"=== Iteration {current.id} ===\n")
             print(f"Instruction: {current.analysis}")
