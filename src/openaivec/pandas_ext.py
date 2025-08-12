@@ -220,13 +220,23 @@ class OpenAIVecSeriesAccessor:
         batch_size: int = 128,
         temperature: float | None = 0.0,
         top_p: float = 1.0,
+        show_progress: bool = False,
     ) -> pd.Series:
         """Call an LLM once for every Series element.
 
         Example:
             ```python
             animals = pd.Series(["cat", "dog", "elephant"])
+            # Basic usage
             animals.ai.responses("translate to French")
+
+            # With progress bar in Jupyter notebooks
+            large_series = pd.Series(["data"] * 1000)
+            large_series.ai.responses(
+                "analyze this data",
+                batch_size=32,
+                show_progress=True
+            )
             ```
             This method returns a Series of strings, each containing the
             assistant's response to the corresponding input.
@@ -241,13 +251,14 @@ class OpenAIVecSeriesAccessor:
                 request. Defaults to ``128``.
             temperature (float, optional): Sampling temperature. Defaults to ``0.0``.
             top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
 
         Returns:
             pandas.Series: Series whose values are instances of ``response_format``.
         """
         return self.responses_with_cache(
             instructions=instructions,
-            cache=BatchingMapProxy(batch_size=batch_size),
+            cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
             response_format=response_format,
             temperature=temperature,
             top_p=top_p,
@@ -300,7 +311,7 @@ class OpenAIVecSeriesAccessor:
         )
         return pd.Series(client.parse(self._obj.tolist()), index=self._obj.index, name=self._obj.name)
 
-    def task(self, task: PreparedTask, batch_size: int = 128) -> pd.Series:
+    def task(self, task: PreparedTask, batch_size: int = 128, show_progress: bool = False) -> pd.Series:
         """Execute a prepared task on every Series element.
 
         This method applies a pre-configured task to each element in the Series,
@@ -315,7 +326,16 @@ class OpenAIVecSeriesAccessor:
             sentiment_task = PreparedTask(...)
 
             reviews = pd.Series(["Great product!", "Not satisfied", "Amazing quality"])
+            # Basic usage
             results = reviews.ai.task(sentiment_task)
+
+            # With progress bar for large datasets
+            large_reviews = pd.Series(["review text"] * 2000)
+            results = large_reviews.ai.task(
+                sentiment_task,
+                batch_size=50,
+                show_progress=True
+            )
             ```
             This method returns a Series containing the task results for each
             corresponding input element, following the task's defined structure.
@@ -325,6 +345,7 @@ class OpenAIVecSeriesAccessor:
                 response format, and other parameters for processing the inputs.
             batch_size (int, optional): Number of prompts grouped into a single
                 request to optimize API usage. Defaults to 128.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
 
         Returns:
             pandas.Series: Series whose values are instances of the task's
@@ -332,16 +353,24 @@ class OpenAIVecSeriesAccessor:
         """
         return self.task_with_cache(
             task=task,
-            cache=BatchingMapProxy(batch_size=batch_size),
+            cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
         )
 
-    def embeddings(self, batch_size: int = 128) -> pd.Series:
+    def embeddings(self, batch_size: int = 128, show_progress: bool = False) -> pd.Series:
         """Compute OpenAI embeddings for every Series element.
 
         Example:
             ```python
             animals = pd.Series(["cat", "dog", "elephant"])
+            # Basic usage
             animals.ai.embeddings()
+
+            # With progress bar for large datasets
+            large_texts = pd.Series(["text"] * 5000)
+            embeddings = large_texts.ai.embeddings(
+                batch_size=100,
+                show_progress=True
+            )
             ```
             This method returns a Series of numpy arrays, each containing the
             embedding vector for the corresponding input.
@@ -351,13 +380,14 @@ class OpenAIVecSeriesAccessor:
         Args:
             batch_size (int, optional): Number of inputs grouped into a
                 single request. Defaults to ``128``.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
 
         Returns:
             pandas.Series: Series whose values are ``np.ndarray`` objects
                 (dtype ``float32``).
         """
         return self.embeddings_with_cache(
-            cache=BatchingMapProxy(batch_size=batch_size),
+            cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
         )
 
     def count_tokens(self) -> pd.Series:
@@ -511,6 +541,7 @@ class OpenAIVecDataFrameAccessor:
         batch_size: int = 128,
         temperature: float | None = 0.0,
         top_p: float = 1.0,
+        show_progress: bool = False,
     ) -> pd.Series:
         """Generate a response for each row after serialising it to JSON.
 
@@ -521,7 +552,16 @@ class OpenAIVecDataFrameAccessor:
                 {"name": "dog", "legs": 4},
                 {"name": "elephant", "legs": 4},
             ])
+            # Basic usage
             df.ai.responses("what is the animal's name?")
+
+            # With progress bar for large datasets
+            large_df = pd.DataFrame({"id": list(range(1000))})
+            large_df.ai.responses(
+                "generate a name for this ID",
+                batch_size=20,
+                show_progress=True
+            )
             ```
             This method returns a Series of strings, each containing the
             assistant's response to the corresponding input.
@@ -537,19 +577,20 @@ class OpenAIVecDataFrameAccessor:
                 Defaults to ``128``.
             temperature (float, optional): Sampling temperature. Defaults to ``0.0``.
             top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
 
         Returns:
             pandas.Series: Responses aligned with the DataFrame's original index.
         """
         return self.responses_with_cache(
             instructions=instructions,
-            cache=BatchingMapProxy(batch_size=batch_size),
+            cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
             response_format=response_format,
             temperature=temperature,
             top_p=top_p,
         )
 
-    def task(self, task: PreparedTask, batch_size: int = 128) -> pd.Series:
+    def task(self, task: PreparedTask, batch_size: int = 128, show_progress: bool = False) -> pd.Series:
         """Execute a prepared task on each DataFrame row after serialising it to JSON.
 
         This method applies a pre-configured task to each row in the DataFrame,
@@ -579,6 +620,7 @@ class OpenAIVecDataFrameAccessor:
                 response format, and other parameters for processing the inputs.
             batch_size (int, optional): Number of requests sent in one batch
                 to optimize API usage. Defaults to 128.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
 
         Returns:
             pandas.Series: Series whose values are instances of the task's
@@ -588,7 +630,7 @@ class OpenAIVecDataFrameAccessor:
             lambda df: (
                 df.pipe(lambda df: pd.Series(df.to_dict(orient="records"), index=df.index, name="record"))
                 .map(lambda x: json.dumps(x, ensure_ascii=False))
-                .ai.task(task=task, batch_size=batch_size)
+                .ai.task(task=task, batch_size=batch_size, show_progress=show_progress)
             )
         )
 
@@ -864,6 +906,7 @@ class AsyncOpenAIVecSeriesAccessor:
         temperature: float | None = 0.0,
         top_p: float = 1.0,
         max_concurrency: int = 8,
+        show_progress: bool = False,
     ) -> pd.Series:
         """Call an LLM once for every Series element (asynchronously).
 
@@ -872,6 +915,15 @@ class AsyncOpenAIVecSeriesAccessor:
             animals = pd.Series(["cat", "dog", "elephant"])
             # Must be awaited
             results = await animals.aio.responses("translate to French")
+
+            # With progress bar for large datasets
+            large_series = pd.Series(["data"] * 1000)
+            results = await large_series.aio.responses(
+                "analyze this data",
+                batch_size=32,
+                max_concurrency=4,
+                show_progress=True
+            )
             ```
             This method returns a Series of strings, each containing the
             assistant's response to the corresponding input.
@@ -888,6 +940,7 @@ class AsyncOpenAIVecSeriesAccessor:
             top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to ``8``.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
 
         Returns:
             pandas.Series: Series whose values are instances of ``response_format``.
@@ -897,13 +950,17 @@ class AsyncOpenAIVecSeriesAccessor:
         """
         return await self.responses_with_cache(
             instructions=instructions,
-            cache=AsyncBatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency),
+            cache=AsyncBatchingMapProxy(
+                batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
+            ),
             response_format=response_format,
             temperature=temperature,
             top_p=top_p,
         )
 
-    async def embeddings(self, batch_size: int = 128, max_concurrency: int = 8) -> pd.Series:
+    async def embeddings(
+        self, batch_size: int = 128, max_concurrency: int = 8, show_progress: bool = False
+    ) -> pd.Series:
         """Compute OpenAI embeddings for every Series element (asynchronously).
 
         Example:
@@ -911,6 +968,14 @@ class AsyncOpenAIVecSeriesAccessor:
             animals = pd.Series(["cat", "dog", "elephant"])
             # Must be awaited
             embeddings = await animals.aio.embeddings()
+
+            # With progress bar for large datasets
+            large_texts = pd.Series(["text"] * 5000)
+            embeddings = await large_texts.aio.embeddings(
+                batch_size=100,
+                max_concurrency=4,
+                show_progress=True
+            )
             ```
             This method returns a Series of numpy arrays, each containing the
             embedding vector for the corresponding input.
@@ -922,6 +987,7 @@ class AsyncOpenAIVecSeriesAccessor:
                 single request. Defaults to ``128``.
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to ``8``.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
 
         Returns:
             pandas.Series: Series whose values are ``np.ndarray`` objects
@@ -931,10 +997,14 @@ class AsyncOpenAIVecSeriesAccessor:
             This is an asynchronous method and must be awaited.
         """
         return await self.embeddings_with_cache(
-            cache=AsyncBatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency),
+            cache=AsyncBatchingMapProxy(
+                batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
+            ),
         )
 
-    async def task(self, task: PreparedTask, batch_size: int = 128, max_concurrency: int = 8) -> pd.Series:
+    async def task(
+        self, task: PreparedTask, batch_size: int = 128, max_concurrency: int = 8, show_progress: bool = False
+    ) -> pd.Series:
         """Execute a prepared task on every Series element (asynchronously).
 
         This method applies a pre-configured task to each element in the Series,
@@ -951,6 +1021,15 @@ class AsyncOpenAIVecSeriesAccessor:
             reviews = pd.Series(["Great product!", "Not satisfied", "Amazing quality"])
             # Must be awaited
             results = await reviews.aio.task(sentiment_task)
+
+            # With progress bar for large datasets
+            large_reviews = pd.Series(["review text"] * 2000)
+            results = await large_reviews.aio.task(
+                sentiment_task,
+                batch_size=50,
+                max_concurrency=4,
+                show_progress=True
+            )
             ```
             This method returns a Series containing the task results for each
             corresponding input element, following the task's defined structure.
@@ -962,6 +1041,7 @@ class AsyncOpenAIVecSeriesAccessor:
                 request to optimize API usage. Defaults to 128.
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to 8.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
 
         Returns:
             pandas.Series: Series whose values are instances of the task's
@@ -972,7 +1052,9 @@ class AsyncOpenAIVecSeriesAccessor:
         """
         return await self.task_with_cache(
             task=task,
-            cache=AsyncBatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency),
+            cache=AsyncBatchingMapProxy(
+                batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
+            ),
         )
 
 
@@ -1056,6 +1138,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         temperature: float | None = 0.0,
         top_p: float = 1.0,
         max_concurrency: int = 8,
+        show_progress: bool = False,
     ) -> pd.Series:
         """Generate a response for each row after serialising it to JSON (asynchronously).
 
@@ -1068,6 +1151,15 @@ class AsyncOpenAIVecDataFrameAccessor:
             ])
             # Must be awaited
             results = await df.aio.responses(\"what is the animal\'s name?\")
+
+            # With progress bar for large datasets
+            large_df = pd.DataFrame({\"id\": list(range(1000))})
+            results = await large_df.aio.responses(
+                \"generate a name for this ID\",
+                batch_size=20,
+                max_concurrency=4,
+                show_progress=True
+            )
             ```
             This method returns a Series of strings, each containing the
             assistant's response to the corresponding input.
@@ -1085,6 +1177,7 @@ class AsyncOpenAIVecDataFrameAccessor:
             top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to ``8``.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
 
         Returns:
             pandas.Series: Responses aligned with the DataFrame's original index.
@@ -1094,13 +1187,17 @@ class AsyncOpenAIVecDataFrameAccessor:
         """
         return await self.responses_with_cache(
             instructions=instructions,
-            cache=AsyncBatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency),
+            cache=AsyncBatchingMapProxy(
+                batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
+            ),
             response_format=response_format,
             temperature=temperature,
             top_p=top_p,
         )
 
-    async def task(self, task: PreparedTask, batch_size: int = 128, max_concurrency: int = 8) -> pd.Series:
+    async def task(
+        self, task: PreparedTask, batch_size: int = 128, max_concurrency: int = 8, show_progress: bool = False
+    ) -> pd.Series:
         """Execute a prepared task on each DataFrame row after serialising it to JSON (asynchronously).
 
         This method applies a pre-configured task to each row in the DataFrame,
@@ -1122,6 +1219,15 @@ class AsyncOpenAIVecDataFrameAccessor:
             ])
             # Must be awaited
             results = await df.aio.task(analysis_task)
+
+            # With progress bar for large datasets
+            large_df = pd.DataFrame({"id": list(range(1000))})
+            results = await large_df.aio.task(
+                analysis_task,
+                batch_size=50,
+                max_concurrency=4,
+                show_progress=True
+            )
             ```
             This method returns a Series containing the task results for each
             corresponding row, following the task's defined structure.
@@ -1133,6 +1239,7 @@ class AsyncOpenAIVecDataFrameAccessor:
                 to optimize API usage. Defaults to 128.
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to 8.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
 
         Returns:
             pandas.Series: Series whose values are instances of the task's
@@ -1153,6 +1260,7 @@ class AsyncOpenAIVecDataFrameAccessor:
             task=task,
             batch_size=batch_size,
             max_concurrency=max_concurrency,
+            show_progress=show_progress,
         )
 
     async def pipe(self, func: Callable[[pd.DataFrame], Awaitable[T] | T]) -> T:
