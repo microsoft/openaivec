@@ -52,7 +52,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
-from ...model import PreparedTask
+from openaivec.model import PreparedTask
 
 __all__ = ["NAMED_ENTITY_RECOGNITION"]
 
@@ -76,7 +76,9 @@ class NamedEntityRecognition(BaseModel):
 
 
 NAMED_ENTITY_RECOGNITION = PreparedTask(
-    instructions="Identify and classify named entities in the following text. Extract persons, organizations, locations, dates, money, percentages, and other miscellaneous entities with their positions and confidence scores.",
+    instructions="Identify and classify named entities in the following text. Extract persons, "
+    "organizations, locations, dates, money, percentages, and other miscellaneous entities "
+    "with their positions and confidence scores.",
     response_format=NamedEntityRecognition,
     temperature=0.0,
     top_p=1.0,

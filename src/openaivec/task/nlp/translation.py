@@ -75,7 +75,7 @@ Note:
 from openai import BaseModel
 from pydantic import Field
 
-from ...model import PreparedTask
+from openaivec.model import PreparedTask
 
 __all__ = ["MULTILINGUAL_TRANSLATION"]
 

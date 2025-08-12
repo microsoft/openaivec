@@ -61,7 +61,7 @@ from typing import List, Literal
 
 from pydantic import BaseModel, Field
 
-from ...model import PreparedTask
+from openaivec.model import PreparedTask
 
 __all__ = ["response_suggestion"]
 
@@ -115,7 +115,8 @@ def response_suggestion(
         "formal": "Use formal business language appropriate for official communications",
     }
 
-    instructions = f"""Generate a professional, helpful response suggestion for the customer inquiry that addresses their needs effectively.
+    instructions = f"""Generate a professional, helpful response suggestion for the customer
+inquiry that addresses their needs effectively.
 
 Business Context: {business_context}
 Company Name: {company_name}
@@ -180,9 +181,14 @@ Avoid:
 - Dismissing customer concerns
 - Lengthy responses that don't address the main issue
 
-IMPORTANT: Generate responses in the same language as the input text, except for the predefined categorical fields (tone, priority, response_type, estimated_resolution_time) which must use the exact English values specified above. For example, if the input is in Italian, provide suggested_response, key_points, alternative_responses, and personalization_notes in Italian, but use English values like "empathetic" for tone.
+IMPORTANT: Generate responses in the same language as the input text, except for the predefined
+categorical fields (tone, priority, response_type, estimated_resolution_time) which must use
+the exact English values specified above. For example, if the input is in Italian, provide
+suggested_response, key_points, alternative_responses, and personalization_notes in Italian,
+but use English values like "empathetic" for tone.
 
-Generate helpful, professional response that moves toward resolution while maintaining positive customer relationship."""
+Generate helpful, professional response that moves toward resolution while maintaining
+positive customer relationship."""
 
     return PreparedTask(
         instructions=instructions, response_format=ResponseSuggestion, temperature=temperature, top_p=top_p

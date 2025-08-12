@@ -400,6 +400,7 @@ class TestAzureV1ApiWarning(unittest.TestCase):
     def test_pandas_ext_use_azure_warning(self):
         """Test that pandas_ext.use() shows warning for legacy Azure URLs."""
         from openai import AzureOpenAI
+
         from openaivec import pandas_ext
 
         # Test with legacy URL

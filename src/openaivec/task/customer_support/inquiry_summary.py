@@ -63,7 +63,7 @@ from typing import List, Literal
 
 from pydantic import BaseModel, Field
 
-from ...model import PreparedTask
+from openaivec.model import PreparedTask
 
 __all__ = ["inquiry_summary"]
 
@@ -108,7 +108,8 @@ def inquiry_summary(
         "bullet_points": "Create a bullet-point summary with key facts and actions",
     }
 
-    instructions = f"""Create a comprehensive summary of the customer inquiry that captures all essential information for support agents and management.
+    instructions = f"""Create a comprehensive summary of the customer inquiry that captures all
+essential information for support agents and management.
 
 Business Context: {business_context}
 Summary Style: {length_instructions.get(summary_length, length_instructions["concise"])}
@@ -154,7 +155,11 @@ Focus on:
 - Clear distinction between symptoms and root causes
 - Relevant background without unnecessary details
 
-IMPORTANT: Provide summary responses in the same language as the input text, except for the predefined categorical field (resolution_status) which must use the exact English values specified above (not_started, in_progress, needs_escalation, resolved). For example, if the input is in German, provide all summary content in German, but use English values like "in_progress" for resolution_status.
+IMPORTANT: Provide summary responses in the same language as the input text, except for the
+predefined categorical field (resolution_status) which must use the exact English values
+specified above (not_started, in_progress, needs_escalation, resolved). For example, if the
+input is in German, provide all summary content in German, but use English values like
+"in_progress" for resolution_status.
 
 Provide accurate, actionable summary that enables efficient support resolution."""
 

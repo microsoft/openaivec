@@ -49,7 +49,10 @@ Example:
 
     # Extract sentiment components
     extracted_df = df.ai.extract("sentiment")
-    print(extracted_df[["inquiry", "sentiment_satisfaction_level", "sentiment_churn_risk", "sentiment_emotional_state"]])
+    print(extracted_df[[
+        "inquiry", "sentiment_satisfaction_level",
+        "sentiment_churn_risk", "sentiment_emotional_state"
+    ]])
     ```
 
 Attributes:
@@ -62,7 +65,7 @@ from typing import List, Literal
 
 from pydantic import BaseModel, Field
 
-from ...model import PreparedTask
+from openaivec.model import PreparedTask
 
 __all__ = ["customer_sentiment"]
 
@@ -106,7 +109,8 @@ def customer_sentiment(
         PreparedTask configured for customer sentiment analysis.
     """
 
-    instructions = f"""Analyze customer sentiment in the context of support interactions, focusing on satisfaction, emotional state, and business implications.
+    instructions = f"""Analyze customer sentiment in the context of support interactions, focusing on
+satisfaction, emotional state, and business implications.
 
 Business Context: {business_context}
 
@@ -157,7 +161,11 @@ Analyze tone indicators like:
 - Urgency: "urgent", "immediately", "ASAP", "critical"
 - Threat: "cancel", "switch", "competitor", "lawyer", "report"
 
-IMPORTANT: Provide analysis responses in the same language as the input text, except for the predefined categorical fields (sentiment, satisfaction_level, emotional_state, churn_risk, relationship_status, response_approach) which must use the exact English values specified above. For example, if the input is in Spanish, provide tone_indicators in Spanish, but use English values like "positive" for sentiment.
+IMPORTANT: Provide analysis responses in the same language as the input text, except for the
+predefined categorical fields (sentiment, satisfaction_level, emotional_state, churn_risk,
+relationship_status, response_approach) which must use the exact English values specified above.
+For example, if the input is in Spanish, provide tone_indicators in Spanish, but use English
+values like "positive" for sentiment.
 
 Provide comprehensive sentiment analysis with business context and recommended response strategy."""
 

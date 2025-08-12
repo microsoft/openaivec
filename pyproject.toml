@@ -62,6 +62,26 @@ spark = [
 line-length = 120
 target-version = "py310"
 
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "TID",   # flake8-tidy-imports
+]
+# ignore = []  # グローバルではE501を有効化
+
+[tool.ruff.lint.flake8-tidy-imports]
+# Enforce absolute imports - ban relative imports (except in __init__.py files)
+ban-relative-imports = "all"
+
+[tool.ruff.lint.per-file-ignores]
+# Allow relative imports in __init__.py files
+"**/__init__.py" = ["TID252"]
+# Test files contain long test data - ignore line length
+"tests/**/*.py" = ["E501"]
+
 [project.urls]
 Homepage = "https://microsoft.github.io/openaivec/"
 Repository = "https://github.com/microsoft/openaivec"

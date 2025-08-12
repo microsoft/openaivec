@@ -85,7 +85,10 @@ Example:
 
     # Extract classification components
     extracted_df = df.ai.extract("classification")
-    print(extracted_df[["inquiry", "classification_category", "classification_subcategory", "classification_confidence"]])
+    print(extracted_df[[
+        "inquiry", "classification_category",
+        "classification_subcategory", "classification_confidence"
+    ]])
     ```
 """
 
@@ -93,7 +96,7 @@ from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from ...model import PreparedTask
+from openaivec.model import PreparedTask
 
 __all__ = ["inquiry_classification"]
 
@@ -214,7 +217,8 @@ def inquiry_classification(
         for category, keywords in custom_keywords.items():
             keywords_text += f"- {category}: {', '.join(keywords)}\n"
 
-    instructions = f"""Classify the customer inquiry into the appropriate category and subcategory based on the configured categories and business context.
+    instructions = f"""Classify the customer inquiry into the appropriate category and subcategory
+based on the configured categories and business context.
 
 Business Context: {business_context}
 
@@ -243,7 +247,10 @@ Consider:
 - Business impact
 - Customer type indicators
 
-IMPORTANT: Provide analysis responses in the same language as the input text, except for the predefined categorical fields (priority) which must use the exact English values specified above. Category, subcategory, routing, and keywords should reflect the content and can be in the input language where appropriate, but priority must use English values like "high".
+IMPORTANT: Provide analysis responses in the same language as the input text, except for the
+predefined categorical fields (priority) which must use the exact English values specified above.
+Category, subcategory, routing, and keywords should reflect the content and can be in the input
+language where appropriate, but priority must use English values like "high".
 
 Provide accurate classification with detailed reasoning."""
 

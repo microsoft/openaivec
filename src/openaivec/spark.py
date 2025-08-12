@@ -1,6 +1,7 @@
 """Asynchronous Spark UDFs for the OpenAI and Azure OpenAI APIs.
 
-This module provides functions (`responses_udf`, `task_udf`, `embeddings_udf`, `count_tokens_udf`, `split_to_chunks_udf`)
+This module provides functions (`responses_udf`, `task_udf`, `embeddings_udf`,
+`count_tokens_udf`, `split_to_chunks_udf`)
 for creating asynchronous Spark UDFs that communicate with either the public
 OpenAI API or Azure OpenAI using the `openaivec.spark` subpackage.
 It supports UDFs for generating responses and creating embeddings asynchronously.
@@ -125,11 +126,11 @@ from pyspark.sql.types import ArrayType, BooleanType, FloatType, IntegerType, St
 from pyspark.sql.udf import UserDefinedFunction
 from typing_extensions import Literal
 
-from . import pandas_ext
-from .model import PreparedTask, ResponseFormat
-from .proxy import AsyncBatchingMapProxy
-from .serialize import deserialize_base_model, serialize_base_model
-from .util import TextChunker
+from openaivec import pandas_ext
+from openaivec.model import PreparedTask, ResponseFormat
+from openaivec.proxy import AsyncBatchingMapProxy
+from openaivec.serialize import deserialize_base_model, serialize_base_model
+from openaivec.util import TextChunker
 
 __all__ = [
     "responses_udf",
@@ -578,7 +579,7 @@ def similarity_udf() -> UserDefinedFunction:
             Cosine similarity between the two vectors.
         """
         # Import pandas_ext to ensure .ai accessor is available in Spark workers
-        from . import pandas_ext  # noqa: F401
+        from openaivec import pandas_ext  # noqa: F401
 
         return pd.DataFrame({"a": a, "b": b}).ai.similarity("a", "b")
 

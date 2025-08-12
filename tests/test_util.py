@@ -231,8 +231,9 @@ class TestBackoffAsync(TestCase):
         """Test backoff with OpenAI exception types."""
         # Import OpenAI exceptions for testing
         try:
-            from openai import RateLimitError, InternalServerError
             from unittest.mock import Mock
+
+            from openai import InternalServerError, RateLimitError
 
             call_count = 0
 

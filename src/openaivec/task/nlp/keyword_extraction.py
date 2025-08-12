@@ -54,7 +54,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
-from ...model import PreparedTask
+from openaivec.model import PreparedTask
 
 __all__ = ["KEYWORD_EXTRACTION"]
 
@@ -74,7 +74,8 @@ class KeywordExtraction(BaseModel):
 
 
 KEYWORD_EXTRACTION = PreparedTask(
-    instructions="Extract important keywords and phrases from the following text. Rank them by importance, provide frequency counts, identify main topics, and generate a brief summary.",
+    instructions="Extract important keywords and phrases from the following text. Rank them "
+    "by importance, provide frequency counts, identify main topics, and generate a brief summary.",
     response_format=KeywordExtraction,
     temperature=0.0,
     top_p=1.0,

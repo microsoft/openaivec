@@ -8,7 +8,6 @@ from typing import Awaitable, Callable, List, Type, TypeVar
 import numpy as np
 import tiktoken
 
-
 T = TypeVar("T")
 U = TypeVar("U")
 V = TypeVar("V")
