@@ -138,20 +138,18 @@ def test_internal_unique_in_order():
     from openaivec.proxy import BatchingMapProxy
 
     p = BatchingMapProxy[int, int]()
-    uniq = getattr(p, "_BatchingMapProxy__unique_in_order")
-    assert uniq([1, 1, 2, 3, 2, 4]) == [1, 2, 3, 4]
+    assert p._unique_in_order([1, 1, 2, 3, 2, 4]) == [1, 2, 3, 4]
 
 
 def test_internal_normalized_batch_size():
     from openaivec.proxy import BatchingMapProxy
 
     p = BatchingMapProxy[int, int]()
-    nb = getattr(p, "_BatchingMapProxy__normalized_batch_size")
-    assert nb(5) == 5  # default None => total
+    assert p._normalized_batch_size(5) == 5  # default None => total
     p.batch_size = 0
-    assert nb(7) == 7  # non-positive => total
+    assert p._normalized_batch_size(7) == 7  # non-positive => total
     p.batch_size = 3
-    assert nb(10) == 3  # positive => batch_size
+    assert p._normalized_batch_size(10) == 3  # positive => batch_size
 
 
 def test_internal_all_cached_and_values():

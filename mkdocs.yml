@@ -61,6 +61,7 @@ nav:
       - Async Workflows: examples/aio.ipynb
       - Prompt Engineering: examples/prompt.ipynb
       - FAQ Generation: examples/generate_faq.ipynb
+      - Token Count and Processing Time: examples/batch_size.ipynb
   - API Reference:
       - di: api/di.md
       - pandas_ext: api/pandas_ext.md

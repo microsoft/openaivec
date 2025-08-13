@@ -4,6 +4,8 @@ from collections.abc import Hashable
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable, Dict, Generic, List, Optional, TypeVar
 
+from openaivec.optimize import BatchSizeSuggester
+
 S = TypeVar("S", bound=Hashable)
 T = TypeVar("T")
 
@@ -22,6 +24,7 @@ class ProxyBase(Generic[S, T]):
 
     batch_size: Optional[int] = None  # subclasses may override via dataclass
     show_progress: bool = False  # Enable progress bar display
+    suggester: BatchSizeSuggester = None  # Batch size optimization, initialized by subclasses
 
     def _is_notebook_environment(self) -> bool:
         """Check if running in a Jupyter notebook environment.
@@ -125,7 +128,7 @@ class ProxyBase(Generic[S, T]):
             progress_bar.close()
 
     @staticmethod
-    def __unique_in_order(seq: List[S]) -> List[S]:
+    def _unique_in_order(seq: List[S]) -> List[S]:
         """Return unique items preserving their first-occurrence order.
 
         Args:
@@ -143,11 +146,11 @@ class ProxyBase(Generic[S, T]):
                 out.append(x)
         return out
 
-    def __normalized_batch_size(self, total: int) -> int:
+    def _normalized_batch_size(self, total: int) -> int:
         """Compute the effective batch size used for processing.
 
-        If ``batch_size`` is not set or non-positive, the entire ``total`` is
-        processed in a single call.
+        If ``batch_size`` is None, use the suggester to determine optimal batch size.
+        If ``batch_size`` is non-positive, process the entire ``total`` in a single call.
 
         Args:
             total (int): Number of items intended to be processed.
@@ -155,7 +158,15 @@ class ProxyBase(Generic[S, T]):
         Returns:
             int: The positive batch size to use.
         """
-        return self.batch_size if (self.batch_size and self.batch_size > 0) else total
+        if self.batch_size and self.batch_size > 0:
+            return self.batch_size
+        elif self.batch_size is None:
+            # Use suggester to determine optimal batch size
+            suggested = self.suggester.suggest_batch_size()
+            return min(suggested, total)  # Don't exceed total items
+        else:
+            # batch_size is 0 or negative, process all at once
+            return total
 
 
 @dataclass
@@ -180,18 +191,12 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     # Number of items to process per call to map_func. If None or <= 0, process all at once.
     batch_size: Optional[int] = None
     show_progress: bool = False
+    suggester: BatchSizeSuggester = field(default_factory=BatchSizeSuggester, repr=False)
+
+    # internals
     __cache: Dict[S, T] = field(default_factory=dict)
-    # Thread-safety primitives (not part of public API)
     __lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
     __inflight: Dict[S, threading.Event] = field(default_factory=dict, repr=False)
-
-    # ---- private helpers -------------------------------------------------
-    # expose base helpers under subclass private names for compatibility
-    __unique_in_order = staticmethod(ProxyBase._ProxyBase__unique_in_order)
-    __normalized_batch_size = ProxyBase._ProxyBase__normalized_batch_size
-    _create_progress_bar = ProxyBase._create_progress_bar
-    _update_progress_bar = ProxyBase._update_progress_bar
-    _close_progress_bar = ProxyBase._close_progress_bar
 
     def __all_cached(self, items: List[S]) -> bool:
         """Check whether all items are present in the cache.
@@ -320,16 +325,17 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         """
         if not owned:
             return
-        batch_size = self.__normalized_batch_size(len(owned))
+        # Setup progress bar
+        progress_bar = self._create_progress_bar(len(owned))
 
         # Accumulate uncached items to maximize batch size utilization
         pending_to_call: List[S] = []
 
-        # Setup progress bar
-        progress_bar = self._create_progress_bar(len(owned))
-
-        for i in range(0, len(owned), batch_size):
-            batch = owned[i : i + batch_size]
+        i = 0
+        while i < len(owned):
+            # Get dynamic batch size for each iteration
+            current_batch_size = self._normalized_batch_size(len(owned))
+            batch = owned[i : i + current_batch_size]
             # Double-check cache right before processing
             with self.__lock:
                 uncached_in_batch = [x for x in batch if x not in self.__cache]
@@ -337,14 +343,16 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             pending_to_call.extend(uncached_in_batch)
 
             # Process accumulated items when we reach batch_size or at the end
-            is_last_batch = i + batch_size >= len(owned)
-            if len(pending_to_call) >= batch_size or (is_last_batch and pending_to_call):
+            is_last_batch = i + current_batch_size >= len(owned)
+            if len(pending_to_call) >= current_batch_size or (is_last_batch and pending_to_call):
                 # Take up to batch_size items to process
-                to_call = pending_to_call[:batch_size]
-                pending_to_call = pending_to_call[batch_size:]
+                to_call = pending_to_call[:current_batch_size]
+                pending_to_call = pending_to_call[current_batch_size:]
 
                 try:
-                    results = map_func(to_call)
+                    # Always measure execution time using suggester
+                    with self.suggester.record(len(to_call)):
+                        results = map_func(to_call)
                 except Exception:
                     self.__finalize_failure(to_call)
                     raise
@@ -353,13 +361,19 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                 # Update progress bar
                 self._update_progress_bar(progress_bar, len(to_call))
 
+            # Move to next batch
+            i += current_batch_size
+
         # Process any remaining items
         while pending_to_call:
-            to_call = pending_to_call[:batch_size]
-            pending_to_call = pending_to_call[batch_size:]
+            # Get dynamic batch size for remaining items
+            remaining_batch_size = self._normalized_batch_size(len(pending_to_call))
+            to_call = pending_to_call[:remaining_batch_size]
+            pending_to_call = pending_to_call[remaining_batch_size:]
 
             try:
-                results = map_func(to_call)
+                with self.suggester.record(len(to_call)):
+                    results = map_func(to_call)
             except Exception:
                 self.__finalize_failure(to_call)
                 raise
@@ -430,7 +444,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         if self.__all_cached(items):
             return self.__values(items)
 
-        unique_items = self.__unique_in_order(items)
+        unique_items = self._unique_in_order(items)
         owned, wait_for = self.__acquire_ownership(unique_items)
 
         self.__process_owned(owned, map_func)
@@ -465,6 +479,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     batch_size: Optional[int] = None
     max_concurrency: int = 8
     show_progress: bool = False
+    suggester: BatchSizeSuggester = field(default_factory=BatchSizeSuggester, repr=False)
 
     # internals
     __cache: Dict[S, T] = field(default_factory=dict, repr=False)
@@ -489,14 +504,6 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             self.__sema = asyncio.Semaphore(self.max_concurrency)
         else:
             self.__sema = None
-
-    # ---- private helpers -------------------------------------------------
-    # expose base helpers under subclass private names for compatibility
-    __unique_in_order = staticmethod(ProxyBase._ProxyBase__unique_in_order)
-    __normalized_batch_size = ProxyBase._ProxyBase__normalized_batch_size
-    _create_progress_bar = ProxyBase._create_progress_bar
-    _update_progress_bar = ProxyBase._update_progress_bar
-    _close_progress_bar = ProxyBase._close_progress_bar
 
     async def __all_cached(self, items: List[S]) -> bool:
         """Check whether all items are present in the cache.
@@ -602,69 +609,43 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         await self.clear()
 
     async def __process_owned(self, owned: List[S], map_func: Callable[[List[S]], Awaitable[List[T]]]) -> None:
-        """Process owned keys in mini-batches, re-checking cache before awaits.
-
-        Before calling ``map_func`` for each batch, the cache is re-checked to
-        skip any keys that may have been filled in the meantime. Items
-        are accumulated across multiple original batches to maximize batch
-        size utilization when some items are cached. On exceptions raised
-        by ``map_func``, all corresponding in-flight events are released
-        to prevent deadlocks, and the exception is propagated.
+        """Process owned keys using Producer-Consumer pattern with dynamic batch sizing.
 
         Args:
-            owned (list[S]): Items for which this coroutine holds computation
-            ownership.
+            owned (list[S]): Items for which this coroutine holds computation ownership.
 
         Raises:
             Exception: Propagates any exception raised by ``map_func``.
         """
         if not owned:
             return
-        batch_size = self.__normalized_batch_size(len(owned))
 
-        # Accumulate uncached items to maximize batch size utilization
-        pending_to_call: List[S] = []
-
-        # Setup progress bar
         progress_bar = self._create_progress_bar(len(owned))
+        batch_queue: asyncio.Queue = asyncio.Queue(maxsize=self.max_concurrency)
 
-        # Collect all batches to process
-        batches_to_process: List[List[S]] = []
+        async def producer():
+            index = 0
+            while index < len(owned):
+                batch_size = self._normalized_batch_size(len(owned) - index)
+                batch = owned[index : index + batch_size]
+                await batch_queue.put(batch)
+                index += batch_size
+            # Send completion signals
+            for _ in range(self.max_concurrency):
+                await batch_queue.put(None)
 
-        for i in range(0, len(owned), batch_size):
-            batch = owned[i : i + batch_size]
-            async with self.__lock:
-                uncached_in_batch = [x for x in batch if x not in self.__cache]
+        async def consumer():
+            while True:
+                batch = await batch_queue.get()
+                try:
+                    if batch is None:
+                        break
+                    await self.__process_single_batch(batch, map_func, progress_bar)
+                finally:
+                    batch_queue.task_done()
 
-            pending_to_call.extend(uncached_in_batch)
+        await asyncio.gather(producer(), *[consumer() for _ in range(self.max_concurrency)])
 
-            # Process accumulated items when we reach batch_size or at the end
-            is_last_batch = i + batch_size >= len(owned)
-            if len(pending_to_call) >= batch_size or (is_last_batch and pending_to_call):
-                # Take up to batch_size items to process
-                to_call = pending_to_call[:batch_size]
-                pending_to_call = pending_to_call[batch_size:]
-                if to_call:  # Only add non-empty batches
-                    batches_to_process.append(to_call)
-
-        # Process any remaining items
-        while pending_to_call:
-            to_call = pending_to_call[:batch_size]
-            pending_to_call = pending_to_call[batch_size:]
-            if to_call:  # Only add non-empty batches
-                batches_to_process.append(to_call)
-
-        # Process all batches concurrently
-        if batches_to_process:
-            tasks = []
-            for batch in batches_to_process:
-                task = self.__process_single_batch(batch, map_func, progress_bar)
-                tasks.append(task)
-
-            # Wait for all batches to complete
-            await asyncio.gather(*tasks)
-
-        # Close progress bar
         self._close_progress_bar(progress_bar)
 
     async def __process_single_batch(
@@ -676,7 +657,9 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             if self.__sema:
                 await self.__sema.acquire()
                 acquired = True
-            results = await map_func(to_call)
+            # Measure async map_func execution using suggester
+            with self.suggester.record(len(to_call)):
+                results = await map_func(to_call)
         except Exception:
             await self.__finalize_failure(to_call)
             raise
@@ -737,7 +720,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         if await self.__all_cached(items):
             return await self.__values(items)
 
-        unique_items = self.__unique_in_order(items)
+        unique_items = self._unique_in_order(items)
         owned, wait_for = await self.__acquire_ownership(unique_items)
 
         await self.__process_owned(owned, map_func)
