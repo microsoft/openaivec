@@ -3,6 +3,7 @@ import time
 from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import List
 
 
@@ -10,6 +11,7 @@ from typing import List
 class PerformanceMetric:
     duration: float
     batch_size: int
+    executed_at: datetime
     exception: BaseException | None = None
 
 
@@ -41,6 +43,7 @@ class BatchSizeSuggester:
     @contextmanager
     def record(self, batch_size: int):
         start_time = time.perf_counter()
+        executed_at = datetime.now(timezone.utc)
         caught_exception: BaseException | None = None
         try:
             yield
@@ -54,6 +57,7 @@ class BatchSizeSuggester:
                     PerformanceMetric(
                         duration=duration,
                         batch_size=batch_size,
+                        executed_at=executed_at,
                         exception=caught_exception,
                     )
                 )
