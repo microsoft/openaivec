@@ -127,7 +127,7 @@ class ProxyBase(Generic[S, T]):
             progress_bar.close()
 
     @staticmethod
-    def __unique_in_order(seq: List[S]) -> List[S]:
+    def _unique_in_order(seq: List[S]) -> List[S]:
         """Return unique items preserving their first-occurrence order.
 
         Args:
@@ -145,7 +145,7 @@ class ProxyBase(Generic[S, T]):
                 out.append(x)
         return out
 
-    def __normalized_batch_size(self, total: int) -> int:
+    def _normalized_batch_size(self, total: int) -> int:
         """Compute the effective batch size used for processing.
 
         If ``batch_size`` is not set or non-positive, the entire ``total`` is
@@ -188,14 +188,6 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     __inflight: Dict[S, threading.Event] = field(default_factory=dict, repr=False)
     # Batch size suggester for timing/optimization measurements
     suggester: BatchSizeSuggester = field(default_factory=BatchSizeSuggester, repr=False)
-
-    # ---- private helpers -------------------------------------------------
-    # expose base helpers under subclass private names for compatibility
-    __unique_in_order = staticmethod(ProxyBase._ProxyBase__unique_in_order)
-    __normalized_batch_size = ProxyBase._ProxyBase__normalized_batch_size
-    _create_progress_bar = ProxyBase._create_progress_bar
-    _update_progress_bar = ProxyBase._update_progress_bar
-    _close_progress_bar = ProxyBase._close_progress_bar
 
     def __all_cached(self, items: List[S]) -> bool:
         """Check whether all items are present in the cache.
@@ -324,7 +316,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         """
         if not owned:
             return
-        batch_size = self.__normalized_batch_size(len(owned))
+        batch_size = self._normalized_batch_size(len(owned))
 
         # Accumulate uncached items to maximize batch size utilization
         pending_to_call: List[S] = []
@@ -437,7 +429,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         if self.__all_cached(items):
             return self.__values(items)
 
-        unique_items = self.__unique_in_order(items)
+        unique_items = self._unique_in_order(items)
         owned, wait_for = self.__acquire_ownership(unique_items)
 
         self.__process_owned(owned, map_func)
@@ -498,14 +490,6 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             self.__sema = asyncio.Semaphore(self.max_concurrency)
         else:
             self.__sema = None
-
-    # ---- private helpers -------------------------------------------------
-    # expose base helpers under subclass private names for compatibility
-    __unique_in_order = staticmethod(ProxyBase._ProxyBase__unique_in_order)
-    __normalized_batch_size = ProxyBase._ProxyBase__normalized_batch_size
-    _create_progress_bar = ProxyBase._create_progress_bar
-    _update_progress_bar = ProxyBase._update_progress_bar
-    _close_progress_bar = ProxyBase._close_progress_bar
 
     async def __all_cached(self, items: List[S]) -> bool:
         """Check whether all items are present in the cache.
@@ -629,7 +613,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         """
         if not owned:
             return
-        batch_size = self.__normalized_batch_size(len(owned))
+        batch_size = self._normalized_batch_size(len(owned))
 
         # Accumulate uncached items to maximize batch size utilization
         pending_to_call: List[S] = []
@@ -748,7 +732,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         if await self.__all_cached(items):
             return await self.__values(items)
 
-        unique_items = self.__unique_in_order(items)
+        unique_items = self._unique_in_order(items)
         owned, wait_for = await self.__acquire_ownership(unique_items)
 
         await self.__process_owned(owned, map_func)
