@@ -370,7 +370,7 @@ class TestAzureV1ApiWarning(unittest.TestCase):
         v1_urls = [
             "https://myresource.services.ai.azure.com/openai/v1/",
             "https://myresource.services.ai.azure.com/openai/v1",
-            "https://test.services.ai.azure.com/openai/v1//openai/v1/",
+            "https://test.services.ai.azure.com/openai/v1/",
         ]
 
         for url in v1_urls:
