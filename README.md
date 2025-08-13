@@ -133,7 +133,7 @@ client = BatchResponses.of(
     client=OpenAI(),
     model_name="gpt-4.1-mini",
     system_message="Please answer only with 'xx family' and do not output anything else.",
-    batch_size=32,
+    # batch_size defaults to None (automatic optimization)
 )
 
 result = client.parse(["panda", "rabbit", "koala"])
@@ -278,7 +278,7 @@ async def process_data():
     # Asynchronous processing with fine-tuned concurrency control
     results = await df["text"].aio.responses(
         "Analyze sentiment and classify as positive/negative/neutral",
-        batch_size=64,        # Process 64 items per API request
+        # batch_size defaults to None (automatic optimization)
         max_concurrency=12    # Allow up to 12 concurrent requests
     )
     return results
@@ -289,7 +289,7 @@ sentiments = asyncio.run(process_data())
 
 **Key Parameters for Performance Tuning:**
 
-- **`batch_size`** (default: 128): Controls how many inputs are grouped into a single API request. Higher values reduce API call overhead but increase memory usage and request processing time.
+- **`batch_size`** (default: None): Controls how many inputs are grouped into a single API request. When None (default), automatic batch size optimization adjusts based on execution time. Set to a positive integer for fixed batch size. Higher values reduce API call overhead but increase memory usage and request processing time.
 - **`max_concurrency`** (default: 8): Limits the number of concurrent API requests. Higher values increase throughput but may hit rate limits or overwhelm the API.
 
 **Performance Benefits:**
@@ -434,12 +434,12 @@ When using openaivec with Spark, proper configuration of `batch_size` and `max_c
 - **Transparent**: Works automatically without code changes - your existing UDFs become more efficient
 - **Partition-Level**: Each partition maintains its own cache, optimal for distributed processing patterns
 
-**`batch_size`** (default: 128):
+**`batch_size`** (default: None):
 
 - Controls how many rows are processed together in each API request within a partition
-- **Larger values**: Fewer API calls per partition, reduced overhead
-- **Smaller values**: More granular processing, better memory management
-- **Recommendation**: 32-128 depending on data complexity and partition size
+- **Default (None)**: Automatic batch size optimization adjusts based on execution time
+- **Positive integer**: Fixed batch size - larger values reduce API calls but increase memory usage
+- **Recommendation**: Use default automatic optimization, or set 32-128 for fixed batch size
 
 **`max_concurrency`** (default: 8):
 
@@ -457,7 +457,7 @@ spark.udf.register(
     "analyze_sentiment",
     responses_udf(
         instructions="Analyze sentiment as positive/negative/neutral",
-        batch_size=64,        # Good balance for most use cases
+        # batch_size defaults to None (automatic optimization)
         max_concurrency=8     # 80 total concurrent requests across cluster
     )
 )

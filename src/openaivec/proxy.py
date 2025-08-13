@@ -179,6 +179,10 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     not duplicate work via an in-flight registry. All public behavior is preserved
     while minimizing redundant requests and maintaining input order in the output.
 
+    When ``batch_size=None``, automatic batch size optimization is enabled,
+    dynamically adjusting batch sizes based on execution time to maintain optimal
+    performance (targeting 30-60 seconds per batch).
+
     Example:
         >>> from typing import List
         >>> p = BatchingMapProxy[int, str](batch_size=3)
@@ -188,7 +192,11 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         ['v:1', 'v:2', 'v:2', 'v:3', 'v:4']
     """
 
-    # Number of items to process per call to map_func. If None or <= 0, process all at once.
+    # Number of items to process per call to map_func.
+    # - If None (default): Enables automatic batch size optimization, dynamically adjusting
+    #   based on execution time (targeting 30-60 seconds per batch)
+    # - If positive integer: Fixed batch size
+    # - If <= 0: Process all items at once
     batch_size: Optional[int] = None
     show_progress: bool = False
     suggester: BatchSizeSuggester = field(default_factory=BatchSizeSuggester, repr=False)
@@ -463,6 +471,10 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     coordinates concurrent coroutines to avoid duplicate work via an in-flight
     registry of asyncio events.
 
+    When ``batch_size=None``, automatic batch size optimization is enabled,
+    dynamically adjusting batch sizes based on execution time to maintain optimal
+    performance (targeting 30-60 seconds per batch).
+
     Example:
         >>> import asyncio
         >>> from typing import List
@@ -476,6 +488,11 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         ['v:1', 'v:2', 'v:3']
     """
 
+    # Number of items to process per call to map_func.
+    # - If None (default): Enables automatic batch size optimization, dynamically adjusting
+    #   based on execution time (targeting 30-60 seconds per batch)
+    # - If positive integer: Fixed batch size
+    # - If <= 0: Process all items at once
     batch_size: Optional[int] = None
     max_concurrency: int = 8
     show_progress: bool = False

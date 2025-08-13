@@ -166,7 +166,7 @@ class BatchResponses(Generic[ResponseFormat]):
     temperature: float | None = 0.0
     top_p: float = 1.0
     response_format: Type[ResponseFormat] = str
-    cache: BatchingMapProxy[str, ResponseFormat] = field(default_factory=lambda: BatchingMapProxy(batch_size=128))
+    cache: BatchingMapProxy[str, ResponseFormat] = field(default_factory=lambda: BatchingMapProxy(batch_size=None))
     _vectorized_system_message: str = field(init=False)
     _model_json_schema: dict = field(init=False)
 
@@ -179,7 +179,7 @@ class BatchResponses(Generic[ResponseFormat]):
         temperature: float | None = 0.0,
         top_p: float = 1.0,
         response_format: Type[ResponseFormat] = str,
-        batch_size: int = 128,
+        batch_size: int | None = None,
     ) -> "BatchResponses":
         """Factory constructor.
 
@@ -190,7 +190,8 @@ class BatchResponses(Generic[ResponseFormat]):
             temperature (float, optional): Sampling temperature. Defaults to 0.0.
             top_p (float, optional): Nucleus sampling parameter. Defaults to 1.0.
             response_format (Type[ResponseFormat], optional): Expected output type. Defaults to ``str``.
-            batch_size (int, optional): Max unique prompts per API call. Defaults to 128.
+            batch_size (int | None, optional): Max unique prompts per API call. Defaults to None
+                (automatic batch size optimization). Set to a positive integer for fixed batch size.
 
         Returns:
             BatchResponses: Configured instance backed by a batching proxy.
@@ -206,14 +207,17 @@ class BatchResponses(Generic[ResponseFormat]):
         )
 
     @classmethod
-    def of_task(cls, client: OpenAI, model_name: str, task: PreparedTask, batch_size: int = 128) -> "BatchResponses":
+    def of_task(
+        cls, client: OpenAI, model_name: str, task: PreparedTask, batch_size: int | None = None
+    ) -> "BatchResponses":
         """Factory from a PreparedTask.
 
         Args:
             client (OpenAI): OpenAI client.
             model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
             task (PreparedTask): Prepared task with instructions and response format.
-            batch_size (int, optional): Max unique prompts per API call. Defaults to 128.
+            batch_size (int | None, optional): Max unique prompts per API call. Defaults to None
+                (automatic batch size optimization). Set to a positive integer for fixed batch size.
 
         Returns:
             BatchResponses: Configured instance backed by a batching proxy.
@@ -364,7 +368,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
     top_p: float = 1.0
     response_format: Type[ResponseFormat] = str
     cache: AsyncBatchingMapProxy[str, ResponseFormat] = field(
-        default_factory=lambda: AsyncBatchingMapProxy(batch_size=128, max_concurrency=8)
+        default_factory=lambda: AsyncBatchingMapProxy(batch_size=None, max_concurrency=8)
     )
     _vectorized_system_message: str = field(init=False)
     _model_json_schema: dict = field(init=False)
@@ -378,7 +382,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         temperature: float | None = 0.0,
         top_p: float = 1.0,
         response_format: Type[ResponseFormat] = str,
-        batch_size: int = 128,
+        batch_size: int | None = None,
         max_concurrency: int = 8,
     ) -> "AsyncBatchResponses":
         """Factory constructor.
@@ -390,7 +394,8 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             temperature (float, optional): Sampling temperature. Defaults to 0.0.
             top_p (float, optional): Nucleus sampling parameter. Defaults to 1.0.
             response_format (Type[ResponseFormat], optional): Expected output type. Defaults to ``str``.
-            batch_size (int, optional): Max unique prompts per API call. Defaults to 128.
+            batch_size (int | None, optional): Max unique prompts per API call. Defaults to None
+                (automatic batch size optimization). Set to a positive integer for fixed batch size.
             max_concurrency (int, optional): Max concurrent API calls. Defaults to 8.
 
         Returns:
@@ -408,7 +413,12 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
 
     @classmethod
     def of_task(
-        cls, client: AsyncOpenAI, model_name: str, task: PreparedTask, batch_size: int = 128, max_concurrency: int = 8
+        cls,
+        client: AsyncOpenAI,
+        model_name: str,
+        task: PreparedTask,
+        batch_size: int | None = None,
+        max_concurrency: int = 8,
     ) -> "AsyncBatchResponses":
         """Factory from a PreparedTask.
 
@@ -416,7 +426,8 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             client (AsyncOpenAI): OpenAI async client.
             model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
             task (PreparedTask): Prepared task with instructions and response format.
-            batch_size (int, optional): Max unique prompts per API call. Defaults to 128.
+            batch_size (int | None, optional): Max unique prompts per API call. Defaults to None
+                (automatic batch size optimization). Set to a positive integer for fixed batch size.
             max_concurrency (int, optional): Max concurrent API calls. Defaults to 8.
 
         Returns:
