@@ -81,24 +81,25 @@ class BatchSizeSuggester:
             self._history.clear()
 
     def suggest_batch_size(self) -> int:
+        selected = self.samples
+
+        if len(selected) < self.sample_size:
+            return self.current_batch_size
+
+        average_duration = sum(m.duration for m in selected) / len(selected)
+
+        if average_duration < self.min_duration:
+            new_batch_size = int(self.current_batch_size * (1 + self.step_ratio))
+        elif average_duration > self.max_duration:
+            new_batch_size = int(self.current_batch_size * (1 - self.step_ratio))
+        else:
+            new_batch_size = self.current_batch_size
+
+        new_batch_size = max(new_batch_size, self.min_batch_size)
+
         with self._lock:
-            selected = self.samples
-
-            if len(selected) < self.sample_size:
-                return self.current_batch_size
-
-            average_duration = sum(m.duration for m in selected) / len(selected)
-
-            if average_duration < self.min_duration:
-                new_batch_size = int(self.current_batch_size * (1 + self.step_ratio))
-            elif average_duration > self.max_duration:
-                new_batch_size = int(self.current_batch_size * (1 - self.step_ratio))
-            else:
-                new_batch_size = self.current_batch_size
-
-            new_batch_size = max(new_batch_size, self.min_batch_size)
             if new_batch_size != self.current_batch_size:
                 self._batch_size_changed_at = datetime.now(timezone.utc)
                 self.current_batch_size = new_batch_size
 
-            return self.current_batch_size
+        return self.current_batch_size
