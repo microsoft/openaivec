@@ -191,12 +191,12 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     # Number of items to process per call to map_func. If None or <= 0, process all at once.
     batch_size: Optional[int] = None
     show_progress: bool = False
+    suggester: BatchSizeSuggester = field(default_factory=BatchSizeSuggester, repr=False)
+
+    # internals
     __cache: Dict[S, T] = field(default_factory=dict)
-    # Thread-safety primitives (not part of public API)
     __lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
     __inflight: Dict[S, threading.Event] = field(default_factory=dict, repr=False)
-    # Batch size suggester for timing/optimization measurements
-    suggester: BatchSizeSuggester = field(default_factory=BatchSizeSuggester, repr=False)
 
     def __all_cached(self, items: List[S]) -> bool:
         """Check whether all items are present in the cache.
@@ -479,14 +479,13 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     batch_size: Optional[int] = None
     max_concurrency: int = 8
     show_progress: bool = False
+    suggester: BatchSizeSuggester = field(default_factory=BatchSizeSuggester, repr=False)
 
     # internals
     __cache: Dict[S, T] = field(default_factory=dict, repr=False)
     __lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
     __inflight: Dict[S, asyncio.Event] = field(default_factory=dict, repr=False)
     __sema: Optional[asyncio.Semaphore] = field(default=None, init=False, repr=False)
-    # Batch size suggester for timing/optimization measurements
-    suggester: BatchSizeSuggester = field(default_factory=BatchSizeSuggester, repr=False)
 
     def __post_init__(self) -> None:
         """Initialize internal semaphore based on ``max_concurrency``.
