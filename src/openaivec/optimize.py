@@ -24,6 +24,7 @@ class BatchSizeSuggester:
     sample_size: int = 10
     _history: List[PerformanceMetric] = field(default_factory=list)
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
+    _batch_size_changed_at: datetime | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         if self.min_batch_size <= 0:
@@ -66,10 +67,13 @@ class BatchSizeSuggester:
         with self._lock:
             selected: List[PerformanceMetric] = []
             for metric in reversed(self._history):
-                if metric.exception is None:
-                    selected.append(metric)
-                    if len(selected) >= self.sample_size:
-                        break
+                if metric.exception is not None:
+                    continue
+                if self._batch_size_changed_at and metric.executed_at < self._batch_size_changed_at:
+                    continue
+                selected.append(metric)
+                if len(selected) >= self.sample_size:
+                    break
             return list(reversed(selected))
 
     def clear_history(self):
@@ -78,12 +82,7 @@ class BatchSizeSuggester:
 
     def suggest_batch_size(self) -> int:
         with self._lock:
-            selected: List[PerformanceMetric] = []
-            for metric in reversed(self._history):
-                if metric.exception is None:
-                    selected.append(metric)
-                    if len(selected) >= self.sample_size:
-                        break
+            selected = self.samples
 
             if len(selected) < self.sample_size:
                 return self.current_batch_size
@@ -99,7 +98,7 @@ class BatchSizeSuggester:
 
             new_batch_size = max(new_batch_size, self.min_batch_size)
             if new_batch_size != self.current_batch_size:
-                self._history.clear()
+                self._batch_size_changed_at = datetime.now(timezone.utc)
                 self.current_batch_size = new_batch_size
 
             return self.current_batch_size
