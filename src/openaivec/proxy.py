@@ -325,16 +325,17 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         """
         if not owned:
             return
-        batch_size = self._normalized_batch_size(len(owned))
-
         # Accumulate uncached items to maximize batch size utilization
         pending_to_call: List[S] = []
 
         # Setup progress bar
         progress_bar = self._create_progress_bar(len(owned))
 
-        for i in range(0, len(owned), batch_size):
-            batch = owned[i : i + batch_size]
+        i = 0
+        while i < len(owned):
+            # Get dynamic batch size for each iteration
+            current_batch_size = self._normalized_batch_size(len(owned))
+            batch = owned[i : i + current_batch_size]
             # Double-check cache right before processing
             with self.__lock:
                 uncached_in_batch = [x for x in batch if x not in self.__cache]
@@ -342,11 +343,11 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             pending_to_call.extend(uncached_in_batch)
 
             # Process accumulated items when we reach batch_size or at the end
-            is_last_batch = i + batch_size >= len(owned)
-            if len(pending_to_call) >= batch_size or (is_last_batch and pending_to_call):
+            is_last_batch = i + current_batch_size >= len(owned)
+            if len(pending_to_call) >= current_batch_size or (is_last_batch and pending_to_call):
                 # Take up to batch_size items to process
-                to_call = pending_to_call[:batch_size]
-                pending_to_call = pending_to_call[batch_size:]
+                to_call = pending_to_call[:current_batch_size]
+                pending_to_call = pending_to_call[current_batch_size:]
 
                 try:
                     # Always measure execution time using suggester
@@ -360,10 +361,15 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                 # Update progress bar
                 self._update_progress_bar(progress_bar, len(to_call))
 
+            # Move to next batch
+            i += current_batch_size
+
         # Process any remaining items
         while pending_to_call:
-            to_call = pending_to_call[:batch_size]
-            pending_to_call = pending_to_call[batch_size:]
+            # Get dynamic batch size for remaining items
+            remaining_batch_size = self._normalized_batch_size(len(pending_to_call))
+            to_call = pending_to_call[:remaining_batch_size]
+            pending_to_call = pending_to_call[remaining_batch_size:]
 
             try:
                 with self.suggester.record(len(to_call)):
@@ -622,8 +628,6 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         """
         if not owned:
             return
-        batch_size = self._normalized_batch_size(len(owned))
-
         # Accumulate uncached items to maximize batch size utilization
         pending_to_call: List[S] = []
 
@@ -633,26 +637,34 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         # Collect all batches to process
         batches_to_process: List[List[S]] = []
 
-        for i in range(0, len(owned), batch_size):
-            batch = owned[i : i + batch_size]
+        i = 0
+        while i < len(owned):
+            # Get dynamic batch size for each iteration
+            current_batch_size = self._normalized_batch_size(len(owned))
+            batch = owned[i : i + current_batch_size]
             async with self.__lock:
                 uncached_in_batch = [x for x in batch if x not in self.__cache]
 
             pending_to_call.extend(uncached_in_batch)
 
             # Process accumulated items when we reach batch_size or at the end
-            is_last_batch = i + batch_size >= len(owned)
-            if len(pending_to_call) >= batch_size or (is_last_batch and pending_to_call):
+            is_last_batch = i + current_batch_size >= len(owned)
+            if len(pending_to_call) >= current_batch_size or (is_last_batch and pending_to_call):
                 # Take up to batch_size items to process
-                to_call = pending_to_call[:batch_size]
-                pending_to_call = pending_to_call[batch_size:]
+                to_call = pending_to_call[:current_batch_size]
+                pending_to_call = pending_to_call[current_batch_size:]
                 if to_call:  # Only add non-empty batches
                     batches_to_process.append(to_call)
 
+            # Move to next batch
+            i += current_batch_size
+
         # Process any remaining items
         while pending_to_call:
-            to_call = pending_to_call[:batch_size]
-            pending_to_call = pending_to_call[batch_size:]
+            # Get dynamic batch size for remaining items
+            remaining_batch_size = self._normalized_batch_size(len(pending_to_call))
+            to_call = pending_to_call[:remaining_batch_size]
+            pending_to_call = pending_to_call[remaining_batch_size:]
             if to_call:  # Only add non-empty batches
                 batches_to_process.append(to_call)
 
