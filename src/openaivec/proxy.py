@@ -325,11 +325,11 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         """
         if not owned:
             return
-        # Accumulate uncached items to maximize batch size utilization
-        pending_to_call: List[S] = []
-
         # Setup progress bar
         progress_bar = self._create_progress_bar(len(owned))
+
+        # Accumulate uncached items to maximize batch size utilization
+        pending_to_call: List[S] = []
 
         i = 0
         while i < len(owned):
@@ -627,63 +627,91 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         """
         if not owned:
             return
-        # Accumulate uncached items to maximize batch size utilization
-        pending_to_call: List[S] = []
-
         # Setup progress bar
         progress_bar = self._create_progress_bar(len(owned))
 
-        # Collect all batches to process
-        batches_to_process: List[List[S]] = []
+        # Producer-Consumer pattern for adaptive batch processing
+        batch_queue: asyncio.Queue = asyncio.Queue(maxsize=20)  # Limit queue size to prevent memory issues
+        results_dict = {}  # Store results with their original indices for ordering
+        results_lock = asyncio.Lock()
 
-        i = 0
-        while i < len(owned):
-            # Get dynamic batch size for each iteration
-            current_batch_size = self._normalized_batch_size(len(owned))
-            batch = owned[i : i + current_batch_size]
+        # Track items to process
+        items_to_process = []
+        item_indices = {}  # Map items to their original indices
+
+        # Filter out cached items and prepare processing list
+        for idx, item in enumerate(owned):
             async with self.__lock:
-                uncached_in_batch = [x for x in batch if x not in self.__cache]
+                if item not in self.__cache:
+                    items_to_process.append(item)
+                    item_indices[id(item)] = idx
 
-            pending_to_call.extend(uncached_in_batch)
+        # Producer: dynamically create batches with latest batch size
+        async def batch_producer():
+            index = 0
+            pending = []
 
-            # Process accumulated items when we reach batch_size or at the end
-            is_last_batch = i + current_batch_size >= len(owned)
-            if len(pending_to_call) >= current_batch_size or (is_last_batch and pending_to_call):
-                # Take up to batch_size items to process
-                to_call = pending_to_call[:current_batch_size]
-                pending_to_call = pending_to_call[current_batch_size:]
-                if to_call:  # Only add non-empty batches
-                    batches_to_process.append(to_call)
+            while index < len(items_to_process) or pending:
+                # Get current suggested batch size
+                batch_size = self._normalized_batch_size(len(items_to_process) - index)
 
-            # Move to next batch
-            i += current_batch_size
+                # Add items to pending
+                while index < len(items_to_process) and len(pending) < batch_size:
+                    pending.append(items_to_process[index])
+                    index += 1
 
-        # Process any remaining items
-        while pending_to_call:
-            # Get dynamic batch size for remaining items
-            remaining_batch_size = self._normalized_batch_size(len(pending_to_call))
-            to_call = pending_to_call[:remaining_batch_size]
-            pending_to_call = pending_to_call[remaining_batch_size:]
-            if to_call:  # Only add non-empty batches
-                batches_to_process.append(to_call)
+                # Create batch when we have enough items or at the end
+                if len(pending) >= batch_size or (index >= len(items_to_process) and pending):
+                    batch = pending[:batch_size]
+                    pending = pending[batch_size:]
 
-        # Process all batches concurrently
-        if batches_to_process:
-            tasks = []
-            for batch in batches_to_process:
-                task = self.__process_single_batch(batch, map_func, progress_bar)
-                tasks.append(task)
+                    # Store batch with ordering information
+                    batch_info = {"items": batch, "indices": [item_indices[id(item)] for item in batch]}
+                    await batch_queue.put(batch_info)
 
-            # Wait for all batches to complete
-            await asyncio.gather(*tasks)
+            # Send None to signal completion to all consumers
+            for _ in range(self.max_concurrency):  # Number of consumers
+                await batch_queue.put(None)
+
+        # Consumer: process batches with semaphore control
+        async def batch_consumer():
+            while True:
+                batch_info = await batch_queue.get()
+                if batch_info is None:  # Sentinel value
+                    batch_queue.task_done()
+                    break
+
+                try:
+                    # Process the batch
+                    batch_results = await self.__process_single_batch_with_results(
+                        batch_info["items"], map_func, progress_bar
+                    )
+
+                    # Store results with their indices
+                    async with results_lock:
+                        for idx, result in zip(batch_info["indices"], batch_results):
+                            results_dict[idx] = result
+
+                except Exception as e:
+                    # Store exception for all items in batch
+                    async with results_lock:
+                        for idx in batch_info["indices"]:
+                            results_dict[idx] = e
+                    raise
+                finally:
+                    batch_queue.task_done()
+
+        # Run producer and consumers concurrently
+        num_consumers = self.max_concurrency  # Use max_concurrency consumers
+        await asyncio.gather(batch_producer(), *[batch_consumer() for _ in range(num_consumers)])
 
         # Close progress bar
         self._close_progress_bar(progress_bar)
 
-    async def __process_single_batch(
+    async def __process_single_batch_with_results(
         self, to_call: List[S], map_func: Callable[[List[S]], Awaitable[List[T]]], progress_bar
-    ) -> None:
-        """Process a single batch with semaphore control."""
+    ) -> List[T]:
+        """Process a single batch with semaphore control and return results."""
         acquired = False
         try:
             if self.__sema:
@@ -702,6 +730,8 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
 
         # Update progress bar
         self._update_progress_bar(progress_bar, len(to_call))
+
+        return results
 
     async def __wait_for(self, keys: List[S], map_func: Callable[[List[S]], Awaitable[List[T]]]) -> None:
         """Wait for computations owned by other coroutines to complete.
