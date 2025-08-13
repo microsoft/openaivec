@@ -35,7 +35,7 @@ class TestBatchSizeSuggester:
         assert suggester.min_duration == 30.0
         assert suggester.max_duration == 60.0
         assert suggester.step_ratio == 0.1
-        assert suggester.sample_size == 10
+        assert suggester.sample_size == 4
         assert len(suggester._history) == 0
         assert suggester._batch_size_changed_at is None
 

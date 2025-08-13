@@ -224,7 +224,7 @@ def responses_udf(
     instructions: str,
     response_format: Type[ResponseFormat] = str,
     model_name: str = "gpt-4.1-mini",
-    batch_size: int = 128,
+    batch_size: int | None = None,
     temperature: float | None = 0.0,
     top_p: float = 1.0,
     max_concurrency: int = 8,
@@ -255,9 +255,11 @@ def responses_udf(
             or a Pydantic `BaseModel` for structured JSON output. Defaults to `str`.
         model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
             For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to "gpt-4.1-mini".
-        batch_size (int): Number of rows per async batch request within each partition.
+        batch_size (int | None): Number of rows per async batch request within each partition.
             Larger values reduce API call overhead but increase memory usage.
-            Recommended: 32-128 depending on data complexity. Defaults to 128.
+            Defaults to None (automatic batch size optimization that dynamically
+            adjusts based on execution time, targeting 30-60 seconds per batch).
+            Set to a positive integer (e.g., 32-128) for fixed batch size.
         temperature (float): Sampling temperature (0.0 to 2.0). Defaults to 0.0.
         top_p (float): Nucleus sampling parameter. Defaults to 1.0.
         max_concurrency (int): Maximum number of concurrent API requests **PER EXECUTOR**.
@@ -344,7 +346,7 @@ def responses_udf(
 def task_udf(
     task: PreparedTask,
     model_name: str = "gpt-4.1-mini",
-    batch_size: int = 128,
+    batch_size: int | None = None,
     max_concurrency: int = 8,
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF from a predefined task.
@@ -360,9 +362,11 @@ def task_udf(
             response format, temperature, and top_p settings.
         model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
             For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to "gpt-4.1-mini".
-        batch_size (int): Number of rows per async batch request within each partition.
+        batch_size (int | None): Number of rows per async batch request within each partition.
             Larger values reduce API call overhead but increase memory usage.
-            Recommended: 32-128 depending on task complexity. Defaults to 128.
+            Defaults to None (automatic batch size optimization that dynamically
+            adjusts based on execution time, targeting 30-60 seconds per batch).
+            Set to a positive integer (e.g., 32-128) for fixed batch size.
         max_concurrency (int): Maximum number of concurrent API requests **PER EXECUTOR**.
             Total cluster concurrency = max_concurrency × number_of_executors.
             Higher values increase throughput but may hit OpenAI rate limits.
@@ -456,7 +460,7 @@ def task_udf(
 
 
 def embeddings_udf(
-    model_name: str = "text-embedding-3-small", batch_size: int = 128, max_concurrency: int = 8
+    model_name: str = "text-embedding-3-small", batch_size: int | None = None, max_concurrency: int = 8
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF for generating embeddings.
 
@@ -481,10 +485,12 @@ def embeddings_udf(
     Args:
         model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-embedding-deployment").
             For OpenAI, use the model name (e.g., "text-embedding-3-small"). Defaults to "text-embedding-3-small".
-        batch_size (int): Number of rows per async batch request within each partition.
+        batch_size (int | None): Number of rows per async batch request within each partition.
             Larger values reduce API call overhead but increase memory usage.
+            Defaults to None (automatic batch size optimization that dynamically
+            adjusts based on execution time, targeting 30-60 seconds per batch).
+            Set to a positive integer (e.g., 64-256) for fixed batch size.
             Embeddings typically handle larger batches efficiently.
-            Recommended: 64-256 depending on text length. Defaults to 128.
         max_concurrency (int): Maximum number of concurrent API requests **PER EXECUTOR**.
             Total cluster concurrency = max_concurrency × number_of_executors.
             Higher values increase throughput but may hit OpenAI rate limits.

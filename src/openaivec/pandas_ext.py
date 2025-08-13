@@ -184,6 +184,7 @@ class OpenAIVecSeriesAccessor:
         Args:
             cache (BatchingMapProxy[str, np.ndarray]): Pre-configured cache
                 instance for managing API call batching and deduplication.
+                Set cache.batch_size=None to enable automatic batch size optimization.
 
         Returns:
             pandas.Series: Series whose values are ``np.ndarray`` objects
@@ -217,7 +218,7 @@ class OpenAIVecSeriesAccessor:
         self,
         instructions: str,
         response_format: Type[ResponseFormat] = str,
-        batch_size: int = 128,
+        batch_size: int | None = None,
         temperature: float | None = 0.0,
         top_p: float = 1.0,
         show_progress: bool = False,
@@ -247,8 +248,9 @@ class OpenAIVecSeriesAccessor:
             instructions (str): System prompt prepended to every user message.
             response_format (Type[ResponseFormat], optional): Pydantic model or built‑in
                 type the assistant should return. Defaults to ``str``.
-            batch_size (int, optional): Number of prompts grouped into a single
-                request. Defaults to ``128``.
+            batch_size (int | None, optional): Number of prompts grouped into a single
+                request. Defaults to ``None`` (automatic batch size optimization
+                based on execution time). Set to a positive integer for fixed batch size.
             temperature (float, optional): Sampling temperature. Defaults to ``0.0``.
             top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
@@ -280,6 +282,7 @@ class OpenAIVecSeriesAccessor:
                 response format, and other parameters for processing the inputs.
             cache (BatchingMapProxy[str, ResponseFormat]): Pre-configured cache
                 instance for managing API call batching and deduplication.
+                Set cache.batch_size=None to enable automatic batch size optimization.
 
         Returns:
             pandas.Series: Series whose values are instances of the task's
@@ -311,7 +314,7 @@ class OpenAIVecSeriesAccessor:
         )
         return pd.Series(client.parse(self._obj.tolist()), index=self._obj.index, name=self._obj.name)
 
-    def task(self, task: PreparedTask, batch_size: int = 128, show_progress: bool = False) -> pd.Series:
+    def task(self, task: PreparedTask, batch_size: int | None = None, show_progress: bool = False) -> pd.Series:
         """Execute a prepared task on every Series element.
 
         This method applies a pre-configured task to each element in the Series,
@@ -343,8 +346,9 @@ class OpenAIVecSeriesAccessor:
         Args:
             task (PreparedTask): A pre-configured task containing instructions,
                 response format, and other parameters for processing the inputs.
-            batch_size (int, optional): Number of prompts grouped into a single
-                request to optimize API usage. Defaults to 128.
+            batch_size (int | None, optional): Number of prompts grouped into a single
+                request to optimize API usage. Defaults to ``None`` (automatic batch size
+                optimization based on execution time). Set to a positive integer for fixed batch size.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
 
         Returns:
@@ -356,7 +360,7 @@ class OpenAIVecSeriesAccessor:
             cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
         )
 
-    def embeddings(self, batch_size: int = 128, show_progress: bool = False) -> pd.Series:
+    def embeddings(self, batch_size: int | None = None, show_progress: bool = False) -> pd.Series:
         """Compute OpenAI embeddings for every Series element.
 
         Example:
@@ -378,8 +382,9 @@ class OpenAIVecSeriesAccessor:
             The default embedding model is `text-embedding-3-small`.
 
         Args:
-            batch_size (int, optional): Number of inputs grouped into a
-                single request. Defaults to ``128``.
+            batch_size (int | None, optional): Number of inputs grouped into a
+                single request. Defaults to ``None`` (automatic batch size optimization
+                based on execution time). Set to a positive integer for fixed batch size.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
 
         Returns:
@@ -494,6 +499,7 @@ class OpenAIVecDataFrameAccessor:
             instructions (str): System prompt for the assistant.
             cache (BatchingMapProxy[str, ResponseFormat]): Pre-configured cache
                 instance for managing API call batching and deduplication.
+                Set cache.batch_size=None to enable automatic batch size optimization.
             response_format (Type[ResponseFormat], optional): Desired Python type of the
                 responses. Defaults to ``str``.
             temperature (float, optional): Sampling temperature. Defaults to ``0.0``.
@@ -538,7 +544,7 @@ class OpenAIVecDataFrameAccessor:
         self,
         instructions: str,
         response_format: Type[ResponseFormat] = str,
-        batch_size: int = 128,
+        batch_size: int | None = None,
         temperature: float | None = 0.0,
         top_p: float = 1.0,
         show_progress: bool = False,
@@ -573,8 +579,9 @@ class OpenAIVecDataFrameAccessor:
             instructions (str): System prompt for the assistant.
             response_format (Type[ResponseFormat], optional): Desired Python type of the
                 responses. Defaults to ``str``.
-            batch_size (int, optional): Number of requests sent in one batch.
-                Defaults to ``128``.
+            batch_size (int | None, optional): Number of requests sent in one batch.
+                Defaults to ``None`` (automatic batch size optimization
+                based on execution time). Set to a positive integer for fixed batch size.
             temperature (float, optional): Sampling temperature. Defaults to ``0.0``.
             top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
@@ -590,7 +597,7 @@ class OpenAIVecDataFrameAccessor:
             top_p=top_p,
         )
 
-    def task(self, task: PreparedTask, batch_size: int = 128, show_progress: bool = False) -> pd.Series:
+    def task(self, task: PreparedTask, batch_size: int | None = None, show_progress: bool = False) -> pd.Series:
         """Execute a prepared task on each DataFrame row after serialising it to JSON.
 
         This method applies a pre-configured task to each row in the DataFrame,
@@ -618,8 +625,9 @@ class OpenAIVecDataFrameAccessor:
         Args:
             task (PreparedTask): A pre-configured task containing instructions,
                 response format, and other parameters for processing the inputs.
-            batch_size (int, optional): Number of requests sent in one batch
-                to optimize API usage. Defaults to 128.
+            batch_size (int | None, optional): Number of requests sent in one batch
+                to optimize API usage. Defaults to ``None`` (automatic batch size
+                optimization based on execution time). Set to a positive integer for fixed batch size.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
 
         Returns:
@@ -634,7 +642,7 @@ class OpenAIVecDataFrameAccessor:
             )
         )
 
-    def fillna(self, target_column_name: str, max_examples: int = 500, batch_size: int = 128) -> pd.DataFrame:
+    def fillna(self, target_column_name: str, max_examples: int = 500, batch_size: int | None = None) -> pd.DataFrame:
         """Fill missing values in a DataFrame column using AI-powered inference.
 
         This method uses machine learning to intelligently fill missing (NaN) values
@@ -648,8 +656,9 @@ class OpenAIVecDataFrameAccessor:
             max_examples (int, optional): The maximum number of example rows to use
                 for context when predicting missing values. Higher values may improve
                 accuracy but increase API costs and processing time. Defaults to 500.
-            batch_size (int, optional): Number of requests sent in one batch
-                to optimize API usage. Defaults to 128.
+            batch_size (int | None, optional): Number of requests sent in one batch
+                to optimize API usage. Defaults to ``None`` (automatic batch size
+                optimization based on execution time). Set to a positive integer for fixed batch size.
 
         Returns:
             pandas.DataFrame: A new DataFrame with missing values filled in the target
@@ -750,6 +759,7 @@ class AsyncOpenAIVecSeriesAccessor:
             instructions (str): System prompt prepended to every user message.
             cache (AsyncBatchingMapProxy[str, ResponseFormat]): Pre-configured cache
                 instance for managing API call batching and deduplication.
+                Set cache.batch_size=None to enable automatic batch size optimization.
             response_format (Type[ResponseFormat], optional): Pydantic model or built‑in
                 type the assistant should return. Defaults to ``str``.
             temperature (float, optional): Sampling temperature. Defaults to ``0.0``.
@@ -804,6 +814,7 @@ class AsyncOpenAIVecSeriesAccessor:
         Args:
             cache (AsyncBatchingMapProxy[str, np.ndarray]): Pre-configured cache
                 instance for managing API call batching and deduplication.
+                Set cache.batch_size=None to enable automatic batch size optimization.
 
         Returns:
             pandas.Series: Series whose values are ``np.ndarray`` objects
@@ -859,6 +870,7 @@ class AsyncOpenAIVecSeriesAccessor:
                 response format, and other parameters for processing the inputs.
             cache (AsyncBatchingMapProxy[str, ResponseFormat]): Pre-configured cache
                 instance for managing API call batching and deduplication.
+                Set cache.batch_size=None to enable automatic batch size optimization.
 
         Returns:
             pandas.Series: Series whose values are instances of the task's
@@ -902,7 +914,7 @@ class AsyncOpenAIVecSeriesAccessor:
         self,
         instructions: str,
         response_format: Type[ResponseFormat] = str,
-        batch_size: int = 128,
+        batch_size: int | None = None,
         temperature: float | None = 0.0,
         top_p: float = 1.0,
         max_concurrency: int = 8,
@@ -934,8 +946,9 @@ class AsyncOpenAIVecSeriesAccessor:
             instructions (str): System prompt prepended to every user message.
             response_format (Type[ResponseFormat], optional): Pydantic model or built‑in
                 type the assistant should return. Defaults to ``str``.
-            batch_size (int, optional): Number of prompts grouped into a single
-                request. Defaults to ``128``.
+            batch_size (int | None, optional): Number of prompts grouped into a single
+                request. Defaults to ``None`` (automatic batch size optimization
+                based on execution time). Set to a positive integer for fixed batch size.
             temperature (float, optional): Sampling temperature. Defaults to ``0.0``.
             top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
             max_concurrency (int, optional): Maximum number of concurrent
@@ -959,7 +972,7 @@ class AsyncOpenAIVecSeriesAccessor:
         )
 
     async def embeddings(
-        self, batch_size: int = 128, max_concurrency: int = 8, show_progress: bool = False
+        self, batch_size: int | None = None, max_concurrency: int = 8, show_progress: bool = False
     ) -> pd.Series:
         """Compute OpenAI embeddings for every Series element (asynchronously).
 
@@ -983,8 +996,9 @@ class AsyncOpenAIVecSeriesAccessor:
             The default embedding model is `text-embedding-3-small`.
 
         Args:
-            batch_size (int, optional): Number of inputs grouped into a
-                single request. Defaults to ``128``.
+            batch_size (int | None, optional): Number of inputs grouped into a
+                single request. Defaults to ``None`` (automatic batch size optimization
+                based on execution time). Set to a positive integer for fixed batch size.
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to ``8``.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
@@ -1003,7 +1017,7 @@ class AsyncOpenAIVecSeriesAccessor:
         )
 
     async def task(
-        self, task: PreparedTask, batch_size: int = 128, max_concurrency: int = 8, show_progress: bool = False
+        self, task: PreparedTask, batch_size: int | None = None, max_concurrency: int = 8, show_progress: bool = False
     ) -> pd.Series:
         """Execute a prepared task on every Series element (asynchronously).
 
@@ -1037,8 +1051,9 @@ class AsyncOpenAIVecSeriesAccessor:
         Args:
             task (PreparedTask): A pre-configured task containing instructions,
                 response format, and other parameters for processing the inputs.
-            batch_size (int, optional): Number of prompts grouped into a single
-                request to optimize API usage. Defaults to 128.
+            batch_size (int | None, optional): Number of prompts grouped into a single
+                request to optimize API usage. Defaults to ``None`` (automatic batch size
+                optimization based on execution time). Set to a positive integer for fixed batch size.
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to 8.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
@@ -1084,6 +1099,7 @@ class AsyncOpenAIVecDataFrameAccessor:
             instructions (str): System prompt for the assistant.
             cache (AsyncBatchingMapProxy[str, ResponseFormat]): Pre-configured cache
                 instance for managing API call batching and deduplication.
+                Set cache.batch_size=None to enable automatic batch size optimization.
             response_format (Type[ResponseFormat], optional): Desired Python type of the
                 responses. Defaults to ``str``.
             temperature (float, optional): Sampling temperature. Defaults to ``0.0``.
@@ -1134,7 +1150,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         self,
         instructions: str,
         response_format: Type[ResponseFormat] = str,
-        batch_size: int = 128,
+        batch_size: int | None = None,
         temperature: float | None = 0.0,
         top_p: float = 1.0,
         max_concurrency: int = 8,
@@ -1171,8 +1187,9 @@ class AsyncOpenAIVecDataFrameAccessor:
             instructions (str): System prompt for the assistant.
             response_format (Type[ResponseFormat], optional): Desired Python type of the
                 responses. Defaults to ``str``.
-            batch_size (int, optional): Number of requests sent in one batch.
-                Defaults to ``128``.
+            batch_size (int | None, optional): Number of requests sent in one batch.
+                Defaults to ``None`` (automatic batch size optimization
+                based on execution time). Set to a positive integer for fixed batch size.
             temperature (float, optional): Sampling temperature. Defaults to ``0.0``.
             top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
             max_concurrency (int, optional): Maximum number of concurrent
@@ -1196,7 +1213,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         )
 
     async def task(
-        self, task: PreparedTask, batch_size: int = 128, max_concurrency: int = 8, show_progress: bool = False
+        self, task: PreparedTask, batch_size: int | None = None, max_concurrency: int = 8, show_progress: bool = False
     ) -> pd.Series:
         """Execute a prepared task on each DataFrame row after serialising it to JSON (asynchronously).
 
@@ -1235,8 +1252,9 @@ class AsyncOpenAIVecDataFrameAccessor:
         Args:
             task (PreparedTask): A pre-configured task containing instructions,
                 response format, and other parameters for processing the inputs.
-            batch_size (int, optional): Number of requests sent in one batch
-                to optimize API usage. Defaults to 128.
+            batch_size (int | None, optional): Number of requests sent in one batch
+                to optimize API usage. Defaults to ``None`` (automatic batch size
+                optimization based on execution time). Set to a positive integer for fixed batch size.
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to 8.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
@@ -1346,7 +1364,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         return df_current
 
     async def fillna(
-        self, target_column_name: str, max_examples: int = 500, batch_size: int = 128, max_concurrency: int = 8
+        self, target_column_name: str, max_examples: int = 500, batch_size: int | None = None, max_concurrency: int = 8
     ) -> pd.DataFrame:
         """Fill missing values in a DataFrame column using AI-powered inference (asynchronously).
 
@@ -1361,8 +1379,9 @@ class AsyncOpenAIVecDataFrameAccessor:
             max_examples (int, optional): The maximum number of example rows to use
                 for context when predicting missing values. Higher values may improve
                 accuracy but increase API costs and processing time. Defaults to 500.
-            batch_size (int, optional): Number of requests sent in one batch
-                to optimize API usage. Defaults to 128.
+            batch_size (int | None, optional): Number of requests sent in one batch
+                to optimize API usage. Defaults to ``None`` (automatic batch size
+                optimization based on execution time). Set to a positive integer for fixed batch size.
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to 8.
 

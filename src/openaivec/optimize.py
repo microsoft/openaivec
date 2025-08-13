@@ -21,7 +21,7 @@ class BatchSizeSuggester:
     min_duration: float = 30.0
     max_duration: float = 60.0
     step_ratio: float = 0.1
-    sample_size: int = 10
+    sample_size: int = 4
     _history: List[PerformanceMetric] = field(default_factory=list)
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
     _batch_size_changed_at: datetime | None = field(default=None, init=False)

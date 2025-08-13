@@ -31,16 +31,17 @@ class BatchEmbeddings:
 
     client: OpenAI
     model_name: str
-    cache: BatchingMapProxy[str, NDArray[np.float32]] = field(default_factory=lambda: BatchingMapProxy(batch_size=128))
+    cache: BatchingMapProxy[str, NDArray[np.float32]] = field(default_factory=lambda: BatchingMapProxy(batch_size=None))
 
     @classmethod
-    def of(cls, client: OpenAI, model_name: str, batch_size: int = 128) -> "BatchEmbeddings":
+    def of(cls, client: OpenAI, model_name: str, batch_size: int | None = None) -> "BatchEmbeddings":
         """Factory constructor.
 
         Args:
             client (OpenAI): OpenAI client.
             model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
-            batch_size (int, optional): Max unique inputs per API call. Defaults to 128.
+            batch_size (int | None, optional): Max unique inputs per API call. Defaults to None
+                (automatic batch size optimization). Set to a positive integer for fixed batch size.
 
         Returns:
             BatchEmbeddings: Configured instance backed by a batching proxy.
@@ -127,7 +128,7 @@ class AsyncBatchEmbeddings:
     client: AsyncOpenAI
     model_name: str
     cache: AsyncBatchingMapProxy[str, NDArray[np.float32]] = field(
-        default_factory=lambda: AsyncBatchingMapProxy(batch_size=128, max_concurrency=8)
+        default_factory=lambda: AsyncBatchingMapProxy(batch_size=None, max_concurrency=8)
     )
 
     @classmethod
@@ -135,7 +136,7 @@ class AsyncBatchEmbeddings:
         cls,
         client: AsyncOpenAI,
         model_name: str,
-        batch_size: int = 128,
+        batch_size: int | None = None,
         max_concurrency: int = 8,
     ) -> "AsyncBatchEmbeddings":
         """Factory constructor.
@@ -143,7 +144,8 @@ class AsyncBatchEmbeddings:
         Args:
             client (AsyncOpenAI): OpenAI async client.
             model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
-            batch_size (int, optional): Max unique inputs per API call. Defaults to 128.
+            batch_size (int | None, optional): Max unique inputs per API call. Defaults to None
+                (automatic batch size optimization). Set to a positive integer for fixed batch size.
             max_concurrency (int, optional): Max concurrent API calls. Defaults to 8.
 
         Returns:
