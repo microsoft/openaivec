@@ -1,6 +1,5 @@
 import threading
 import time
-from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -23,7 +22,7 @@ class BatchSizeSuggester:
     max_duration: float = 60.0
     step_ratio: float = 0.1
     sample_size: int = 10
-    _history: deque[PerformanceMetric] = field(default_factory=lambda: deque(maxlen=1024))
+    _history: List[PerformanceMetric] = field(default_factory=list)
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
     def __post_init__(self) -> None:
