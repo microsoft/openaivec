@@ -386,7 +386,7 @@ class TestAzureV1ApiWarning(unittest.TestCase):
         legacy_urls = [
             "https://myresource.services.ai.azure.com/",
             "https://myresource.openai.azure.com/",
-            "https://test.services.ai.azure.com/openai/v1//openai/",
+            "https://test.services.ai.azure.com/openai/",
         ]
 
         for url in legacy_urls:
