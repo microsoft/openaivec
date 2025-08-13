@@ -608,6 +608,87 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         """Alias for clear()."""
         await self.clear()
 
+    async def __batch_producer(
+        self,
+        items_to_process: List[S],
+        item_indices: Dict[int, int],
+        batch_queue: asyncio.Queue,
+    ) -> None:
+        """Producer coroutine that creates batches with dynamic sizing.
+
+        Args:
+            items_to_process (List[S]): Items that need processing (not cached).
+            item_indices (Dict[int, int]): Mapping from item id to original index.
+            batch_queue (asyncio.Queue): Queue to put batches into.
+        """
+        index = 0
+        pending = []
+
+        while index < len(items_to_process) or pending:
+            # Get current suggested batch size
+            batch_size = self._normalized_batch_size(len(items_to_process) - index)
+
+            # Add items to pending
+            while index < len(items_to_process) and len(pending) < batch_size:
+                pending.append(items_to_process[index])
+                index += 1
+
+            # Create batch when we have enough items or at the end
+            if len(pending) >= batch_size or (index >= len(items_to_process) and pending):
+                batch = pending[:batch_size]
+                pending = pending[batch_size:]
+
+                # Store batch with ordering information
+                batch_info = {"items": batch, "indices": [item_indices[id(item)] for item in batch]}
+                await batch_queue.put(batch_info)
+
+        # Send None to signal completion to all consumers
+        for _ in range(self.max_concurrency):
+            await batch_queue.put(None)
+
+    async def __batch_consumer(
+        self,
+        batch_queue: asyncio.Queue,
+        map_func: Callable[[List[S]], Awaitable[List[T]]],
+        results_dict: Dict[int, T],
+        results_lock: asyncio.Lock,
+        progress_bar,
+    ) -> None:
+        """Consumer coroutine that processes batches from the queue.
+
+        Args:
+            batch_queue (asyncio.Queue): Queue to get batches from.
+            map_func (Callable[[List[S]], Awaitable[List[T]]]): Function to process batches.
+            results_dict (Dict[int, T]): Dictionary to store results with their indices.
+            results_lock (asyncio.Lock): Lock for thread-safe access to results_dict.
+            progress_bar: Progress bar to update.
+        """
+        while True:
+            batch_info = await batch_queue.get()
+            if batch_info is None:  # Sentinel value
+                batch_queue.task_done()
+                break
+
+            try:
+                # Process the batch
+                batch_results = await self.__process_single_batch_with_results(
+                    batch_info["items"], map_func, progress_bar
+                )
+
+                # Store results with their indices
+                async with results_lock:
+                    for idx, result in zip(batch_info["indices"], batch_results):
+                        results_dict[idx] = result
+
+            except Exception as e:
+                # Store exception for all items in batch
+                async with results_lock:
+                    for idx in batch_info["indices"]:
+                        results_dict[idx] = e
+                raise
+            finally:
+                batch_queue.task_done()
+
     async def __process_owned(self, owned: List[S], map_func: Callable[[List[S]], Awaitable[List[T]]]) -> None:
         """Process owned keys in mini-batches, re-checking cache before awaits.
 
@@ -646,64 +727,13 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                     items_to_process.append(item)
                     item_indices[id(item)] = idx
 
-        # Producer: dynamically create batches with latest batch size
-        async def batch_producer():
-            index = 0
-            pending = []
-
-            while index < len(items_to_process) or pending:
-                # Get current suggested batch size
-                batch_size = self._normalized_batch_size(len(items_to_process) - index)
-
-                # Add items to pending
-                while index < len(items_to_process) and len(pending) < batch_size:
-                    pending.append(items_to_process[index])
-                    index += 1
-
-                # Create batch when we have enough items or at the end
-                if len(pending) >= batch_size or (index >= len(items_to_process) and pending):
-                    batch = pending[:batch_size]
-                    pending = pending[batch_size:]
-
-                    # Store batch with ordering information
-                    batch_info = {"items": batch, "indices": [item_indices[id(item)] for item in batch]}
-                    await batch_queue.put(batch_info)
-
-            # Send None to signal completion to all consumers
-            for _ in range(self.max_concurrency):  # Number of consumers
-                await batch_queue.put(None)
-
-        # Consumer: process batches with semaphore control
-        async def batch_consumer():
-            while True:
-                batch_info = await batch_queue.get()
-                if batch_info is None:  # Sentinel value
-                    batch_queue.task_done()
-                    break
-
-                try:
-                    # Process the batch
-                    batch_results = await self.__process_single_batch_with_results(
-                        batch_info["items"], map_func, progress_bar
-                    )
-
-                    # Store results with their indices
-                    async with results_lock:
-                        for idx, result in zip(batch_info["indices"], batch_results):
-                            results_dict[idx] = result
-
-                except Exception as e:
-                    # Store exception for all items in batch
-                    async with results_lock:
-                        for idx in batch_info["indices"]:
-                            results_dict[idx] = e
-                    raise
-                finally:
-                    batch_queue.task_done()
-
         # Run producer and consumers concurrently
-        num_consumers = self.max_concurrency  # Use max_concurrency consumers
-        await asyncio.gather(batch_producer(), *[batch_consumer() for _ in range(num_consumers)])
+        producer_task = self.__batch_producer(items_to_process, item_indices, batch_queue)
+        consumer_tasks = [
+            self.__batch_consumer(batch_queue, map_func, results_dict, results_lock, progress_bar)
+            for _ in range(self.max_concurrency)
+        ]
+        await asyncio.gather(producer_task, *consumer_tasks)
 
         # Close progress bar
         self._close_progress_bar(progress_bar)
