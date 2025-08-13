@@ -61,8 +61,8 @@ class TestProvideOpenAIClient(unittest.TestCase):
         """Test creating Azure OpenAI client when Azure environment variables are set."""
         self.set_env_and_reset(
             AZURE_OPENAI_API_KEY="test-azure-key",
-            AZURE_OPENAI_BASE_URL="https://test.openai.azure.com",
-            AZURE_OPENAI_API_VERSION="2025-04-01-preview",
+            AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
+            AZURE_OPENAI_API_VERSION="preview",
         )
 
         client = provide_openai_client()
@@ -74,8 +74,8 @@ class TestProvideOpenAIClient(unittest.TestCase):
         self.set_env_and_reset(
             OPENAI_API_KEY="test-key",
             AZURE_OPENAI_API_KEY="test-azure-key",
-            AZURE_OPENAI_BASE_URL="https://test.openai.azure.com",
-            AZURE_OPENAI_API_VERSION="2025-04-01-preview",
+            AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
+            AZURE_OPENAI_API_VERSION="preview",
         )
 
         client = provide_openai_client()
@@ -85,7 +85,7 @@ class TestProvideOpenAIClient(unittest.TestCase):
     def test_provide_openai_client_with_incomplete_azure_config(self):
         """Test error when Azure config is incomplete - missing API key."""
         self.set_env_and_reset(
-            AZURE_OPENAI_BASE_URL="https://test.openai.azure.com", AZURE_OPENAI_API_VERSION="2025-04-01-preview"
+            AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/", AZURE_OPENAI_API_VERSION="preview"
         )
         # Missing AZURE_OPENAI_API_KEY
 
@@ -97,7 +97,7 @@ class TestProvideOpenAIClient(unittest.TestCase):
     def test_provide_openai_client_with_azure_keys_default_version(self):
         """Test creating Azure OpenAI client with default API version when not specified."""
         self.set_env_and_reset(
-            AZURE_OPENAI_API_KEY="test-azure-key", AZURE_OPENAI_BASE_URL="https://test.openai.azure.com"
+            AZURE_OPENAI_API_KEY="test-azure-key", AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/"
         )
         # AZURE_OPENAI_API_VERSION not set, should use default
 
@@ -122,8 +122,8 @@ class TestProvideOpenAIClient(unittest.TestCase):
         self.set_env_and_reset(
             OPENAI_API_KEY="",
             AZURE_OPENAI_API_KEY="test-azure-key",
-            AZURE_OPENAI_BASE_URL="https://test.openai.azure.com",
-            AZURE_OPENAI_API_VERSION="2025-04-01-preview",
+            AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
+            AZURE_OPENAI_API_VERSION="preview",
         )
 
         client = provide_openai_client()
@@ -133,8 +133,8 @@ class TestProvideOpenAIClient(unittest.TestCase):
     def test_provide_openai_client_with_empty_azure_keys(self):
         """Test that empty Azure keys are treated as not set."""
         os.environ["AZURE_OPENAI_API_KEY"] = ""
-        os.environ["AZURE_OPENAI_BASE_URL"] = "https://test.openai.azure.com"
-        os.environ["AZURE_OPENAI_API_VERSION"] = "2025-04-01-preview"
+        os.environ["AZURE_OPENAI_BASE_URL"] = "https://test.services.ai.azure.com/openai/v1/"
+        os.environ["AZURE_OPENAI_API_VERSION"] = "preview"
 
         with self.assertRaises(ValueError):
             provide_openai_client()
@@ -194,8 +194,8 @@ class TestProvideAsyncOpenAIClient(unittest.TestCase):
         """Test creating async Azure OpenAI client when Azure environment variables are set."""
         self.set_env_and_reset(
             AZURE_OPENAI_API_KEY="test-azure-key",
-            AZURE_OPENAI_BASE_URL="https://test.openai.azure.com",
-            AZURE_OPENAI_API_VERSION="2025-04-01-preview",
+            AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
+            AZURE_OPENAI_API_VERSION="preview",
         )
 
         client = provide_async_openai_client()
@@ -207,8 +207,8 @@ class TestProvideAsyncOpenAIClient(unittest.TestCase):
         self.set_env_and_reset(
             OPENAI_API_KEY="test-key",
             AZURE_OPENAI_API_KEY="test-azure-key",
-            AZURE_OPENAI_BASE_URL="https://test.openai.azure.com",
-            AZURE_OPENAI_API_VERSION="2025-04-01-preview",
+            AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
+            AZURE_OPENAI_API_VERSION="preview",
         )
 
         client = provide_async_openai_client()
@@ -217,7 +217,7 @@ class TestProvideAsyncOpenAIClient(unittest.TestCase):
 
     def test_provide_async_openai_client_with_incomplete_azure_config(self):
         """Test error when Azure config is incomplete - missing endpoint."""
-        self.set_env_and_reset(AZURE_OPENAI_API_KEY="test-azure-key", AZURE_OPENAI_API_VERSION="2025-04-01-preview")
+        self.set_env_and_reset(AZURE_OPENAI_API_KEY="test-azure-key", AZURE_OPENAI_API_VERSION="preview")
         # Missing AZURE_OPENAI_BASE_URL
 
         with self.assertRaises(ValueError) as context:
@@ -228,7 +228,7 @@ class TestProvideAsyncOpenAIClient(unittest.TestCase):
     def test_provide_async_openai_client_with_azure_keys_default_version(self):
         """Test creating async Azure OpenAI client with default API version when not specified."""
         self.set_env_and_reset(
-            AZURE_OPENAI_API_KEY="test-azure-key", AZURE_OPENAI_BASE_URL="https://test.openai.azure.com"
+            AZURE_OPENAI_API_KEY="test-azure-key", AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/"
         )
         # AZURE_OPENAI_API_VERSION not set, should use default
 
@@ -253,8 +253,8 @@ class TestProvideAsyncOpenAIClient(unittest.TestCase):
         self.set_env_and_reset(
             OPENAI_API_KEY="",
             AZURE_OPENAI_API_KEY="test-azure-key",
-            AZURE_OPENAI_BASE_URL="https://test.openai.azure.com",
-            AZURE_OPENAI_API_VERSION="2025-04-01-preview",
+            AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
+            AZURE_OPENAI_API_VERSION="preview",
         )
 
         client = provide_async_openai_client()
@@ -265,8 +265,8 @@ class TestProvideAsyncOpenAIClient(unittest.TestCase):
         """Test that empty Azure keys are treated as not set."""
         self.set_env_and_reset(
             AZURE_OPENAI_API_KEY="",
-            AZURE_OPENAI_BASE_URL="https://test.openai.azure.com",
-            AZURE_OPENAI_API_VERSION="2025-04-01-preview",
+            AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
+            AZURE_OPENAI_API_VERSION="preview",
         )
 
         with self.assertRaises(ValueError):
@@ -331,8 +331,8 @@ class TestProviderIntegration(unittest.TestCase):
         # Clear and test with Azure environment
         self.set_env_and_reset(
             AZURE_OPENAI_API_KEY="test-azure-key",
-            AZURE_OPENAI_BASE_URL="https://test.openai.azure.com",
-            AZURE_OPENAI_API_VERSION="2025-04-01-preview",
+            AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
+            AZURE_OPENAI_API_VERSION="preview",
         )
 
         sync_client = provide_openai_client()
@@ -345,8 +345,8 @@ class TestProviderIntegration(unittest.TestCase):
         """Test that Azure clients are configured with correct parameters."""
         self.set_env_and_reset(
             AZURE_OPENAI_API_KEY="test-azure-key",
-            AZURE_OPENAI_BASE_URL="https://test.openai.azure.com",
-            AZURE_OPENAI_API_VERSION="2025-04-01-preview",
+            AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
+            AZURE_OPENAI_API_VERSION="preview",
         )
 
         sync_client = provide_openai_client()
@@ -370,7 +370,7 @@ class TestAzureV1ApiWarning(unittest.TestCase):
         v1_urls = [
             "https://myresource.services.ai.azure.com/openai/v1/",
             "https://myresource.services.ai.azure.com/openai/v1",
-            "https://test.openai.azure.com/openai/v1/",
+            "https://test.services.ai.azure.com/openai/v1//openai/v1/",
         ]
 
         for url in v1_urls:
@@ -386,7 +386,7 @@ class TestAzureV1ApiWarning(unittest.TestCase):
         legacy_urls = [
             "https://myresource.services.ai.azure.com/",
             "https://myresource.openai.azure.com/",
-            "https://test.openai.azure.com/openai/",
+            "https://test.services.ai.azure.com/openai/v1//openai/",
         ]
 
         for url in legacy_urls:
@@ -403,9 +403,9 @@ class TestAzureV1ApiWarning(unittest.TestCase):
 
         from openaivec import pandas_ext
 
-        # Test with legacy URL
+        # Test with legacy URL (non-v1)
         legacy_client = AzureOpenAI(
-            api_key="test-key", base_url="https://test.openai.azure.com/", api_version="2024-02-01"
+            api_key="test-key", base_url="https://test.openai.azure.com/", api_version="preview"
         )
 
         with warnings.catch_warnings(record=True) as w:
