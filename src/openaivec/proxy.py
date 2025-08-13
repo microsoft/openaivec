@@ -24,6 +24,7 @@ class ProxyBase(Generic[S, T]):
 
     batch_size: Optional[int] = None  # subclasses may override via dataclass
     show_progress: bool = False  # Enable progress bar display
+    suggester: BatchSizeSuggester = None  # Batch size optimization, initialized by subclasses
 
     def _is_notebook_environment(self) -> bool:
         """Check if running in a Jupyter notebook environment.
@@ -148,8 +149,8 @@ class ProxyBase(Generic[S, T]):
     def _normalized_batch_size(self, total: int) -> int:
         """Compute the effective batch size used for processing.
 
-        If ``batch_size`` is not set or non-positive, the entire ``total`` is
-        processed in a single call.
+        If ``batch_size`` is None, use the suggester to determine optimal batch size.
+        If ``batch_size`` is non-positive, process the entire ``total`` in a single call.
 
         Args:
             total (int): Number of items intended to be processed.
@@ -157,7 +158,15 @@ class ProxyBase(Generic[S, T]):
         Returns:
             int: The positive batch size to use.
         """
-        return self.batch_size if (self.batch_size and self.batch_size > 0) else total
+        if self.batch_size and self.batch_size > 0:
+            return self.batch_size
+        elif self.batch_size is None:
+            # Use suggester to determine optimal batch size
+            suggested = self.suggester.suggest_batch_size()
+            return min(suggested, total)  # Don't exceed total items
+        else:
+            # batch_size is 0 or negative, process all at once
+            return total
 
 
 @dataclass
