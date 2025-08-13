@@ -4,6 +4,8 @@ from collections.abc import Hashable
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable, Dict, Generic, List, Optional, TypeVar
 
+from openaivec.optimize import BatchSizeSuggester
+
 S = TypeVar("S", bound=Hashable)
 T = TypeVar("T")
 
@@ -184,6 +186,8 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     # Thread-safety primitives (not part of public API)
     __lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
     __inflight: Dict[S, threading.Event] = field(default_factory=dict, repr=False)
+    # Batch size suggester for timing/optimization measurements
+    suggester: BatchSizeSuggester = field(default_factory=BatchSizeSuggester, repr=False)
 
     # ---- private helpers -------------------------------------------------
     # expose base helpers under subclass private names for compatibility
@@ -344,7 +348,9 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                 pending_to_call = pending_to_call[batch_size:]
 
                 try:
-                    results = map_func(to_call)
+                    # Always measure execution time using suggester
+                    with self.suggester.record(len(to_call)):
+                        results = map_func(to_call)
                 except Exception:
                     self.__finalize_failure(to_call)
                     raise
@@ -359,7 +365,8 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             pending_to_call = pending_to_call[batch_size:]
 
             try:
-                results = map_func(to_call)
+                with self.suggester.record(len(to_call)):
+                    results = map_func(to_call)
             except Exception:
                 self.__finalize_failure(to_call)
                 raise
@@ -471,6 +478,8 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     __lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
     __inflight: Dict[S, asyncio.Event] = field(default_factory=dict, repr=False)
     __sema: Optional[asyncio.Semaphore] = field(default=None, init=False, repr=False)
+    # Batch size suggester for timing/optimization measurements
+    suggester: BatchSizeSuggester = field(default_factory=BatchSizeSuggester, repr=False)
 
     def __post_init__(self) -> None:
         """Initialize internal semaphore based on ``max_concurrency``.
@@ -676,7 +685,9 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             if self.__sema:
                 await self.__sema.acquire()
                 acquired = True
-            results = await map_func(to_call)
+            # Measure async map_func execution using suggester
+            with self.suggester.record(len(to_call)):
+                results = await map_func(to_call)
         except Exception:
             await self.__finalize_failure(to_call)
             raise

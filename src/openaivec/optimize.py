@@ -9,6 +9,7 @@ from typing import List
 @dataclass(frozen=True)
 class PerformanceMetric:
     duration: float
+    batch_size: int
     exception: BaseException | None = None
 
 
@@ -38,7 +39,7 @@ class BatchSizeSuggester:
             raise ValueError("min_duration must be < max_duration")
 
     @contextmanager
-    def record(self):
+    def record(self, batch_size: int):
         start_time = time.perf_counter()
         caught_exception: BaseException | None = None
         try:
@@ -49,7 +50,13 @@ class BatchSizeSuggester:
         finally:
             duration = time.perf_counter() - start_time
             with self._lock:
-                self._history.append(PerformanceMetric(duration, exception=caught_exception))
+                self._history.append(
+                    PerformanceMetric(
+                        duration=duration,
+                        batch_size=batch_size,
+                        exception=caught_exception,
+                    )
+                )
 
     @property
     def samples(self) -> List[PerformanceMetric]:
