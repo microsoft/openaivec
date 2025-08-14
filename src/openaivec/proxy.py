@@ -2,13 +2,9 @@ import asyncio
 import threading
 from collections.abc import Hashable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Generic, List, TypeVar
+from typing import Any, Awaitable, Callable, Dict, Generic, List, TypeVar
 
 from openaivec.optimize import BatchSizeSuggester
-
-if TYPE_CHECKING:
-    pass
-
 
 S = TypeVar("S", bound=Hashable)
 T = TypeVar("T")
