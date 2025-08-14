@@ -126,6 +126,7 @@ _PROMPT: str = """
             Receive the prompt in JSON format with fields "purpose",
             "cautions", and "examples". Ensure the entire prompt is free
             from logical contradictions, redundancies, and ambiguities.
+            IMPORTANT: The "examples" array must always contain at least one example throughout all iterations.
         </Instruction>
         <Instruction id="2">
             - Modify only one element per iteration among “purpose”, “examples”, or
@@ -155,8 +156,10 @@ _PROMPT: str = """
         </Instruction>
         <Instruction id="6">
             In the "examples" field, enhance the examples to cover a wide range of scenarios.
+            CRITICAL: The examples array must NEVER be empty - always maintain at least one example.
             Add as many non-redundant examples as possible,
             since having more examples leads to better coverage and understanding.
+            You may modify existing examples or add new ones, but never remove all examples.
         </Instruction>
         <Instruction id="7">
             Verify that the improved prompt adheres to the Request and
@@ -166,6 +169,7 @@ _PROMPT: str = """
             Generate the final refined FewShotPrompt as an iteration in
             the Response, ensuring the final output is consistent,
             unambiguous, and free from any redundancies or contradictions.
+            MANDATORY: Verify that the examples array contains at least one example before completing.
         </Instruction>
     </Instructions>
     <Example>
@@ -339,11 +343,29 @@ def _render_prompt(prompt: FewShotPrompt) -> str:
 
 
 class FewShotPromptBuilder:
+    """Builder for creating few-shot prompts with validation.
+
+    Usage:
+        builder = (FewShotPromptBuilder()
+                  .purpose("Your task description")
+                  .example("input1", "output1")  # At least one required
+                  .example("input2", "output2")
+                  .build())
+
+    Note:
+        Both .purpose() and at least one .example() call are required before
+        calling .build(), .improve(), or .get_object().
+    """
+
     _prompt: FewShotPrompt
     _steps: List[Step]
 
     def __init__(self):
-        """Initialize an empty FewShotPromptBuilder."""
+        """Initialize an empty FewShotPromptBuilder.
+
+        Note:
+            You must call .purpose() and at least one .example() before building.
+        """
         self._prompt = FewShotPrompt(purpose="", cautions=[], examples=[])
 
     @classmethod
@@ -402,6 +424,8 @@ class FewShotPromptBuilder:
     ) -> "FewShotPromptBuilder":
         """Add a single input/output example.
 
+        At least one example is required before calling .build(), .improve(), or .get_object().
+
         Args:
             input_value (str | BaseModel): Example input; if a Pydantic model is
                 provided it is serialised to JSON.
@@ -442,7 +466,13 @@ class FewShotPromptBuilder:
 
         Returns:
             FewShotPromptBuilder: The current builder instance containing the refined prompt and iteration history.
+
+        Raises:
+            ValueError: If the prompt is not valid (missing purpose or examples).
         """
+        # Validate before making API call to provide early feedback
+        self._validate()
+
         _client = client or CONTAINER.resolve(OpenAI)
         _model_name = model_name or CONTAINER.resolve(ResponsesModelName).value
 
@@ -465,6 +495,18 @@ class FewShotPromptBuilder:
 
         # set the final prompt
         self._prompt = self._steps[-1].prompt
+
+        # Validate the improved prompt to ensure examples weren't removed by LLM
+        try:
+            self._validate()
+        except ValueError as e:
+            _logger.warning(f"LLM produced invalid prompt during improve(): {e}")
+            # Restore original prompt if LLM produced invalid result
+            self._prompt = self._steps[0].prompt
+            raise ValueError(
+                f"LLM improvement failed to maintain required fields: {e}. "
+                "This may indicate an issue with the improvement instructions or model behavior."
+            )
 
         return self
 
@@ -501,9 +543,14 @@ class FewShotPromptBuilder:
         """
         # Validate that 'purpose' and 'examples' are not empty.
         if not self._prompt.purpose:
-            raise ValueError("Purpose is required.")
+            raise ValueError(
+                "Purpose is required. Please call .purpose('your purpose description') before building the prompt."
+            )
         if not self._prompt.examples or len(self._prompt.examples) == 0:
-            raise ValueError("At least one example is required.")
+            raise ValueError(
+                "At least one example is required. Please add examples using "
+                ".example('input', 'output') before building the prompt."
+            )
 
     def get_object(self) -> FewShotPrompt:
         """Return the underlying FewShotPrompt object.
