@@ -165,7 +165,7 @@ class BatchResponses(Generic[ResponseFormat]):
     system_message: str
     temperature: float | None = 0.0
     top_p: float = 1.0
-    response_format: Type[ResponseFormat] = str
+    response_format: Type[ResponseFormat] = str  # type: ignore[assignment]
     cache: BatchingMapProxy[str, ResponseFormat] = field(default_factory=lambda: BatchingMapProxy(batch_size=None))
     _vectorized_system_message: str = field(init=False)
     _model_json_schema: dict = field(init=False)
@@ -369,7 +369,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
     system_message: str
     temperature: float | None = 0.0
     top_p: float = 1.0
-    response_format: Type[ResponseFormat] = str
+    response_format: Type[ResponseFormat] = str  # type: ignore[assignment]
     cache: AsyncBatchingMapProxy[str, ResponseFormat] = field(
         default_factory=lambda: AsyncBatchingMapProxy(batch_size=None, max_concurrency=8)
     )
@@ -507,7 +507,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         The function is pure – it has no side‑effects and the result depends only on its arguments.
         """
         messages = [Message(id=i, body=message) for i, message in enumerate(user_messages)]
-        responses: ParsedResponse[Response[ResponseFormat]] = await self._request_llm(messages)
+        responses: ParsedResponse[Response[ResponseFormat]] = await self._request_llm(messages)  # type: ignore[call-issue]
         if not responses.output_parsed:
             return [None] * len(messages)
         response_dict = {message.id: message.body for message in responses.output_parsed.assistant_messages}

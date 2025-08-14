@@ -286,7 +286,7 @@ def responses_udf(
         spark_schema = _pydantic_to_spark_schema(response_format)
         json_schema_string = serialize_base_model(response_format)
 
-        @pandas_udf(returnType=spark_schema)
+        @pandas_udf(returnType=spark_schema)  # type: ignore[call-overload]
         def structure_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
             pandas_ext.responses_model(model_name)
             response_format = deserialize_base_model(json_schema_string)
@@ -314,7 +314,7 @@ def responses_udf(
 
     elif issubclass(response_format, str):
 
-        @pandas_udf(returnType=StringType())
+        @pandas_udf(returnType=StringType())  # type: ignore[call-overload]
         def string_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
             pandas_ext.responses_model(model_name)
             cache = AsyncBatchingMapProxy[str, str](
@@ -403,7 +403,7 @@ def task_udf(
         response_format = deserialize_base_model(task_response_format_json)
         spark_schema = _pydantic_to_spark_schema(response_format)
 
-        @pandas_udf(returnType=spark_schema)
+        @pandas_udf(returnType=spark_schema)  # type: ignore[call-overload]
         def task_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
             pandas_ext.responses_model(model_name)
             cache = AsyncBatchingMapProxy[str, response_format](
@@ -430,7 +430,7 @@ def task_udf(
 
     elif issubclass(task.response_format, str):
 
-        @pandas_udf(returnType=StringType())
+        @pandas_udf(returnType=StringType())  # type: ignore[call-overload]
         def task_string_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
             pandas_ext.responses_model(model_name)
             cache = AsyncBatchingMapProxy[str, str](
@@ -549,7 +549,7 @@ def split_to_chunks_udf(max_tokens: int, sep: List[str]) -> UserDefinedFunction:
         for part in col:
             yield part.map(lambda x: chunker.split(x, max_tokens=max_tokens, sep=sep) if isinstance(x, str) else [])
 
-    return fn
+    return fn  # type: ignore[return-value]
 
 
 def count_tokens_udf() -> UserDefinedFunction:
@@ -562,18 +562,18 @@ def count_tokens_udf() -> UserDefinedFunction:
         A pandas UDF producing an ``IntegerType`` column with token counts.
     """
 
-    @pandas_udf(IntegerType())
+    @pandas_udf(IntegerType())  # type: ignore[call-overload]
     def fn(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
         encoding = tiktoken.get_encoding("o200k_base")
 
         for part in col:
             yield part.map(lambda x: len(encoding.encode(x)) if isinstance(x, str) else 0)
 
-    return fn
+    return fn  # type: ignore[return-value]
 
 
 def similarity_udf() -> UserDefinedFunction:
-    @pandas_udf(FloatType())
+    @pandas_udf(FloatType())  # type: ignore[call-overload]
     def fn(a: pd.Series, b: pd.Series) -> pd.Series:
         """Compute cosine similarity between two vectors.
 
@@ -589,4 +589,4 @@ def similarity_udf() -> UserDefinedFunction:
 
         return pd.DataFrame({"a": a, "b": b}).ai.similarity("a", "b")
 
-    return fn
+    return fn  # type: ignore[return-value]

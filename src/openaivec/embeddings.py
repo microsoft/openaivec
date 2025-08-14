@@ -188,4 +188,4 @@ class AsyncBatchEmbeddings:
         Returns:
             List[NDArray[np.float32]]: Embedding vectors aligned to ``inputs``.
         """
-        return await self.cache.map(inputs, self._embed_chunk)
+        return await self.cache.map(inputs, self._embed_chunk)  # type: ignore[arg-type]
