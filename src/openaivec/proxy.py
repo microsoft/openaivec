@@ -2,7 +2,7 @@ import asyncio
 import threading
 from collections.abc import Hashable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Awaitable, Callable, Dict, Generic, List, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Generic, List, TypeVar
 
 from openaivec.optimize import BatchSizeSuggester
 
@@ -10,16 +10,6 @@ if TYPE_CHECKING:
     pass
 
 
-class ProgressBar(Protocol):
-    """Protocol for progress bar objects (like tqdm)."""
-
-    def update(self, n: int = 1) -> None:
-        """Update the progress bar."""
-        ...
-
-    def close(self) -> None:
-        """Close the progress bar."""
-        ...
 
 
 S = TypeVar("S", bound=Hashable)
@@ -105,7 +95,7 @@ class ProxyBase(Generic[S, T]):
 
         return False
 
-    def _create_progress_bar(self, total: int, desc: str = "Processing batches") -> ProgressBar | None:
+    def _create_progress_bar(self, total: int, desc: str = "Processing batches") -> Any:
         """Create a progress bar if conditions are met.
 
         Args:
@@ -113,7 +103,7 @@ class ProxyBase(Generic[S, T]):
             desc (str): Description for the progress bar.
 
         Returns:
-            ProgressBar | None: Progress bar instance or None if not available.
+            Any: Progress bar instance or None if not available.
         """
         try:
             from tqdm.auto import tqdm as tqdm_progress
@@ -124,21 +114,21 @@ class ProxyBase(Generic[S, T]):
             pass
         return None
 
-    def _update_progress_bar(self, progress_bar: ProgressBar | None, increment: int) -> None:
+    def _update_progress_bar(self, progress_bar: Any, increment: int) -> None:
         """Update progress bar with the given increment.
 
         Args:
-            progress_bar (ProgressBar | None): Progress bar instance.
+            progress_bar (Any): Progress bar instance.
             increment (int): Number of items to increment.
         """
         if progress_bar:
             progress_bar.update(increment)
 
-    def _close_progress_bar(self, progress_bar: ProgressBar | None) -> None:
+    def _close_progress_bar(self, progress_bar: Any) -> None:
         """Close the progress bar.
 
         Args:
-            progress_bar (ProgressBar | None): Progress bar instance.
+            progress_bar (Any): Progress bar instance.
         """
         if progress_bar:
             progress_bar.close()
