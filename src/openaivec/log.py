@@ -5,7 +5,7 @@ import uuid
 from logging import Logger
 from typing import Callable
 
-__all__ = ["observe"]
+__all__ = []
 
 
 def observe(logger: Logger):

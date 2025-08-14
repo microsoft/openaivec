@@ -12,6 +12,15 @@ improved performance in I/O-bound operations.
 automatically cache duplicate inputs within each partition, significantly reducing
 API calls and costs when processing datasets with overlapping content.
 
+__all__ = [
+    "count_tokens_udf",
+    "embeddings_udf",
+    "responses_udf",
+    "similarity_udf",
+    "split_to_chunks_udf",
+    "task_udf",
+]
+
 ## Setup
 
 First, obtain a Spark session and configure authentication:

@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Literal, Type
 
 from pydantic import BaseModel, Field, create_model
 
-__all__ = ["deserialize_base_model", "serialize_base_model"]
+__all__ = []
 
 
 def serialize_base_model(obj: Type[BaseModel]) -> Dict[str, Any]:

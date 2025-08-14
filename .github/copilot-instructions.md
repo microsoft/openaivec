@@ -138,6 +138,32 @@ Don’t
 - Use `asyncio.run` in async tests (mirrors existing tests)
 - Optional integration tests can run with valid API keys; keep unit tests independent of network
 
+## Package Visibility Guidelines (`__all__`)
+
+### Public API Modules
+These modules are part of the public API and should have comprehensive `__all__` declarations:
+
+- `embeddings.py` - Batch embedding processing
+- `model.py` - Task configuration models  
+- `prompt.py` - Few-shot prompt building
+- `responses.py` - Batch response processing
+- `spark.py` - Apache Spark UDF builders
+- `pandas_ext.py` - Pandas DataFrame/Series extensions
+- `task/*` - All task modules (NLP, customer support, table operations)
+
+### Internal Modules
+These modules are for internal use only and should have `__all__ = []`:
+
+- All other modules not listed above (util.py, serialize.py, log.py, provider.py, proxy.py, di.py, optimize.py, etc.)
+
+### `__all__` Best Practices
+
+1. **Public modules**: Include all classes, functions, and constants intended for external use
+2. **Internal modules**: Use `__all__ = []` to explicitly mark as internal-only
+3. **Task modules**: Each task module should export its main classes/functions
+4. **Package `__init__.py`**: Re-export public API from all public modules
+5. **Consistency**: Maintain alphabetical ordering within `__all__` lists
+
 ## Documentation (MkDocs)
 
 - For new developer-facing APIs, update `docs/api/` and consider a short example under `docs/examples/`

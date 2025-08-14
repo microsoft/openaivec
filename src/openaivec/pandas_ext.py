@@ -48,6 +48,13 @@ import numpy as np
 import pandas as pd
 import tiktoken
 from openai import AsyncOpenAI, OpenAI
+
+__all__ = [
+    "embeddings_model",
+    "responses_model",
+    "use",
+    "use_async",
+]
 from pydantic import BaseModel
 
 from openaivec.embeddings import AsyncBatchEmbeddings, BatchEmbeddings
