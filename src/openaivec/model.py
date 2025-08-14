@@ -1,6 +1,10 @@
 from dataclasses import dataclass
 from typing import Generic, Type, TypeVar
 
+__all__ = [
+    "PreparedTask",
+]
+
 ResponseFormat = TypeVar("ResponseFormat")
 
 

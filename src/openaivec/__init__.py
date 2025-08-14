@@ -1,9 +1,14 @@
 from .embeddings import AsyncBatchEmbeddings, BatchEmbeddings
+from .model import PreparedTask
+from .prompt import FewShotPrompt, FewShotPromptBuilder
 from .responses import AsyncBatchResponses, BatchResponses
 
 __all__ = [
-    "BatchResponses",
+    "AsyncBatchEmbeddings",
     "AsyncBatchResponses",
     "BatchEmbeddings",
-    "AsyncBatchEmbeddings",
+    "BatchResponses",
+    "FewShotPrompt",
+    "FewShotPromptBuilder",
+    "PreparedTask",
 ]

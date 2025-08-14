@@ -15,6 +15,8 @@ from openaivec.model import (
 )
 from openaivec.util import TextChunker
 
+__all__ = []
+
 CONTAINER = di.Container()
 
 
