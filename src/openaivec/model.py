@@ -82,10 +82,10 @@ class OpenAIAPIKey:
     """Container for OpenAI API key configuration.
 
     Attributes:
-        value (str): The API key for OpenAI services.
+        value (str | None): The API key for OpenAI services.
     """
 
-    value: str
+    value: str | None
 
 
 @dataclass(frozen=True)
@@ -93,10 +93,10 @@ class AzureOpenAIAPIKey:
     """Container for Azure OpenAI API key configuration.
 
     Attributes:
-        value (str): The API key for Azure OpenAI services.
+        value (str | None): The API key for Azure OpenAI services.
     """
 
-    value: str
+    value: str | None
 
 
 @dataclass(frozen=True)
@@ -104,10 +104,10 @@ class AzureOpenAIBaseURL:
     """Container for Azure OpenAI base URL configuration.
 
     Attributes:
-        value (str): The base URL for Azure OpenAI services.
+        value (str | None): The base URL for Azure OpenAI services.
     """
 
-    value: str
+    value: str | None
 
 
 @dataclass(frozen=True)

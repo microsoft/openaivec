@@ -314,7 +314,8 @@ class BatchResponses(Generic[ResponseFormat]):
         Returns:
             List[ResponseFormat | None]: Assistant responses aligned to ``inputs``.
         """
-        return self.cache.map(inputs, self._predict_chunk)
+        result = self.cache.map(inputs, self._predict_chunk)
+        return result  # type: ignore[return-value]
 
 
 @dataclass(frozen=True)
@@ -524,4 +525,5 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         Returns:
             List[ResponseFormat | None]: Assistant responses aligned to ``inputs``.
         """
-        return await self.cache.map(inputs, self._predict_chunk)
+        result = await self.cache.map(inputs, self._predict_chunk)
+        return result  # type: ignore[return-value]

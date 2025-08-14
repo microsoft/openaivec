@@ -524,7 +524,7 @@ def embeddings_udf(
                 embeddings: pd.Series = asyncio.run(part.aio.embeddings_with_cache(cache=cache))
                 yield embeddings.map(lambda x: x.tolist())
         finally:
-            cache.clear()
+            asyncio.run(cache.clear())
 
     return _embeddings_udf  # type: ignore[return-value]
 
