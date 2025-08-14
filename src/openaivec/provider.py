@@ -65,6 +65,11 @@ def provide_openai_client() -> OpenAI:
     azure_api_version = CONTAINER.resolve(AzureOpenAIAPIVersion)
 
     if all(param.value for param in [azure_api_key, azure_base_url, azure_api_version]):
+        # Type checker support: values are guaranteed non-None by the all() check above
+        assert azure_api_key.value is not None
+        assert azure_base_url.value is not None
+        assert azure_api_version.value is not None
+
         _check_azure_v1_api_url(azure_base_url.value)
         return AzureOpenAI(
             api_key=azure_api_key.value,
@@ -103,6 +108,11 @@ def provide_async_openai_client() -> AsyncOpenAI:
     azure_api_version = CONTAINER.resolve(AzureOpenAIAPIVersion)
 
     if all(param.value for param in [azure_api_key, azure_base_url, azure_api_version]):
+        # Type checker support: values are guaranteed non-None by the all() check above
+        assert azure_api_key.value is not None
+        assert azure_base_url.value is not None
+        assert azure_api_version.value is not None
+
         _check_azure_v1_api_url(azure_base_url.value)
         return AsyncAzureOpenAI(
             api_key=azure_api_key.value,

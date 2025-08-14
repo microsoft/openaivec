@@ -115,7 +115,7 @@ Note: This module provides asynchronous support through the pandas extensions.
 import asyncio
 import logging
 from enum import Enum
-from typing import Dict, Iterator, List, Optional, Type, Union, get_args, get_origin
+from typing import Dict, Iterator, List, Type, Union, get_args, get_origin
 
 import numpy as np
 import pandas as pd
@@ -198,7 +198,7 @@ def _pydantic_to_spark_schema(model: Type[BaseModel]) -> StructType:
     return StructType(fields)
 
 
-def _safe_cast_str(x: Optional[str]) -> Optional[str]:
+def _safe_cast_str(x: str | None) -> str | None:
     try:
         if x is None:
             return None
@@ -209,7 +209,7 @@ def _safe_cast_str(x: Optional[str]) -> Optional[str]:
         return None
 
 
-def _safe_dump(x: Optional[BaseModel]) -> Dict:
+def _safe_dump(x: BaseModel | None) -> Dict:
     try:
         if x is None:
             return {}
@@ -286,7 +286,7 @@ def responses_udf(
         spark_schema = _pydantic_to_spark_schema(response_format)
         json_schema_string = serialize_base_model(response_format)
 
-        @pandas_udf(returnType=spark_schema)
+        @pandas_udf(returnType=spark_schema)  # type: ignore[call-overload]
         def structure_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
             pandas_ext.responses_model(model_name)
             response_format = deserialize_base_model(json_schema_string)
@@ -308,13 +308,13 @@ def responses_udf(
                     )
                     yield pd.DataFrame(predictions.map(_safe_dump).tolist())
             finally:
-                cache.clear()
+                asyncio.run(cache.clear())
 
-        return structure_udf
+        return structure_udf  # type: ignore[return-value]
 
     elif issubclass(response_format, str):
 
-        @pandas_udf(returnType=StringType())
+        @pandas_udf(returnType=StringType())  # type: ignore[call-overload]
         def string_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
             pandas_ext.responses_model(model_name)
             cache = AsyncBatchingMapProxy[str, str](
@@ -335,16 +335,16 @@ def responses_udf(
                     )
                     yield predictions.map(_safe_cast_str)
             finally:
-                cache.clear()
+                asyncio.run(cache.clear())
 
-        return string_udf
+        return string_udf  # type: ignore[return-value]
 
     else:
         raise ValueError(f"Unsupported response_format: {response_format}")
 
 
 def task_udf(
-    task: PreparedTask,
+    task: PreparedTask[ResponseFormat],
     model_name: str = "gpt-4.1-mini",
     batch_size: int | None = None,
     max_concurrency: int = 8,
@@ -403,7 +403,7 @@ def task_udf(
         response_format = deserialize_base_model(task_response_format_json)
         spark_schema = _pydantic_to_spark_schema(response_format)
 
-        @pandas_udf(returnType=spark_schema)
+        @pandas_udf(returnType=spark_schema)  # type: ignore[call-overload]
         def task_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
             pandas_ext.responses_model(model_name)
             cache = AsyncBatchingMapProxy[str, response_format](
@@ -424,13 +424,13 @@ def task_udf(
                     )
                     yield pd.DataFrame(predictions.map(_safe_dump).tolist())
             finally:
-                cache.clear()
+                asyncio.run(cache.clear())
 
-        return task_udf
+        return task_udf  # type: ignore[return-value]
 
     elif issubclass(task.response_format, str):
 
-        @pandas_udf(returnType=StringType())
+        @pandas_udf(returnType=StringType())  # type: ignore[call-overload]
         def task_string_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
             pandas_ext.responses_model(model_name)
             cache = AsyncBatchingMapProxy[str, str](
@@ -451,9 +451,9 @@ def task_udf(
                     )
                     yield predictions.map(_safe_cast_str)
             finally:
-                cache.clear()
+                asyncio.run(cache.clear())
 
-        return task_string_udf
+        return task_string_udf  # type: ignore[return-value]
 
     else:
         raise ValueError(f"Unsupported response_format in task: {task.response_format}")
@@ -511,7 +511,7 @@ def embeddings_udf(
         - Use larger batch_size for embeddings compared to response generation
     """
 
-    @pandas_udf(returnType=ArrayType(FloatType()))
+    @pandas_udf(returnType=ArrayType(FloatType()))  # type: ignore[call-overload,misc]
     def _embeddings_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
         pandas_ext.embeddings_model(model_name)
         cache = AsyncBatchingMapProxy[str, np.ndarray](
@@ -524,9 +524,9 @@ def embeddings_udf(
                 embeddings: pd.Series = asyncio.run(part.aio.embeddings_with_cache(cache=cache))
                 yield embeddings.map(lambda x: x.tolist())
         finally:
-            cache.clear()
+            asyncio.run(cache.clear())
 
-    return _embeddings_udf
+    return _embeddings_udf  # type: ignore[return-value]
 
 
 def split_to_chunks_udf(max_tokens: int, sep: List[str]) -> UserDefinedFunction:
@@ -541,7 +541,7 @@ def split_to_chunks_udf(max_tokens: int, sep: List[str]) -> UserDefinedFunction:
             values are lists of chunks respecting the ``max_tokens`` limit.
     """
 
-    @pandas_udf(ArrayType(StringType()))
+    @pandas_udf(ArrayType(StringType()))  # type: ignore[call-overload,misc]
     def fn(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
         encoding = tiktoken.get_encoding("o200k_base")
         chunker = TextChunker(encoding)
@@ -549,7 +549,7 @@ def split_to_chunks_udf(max_tokens: int, sep: List[str]) -> UserDefinedFunction:
         for part in col:
             yield part.map(lambda x: chunker.split(x, max_tokens=max_tokens, sep=sep) if isinstance(x, str) else [])
 
-    return fn
+    return fn  # type: ignore[return-value]
 
 
 def count_tokens_udf() -> UserDefinedFunction:
@@ -562,18 +562,18 @@ def count_tokens_udf() -> UserDefinedFunction:
         A pandas UDF producing an ``IntegerType`` column with token counts.
     """
 
-    @pandas_udf(IntegerType())
+    @pandas_udf(IntegerType())  # type: ignore[call-overload]
     def fn(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
         encoding = tiktoken.get_encoding("o200k_base")
 
         for part in col:
             yield part.map(lambda x: len(encoding.encode(x)) if isinstance(x, str) else 0)
 
-    return fn
+    return fn  # type: ignore[return-value]
 
 
 def similarity_udf() -> UserDefinedFunction:
-    @pandas_udf(FloatType())
+    @pandas_udf(FloatType())  # type: ignore[call-overload]
     def fn(a: pd.Series, b: pd.Series) -> pd.Series:
         """Compute cosine similarity between two vectors.
 
@@ -589,4 +589,4 @@ def similarity_udf() -> UserDefinedFunction:
 
         return pd.DataFrame({"a": a, "b": b}).ai.similarity("a", "b")
 
-    return fn
+    return fn  # type: ignore[return-value]

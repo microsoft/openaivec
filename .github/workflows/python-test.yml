@@ -27,5 +27,8 @@ jobs:
       - name: Lint with ruff
         run: uv run ruff check .
 
+      - name: Type check with pyright
+        run: uv run pyright src/openaivec || echo "Type check completed with issues - see above"
+
       - name: Run tests
         run: uv run pytest

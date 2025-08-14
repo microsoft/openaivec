@@ -157,8 +157,8 @@ class AsyncBatchEmbeddings:
             cache=AsyncBatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency),
         )
 
-    @observe(_LOGGER)
     @backoff_async(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
+    @observe(_LOGGER)
     async def _embed_chunk(self, inputs: List[str]) -> List[NDArray[np.float32]]:
         """Embed one minibatch of strings asynchronously.
 
@@ -188,4 +188,4 @@ class AsyncBatchEmbeddings:
         Returns:
             List[NDArray[np.float32]]: Embedding vectors aligned to ``inputs``.
         """
-        return await self.cache.map(inputs, self._embed_chunk)
+        return await self.cache.map(inputs, self._embed_chunk)  # type: ignore[arg-type]

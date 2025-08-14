@@ -96,7 +96,7 @@ Example:
     ```
 """
 
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal
 
 from pydantic import BaseModel, Field
 
@@ -127,28 +127,28 @@ class UrgencyAnalysis(BaseModel):
 
 
 def urgency_analysis(
-    urgency_levels: Optional[Dict[str, str]] = None,
-    response_times: Optional[Dict[str, str]] = None,
-    customer_tiers: Optional[Dict[str, str]] = None,
-    escalation_rules: Optional[Dict[str, str]] = None,
-    urgency_keywords: Optional[Dict[str, List[str]]] = None,
+    urgency_levels: Dict[str, str] | None = None,
+    response_times: Dict[str, str] | None = None,
+    customer_tiers: Dict[str, str] | None = None,
+    escalation_rules: Dict[str, str] | None = None,
+    urgency_keywords: Dict[str, List[str]] | None = None,
     business_context: str = "general customer support",
     business_hours: str = "24/7 support",
-    sla_rules: Optional[Dict[str, str]] = None,
+    sla_rules: Dict[str, str] | None = None,
     temperature: float = 0.0,
     top_p: float = 1.0,
 ) -> PreparedTask:
     """Create a configurable urgency analysis task.
 
     Args:
-        urgency_levels (Optional[Dict[str, str]]): Dictionary mapping urgency levels to descriptions.
-        response_times (Optional[Dict[str, str]]): Dictionary mapping urgency levels to response times.
-        customer_tiers (Optional[Dict[str, str]]): Dictionary mapping tier names to descriptions.
-        escalation_rules (Optional[Dict[str, str]]): Dictionary mapping conditions to escalation actions.
-        urgency_keywords (Optional[Dict[str, List[str]]]): Dictionary mapping urgency levels to indicator keywords.
+        urgency_levels (Dict[str, str] | None): Dictionary mapping urgency levels to descriptions.
+        response_times (Dict[str, str] | None): Dictionary mapping urgency levels to response times.
+        customer_tiers (Dict[str, str] | None): Dictionary mapping tier names to descriptions.
+        escalation_rules (Dict[str, str] | None): Dictionary mapping conditions to escalation actions.
+        urgency_keywords (Dict[str, List[str]] | None): Dictionary mapping urgency levels to indicator keywords.
         business_context (str): Description of the business context.
         business_hours (str): Description of business hours for response time calculation.
-        sla_rules (Optional[Dict[str, str]]): Dictionary mapping customer tiers to SLA requirements.
+        sla_rules (Dict[str, str] | None): Dictionary mapping customer tiers to SLA requirements.
         temperature (float): Sampling temperature (0.0-1.0).
         top_p (float): Nucleus sampling parameter (0.0-1.0).
 

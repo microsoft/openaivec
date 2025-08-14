@@ -82,7 +82,7 @@ def backoff(
 
         return wrapper
 
-    return decorator
+    return decorator  # type: ignore[return-value]
 
 
 def backoff_async(
@@ -134,7 +134,7 @@ def backoff_async(
 
         return wrapper
 
-    return decorator
+    return decorator  # type: ignore[return-value]
 
 
 @dataclass(frozen=True)

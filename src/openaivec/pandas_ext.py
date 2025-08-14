@@ -42,7 +42,7 @@ to easily interact with OpenAI APIs for tasks like generating responses or embed
 import inspect
 import json
 import logging
-from typing import Any, Awaitable, Callable, List, Type, TypeVar
+from typing import Awaitable, Callable, List, Type, TypeVar
 
 import numpy as np
 import pandas as pd
@@ -268,7 +268,7 @@ class OpenAIVecSeriesAccessor:
 
     def task_with_cache(
         self,
-        task: PreparedTask,
+        task: PreparedTask[ResponseFormat],
         cache: BatchingMapProxy[str, ResponseFormat],
     ) -> pd.Series:
         """Execute a prepared task on every Series element using a provided cache.
@@ -730,7 +730,7 @@ class OpenAIVecDataFrameAccessor:
         return self._obj.apply(
             lambda row: np.dot(row[col1], row[col2]) / (np.linalg.norm(row[col1]) * np.linalg.norm(row[col2])),
             axis=1,
-        ).rename("similarity")
+        ).rename("similarity")  # type: ignore[arg-type]
 
 
 @pd.api.extensions.register_series_accessor("aio")
@@ -855,7 +855,7 @@ class AsyncOpenAIVecSeriesAccessor:
 
     async def task_with_cache(
         self,
-        task: PreparedTask,
+        task: PreparedTask[ResponseFormat],
         cache: AsyncBatchingMapProxy[str, ResponseFormat],
     ) -> pd.Series:
         """Execute a prepared task on every Series element using a provided cache (asynchronously).
@@ -1304,7 +1304,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         else:
             return result
 
-    async def assign(self, **kwargs: Any) -> pd.DataFrame:
+    async def assign(self, **kwargs) -> pd.DataFrame:
         """Asynchronously assign new columns to the DataFrame, evaluating sequentially.
 
         This method extends pandas' `assign` method by supporting asynchronous
@@ -1339,7 +1339,7 @@ class AsyncOpenAIVecDataFrameAccessor:
             ```
 
         Args:
-            **kwargs: Any. Column names as keys and either static values or callables
+            **kwargs: Column names as keys and either static values or callables
                 (synchronous or asynchronous) as values.
 
         Returns:

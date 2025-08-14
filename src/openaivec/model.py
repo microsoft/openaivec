@@ -1,13 +1,11 @@
 from dataclasses import dataclass
-from typing import Type, TypeVar
+from typing import Generic, Type, TypeVar
 
-from pydantic import BaseModel
-
-ResponseFormat = TypeVar("ResponseFormat", bound=BaseModel | str)
+ResponseFormat = TypeVar("ResponseFormat")
 
 
 @dataclass(frozen=True)
-class PreparedTask:
+class PreparedTask(Generic[ResponseFormat]):
     """A data class representing a complete task configuration for OpenAI API calls.
 
     This class encapsulates all the necessary parameters for executing a task,
@@ -84,10 +82,10 @@ class OpenAIAPIKey:
     """Container for OpenAI API key configuration.
 
     Attributes:
-        value (str): The API key for OpenAI services.
+        value (str | None): The API key for OpenAI services.
     """
 
-    value: str
+    value: str | None
 
 
 @dataclass(frozen=True)
@@ -95,10 +93,10 @@ class AzureOpenAIAPIKey:
     """Container for Azure OpenAI API key configuration.
 
     Attributes:
-        value (str): The API key for Azure OpenAI services.
+        value (str | None): The API key for Azure OpenAI services.
     """
 
-    value: str
+    value: str | None
 
 
 @dataclass(frozen=True)
@@ -106,10 +104,10 @@ class AzureOpenAIBaseURL:
     """Container for Azure OpenAI base URL configuration.
 
     Attributes:
-        value (str): The base URL for Azure OpenAI services.
+        value (str | None): The base URL for Azure OpenAI services.
     """
 
-    value: str
+    value: str | None
 
 
 @dataclass(frozen=True)

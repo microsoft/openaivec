@@ -50,7 +50,7 @@ Attributes:
         top_p=1.0 for deterministic output.
 """
 
-from typing import List, Optional
+from typing import List
 
 from pydantic import BaseModel, Field
 
@@ -63,7 +63,7 @@ class Keyword(BaseModel):
     text: str = Field(description="The keyword or phrase")
     score: float = Field(description="Importance score (0.0-1.0)")
     frequency: int = Field(description="Frequency of occurrence in the text")
-    context: Optional[str] = Field(description="Context where the keyword appears")
+    context: str | None = Field(description="Context where the keyword appears")
 
 
 class KeywordExtraction(BaseModel):

@@ -165,7 +165,7 @@ class BatchResponses(Generic[ResponseFormat]):
     system_message: str
     temperature: float | None = 0.0
     top_p: float = 1.0
-    response_format: Type[ResponseFormat] = str
+    response_format: Type[ResponseFormat] = str  # type: ignore[assignment]
     cache: BatchingMapProxy[str, ResponseFormat] = field(default_factory=lambda: BatchingMapProxy(batch_size=None))
     _vectorized_system_message: str = field(init=False)
     _model_json_schema: dict = field(init=False)
@@ -208,7 +208,7 @@ class BatchResponses(Generic[ResponseFormat]):
 
     @classmethod
     def of_task(
-        cls, client: OpenAI, model_name: str, task: PreparedTask, batch_size: int | None = None
+        cls, client: OpenAI, model_name: str, task: PreparedTask[ResponseFormat], batch_size: int | None = None
     ) -> "BatchResponses":
         """Factory from a PreparedTask.
 
@@ -298,8 +298,10 @@ class BatchResponses(Generic[ResponseFormat]):
         """
         messages = [Message(id=i, body=message) for i, message in enumerate(user_messages)]
         responses: ParsedResponse[Response[ResponseFormat]] = self._request_llm(messages)
+        if not responses.output_parsed:
+            return [None] * len(messages)
         response_dict = {message.id: message.body for message in responses.output_parsed.assistant_messages}
-        sorted_responses = [response_dict.get(m.id, None) for m in messages]
+        sorted_responses: List[ResponseFormat | None] = [response_dict.get(m.id, None) for m in messages]
         return sorted_responses
 
     @observe(_LOGGER)
@@ -312,7 +314,8 @@ class BatchResponses(Generic[ResponseFormat]):
         Returns:
             List[ResponseFormat | None]: Assistant responses aligned to ``inputs``.
         """
-        return self.cache.map(inputs, self._predict_chunk)
+        result = self.cache.map(inputs, self._predict_chunk)
+        return result  # type: ignore[return-value]
 
 
 @dataclass(frozen=True)
@@ -366,7 +369,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
     system_message: str
     temperature: float | None = 0.0
     top_p: float = 1.0
-    response_format: Type[ResponseFormat] = str
+    response_format: Type[ResponseFormat] = str  # type: ignore[assignment]
     cache: AsyncBatchingMapProxy[str, ResponseFormat] = field(
         default_factory=lambda: AsyncBatchingMapProxy(batch_size=None, max_concurrency=8)
     )
@@ -416,7 +419,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         cls,
         client: AsyncOpenAI,
         model_name: str,
-        task: PreparedTask,
+        task: PreparedTask[ResponseFormat],
         batch_size: int | None = None,
         max_concurrency: int = 8,
     ) -> "AsyncBatchResponses":
@@ -450,8 +453,8 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             _vectorize_system_message(self.system_message),
         )
 
-    @observe(_LOGGER)
     @backoff_async(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
+    @observe(_LOGGER)
     async def _request_llm(self, user_messages: List[Message[str]]) -> ParsedResponse[Response[ResponseFormat]]:
         """Make a single async call to the OpenAI JSON‑mode endpoint.
 
@@ -504,10 +507,12 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         The function is pure – it has no side‑effects and the result depends only on its arguments.
         """
         messages = [Message(id=i, body=message) for i, message in enumerate(user_messages)]
-        responses: ParsedResponse[Response[ResponseFormat]] = await self._request_llm(messages)
+        responses: ParsedResponse[Response[ResponseFormat]] = await self._request_llm(messages)  # type: ignore[call-issue]
+        if not responses.output_parsed:
+            return [None] * len(messages)
         response_dict = {message.id: message.body for message in responses.output_parsed.assistant_messages}
         # Ensure proper handling for missing IDs - this shouldn't happen in normal operation
-        sorted_responses = [response_dict.get(m.id, None) for m in messages]
+        sorted_responses: List[ResponseFormat | None] = [response_dict.get(m.id, None) for m in messages]
         return sorted_responses
 
     @observe(_LOGGER)
@@ -520,4 +525,5 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         Returns:
             List[ResponseFormat | None]: Assistant responses aligned to ``inputs``.
         """
-        return await self.cache.map(inputs, self._predict_chunk)
+        result = await self.cache.map(inputs, self._predict_chunk)
+        return result  # type: ignore[return-value]

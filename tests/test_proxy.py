@@ -173,8 +173,8 @@ def test_internal_acquire_ownership():
     p = BatchingMapProxy[int, int]()
     # Cache 1; mark 2 inflight; 3 is missing
     p.map([1], lambda xs: xs)
-    inflight = getattr(p, "_BatchingMapProxy__inflight")
-    lock = getattr(p, "_BatchingMapProxy__lock")
+    inflight = getattr(p, "_inflight")
+    lock = getattr(p, "_lock")
     with lock:
         inflight[2] = threading.Event()
     acquire = getattr(p, "_BatchingMapProxy__acquire_ownership")
@@ -189,9 +189,9 @@ def test_internal_finalize_success_and_failure():
     from openaivec.proxy import BatchingMapProxy
 
     p = BatchingMapProxy[int, int]()
-    inflight = getattr(p, "_BatchingMapProxy__inflight")
-    cache = getattr(p, "_BatchingMapProxy__cache")
-    lock = getattr(p, "_BatchingMapProxy__lock")
+    inflight = getattr(p, "_inflight")
+    cache = getattr(p, "_cache")
+    lock = getattr(p, "_lock")
     finalize_success = getattr(p, "_BatchingMapProxy__finalize_success")
     finalize_failure = getattr(p, "_BatchingMapProxy__finalize_failure")
 
@@ -229,7 +229,7 @@ def test_internal_process_owned_batches_and_skip_cached():
     # Reset call log to focus on process_owned invocations
     calls.clear()
     process_owned = getattr(p, "_BatchingMapProxy__process_owned")
-    cache = getattr(p, "_BatchingMapProxy__cache")
+    cache = getattr(p, "_cache")
 
     process_owned([0, 1, 2, 3, 4], mf)
     assert calls[0] == [0, 1]
@@ -250,9 +250,9 @@ def test_internal_wait_for_with_inflight_event():
     def mf(xs: list[int]) -> list[int]:
         return [x * 10 for x in xs]
 
-    inflight = getattr(p, "_BatchingMapProxy__inflight")
-    cache = getattr(p, "_BatchingMapProxy__cache")
-    lock = getattr(p, "_BatchingMapProxy__lock")
+    inflight = getattr(p, "_inflight")
+    cache = getattr(p, "_cache")
+    lock = getattr(p, "_lock")
     wait_for = getattr(p, "_BatchingMapProxy__wait_for")
 
     keys = [100, 200]

@@ -92,7 +92,7 @@ Example:
     ```
 """
 
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal
 
 from pydantic import BaseModel, Field
 
@@ -114,25 +114,25 @@ class InquiryClassification(BaseModel):
 
 
 def inquiry_classification(
-    categories: Optional[Dict[str, List[str]]] = None,
-    routing_rules: Optional[Dict[str, str]] = None,
-    priority_rules: Optional[Dict[str, str]] = None,
+    categories: Dict[str, List[str]] | None = None,
+    routing_rules: Dict[str, str] | None = None,
+    priority_rules: Dict[str, str] | None = None,
     business_context: str = "general customer support",
-    custom_keywords: Optional[Dict[str, List[str]]] = None,
+    custom_keywords: Dict[str, List[str]] | None = None,
     temperature: float = 0.0,
     top_p: float = 1.0,
 ) -> PreparedTask:
     """Create a configurable inquiry classification task.
 
     Args:
-        categories (Optional[Dict[str, List[str]]]): Dictionary mapping category names to lists of subcategories.
+        categories (Dict[str, List[str]] | None): Dictionary mapping category names to lists of subcategories.
             Default provides standard support categories.
-        routing_rules (Optional[Dict[str, str]]): Dictionary mapping categories to routing destinations.
+        routing_rules (Dict[str, str] | None): Dictionary mapping categories to routing destinations.
             Default provides standard routing options.
-        priority_rules (Optional[Dict[str, str]]): Dictionary mapping keywords/patterns to priority levels.
+        priority_rules (Dict[str, str] | None): Dictionary mapping keywords/patterns to priority levels.
             Default uses standard priority indicators.
         business_context (str): Description of the business context to help with classification.
-        custom_keywords (Optional[Dict[str, List[str]]]): Dictionary mapping categories to relevant keywords.
+        custom_keywords (Dict[str, List[str]] | None): Dictionary mapping categories to relevant keywords.
         temperature (float): Sampling temperature (0.0-1.0).
         top_p (float): Nucleus sampling parameter (0.0-1.0).
 
