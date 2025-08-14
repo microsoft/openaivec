@@ -48,7 +48,7 @@ Attributes:
         top_p=1.0 for deterministic output.
 """
 
-from typing import List, Optional
+from typing import List
 
 from pydantic import BaseModel, Field
 
@@ -62,7 +62,7 @@ class NamedEntity(BaseModel):
     label: str = Field(description="Entity type label")
     start: int = Field(description="Start position in the original text")
     end: int = Field(description="End position in the original text")
-    confidence: Optional[float] = Field(description="Confidence score (0.0-1.0)")
+    confidence: float | None = Field(description="Confidence score (0.0-1.0)")
 
 
 class NamedEntityRecognition(BaseModel):

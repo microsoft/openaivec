@@ -1,13 +1,11 @@
 from dataclasses import dataclass
-from typing import Type, TypeVar
+from typing import Generic, Type, TypeVar
 
-from pydantic import BaseModel
-
-ResponseFormat = TypeVar("ResponseFormat", bound=BaseModel | str)
+ResponseFormat = TypeVar("ResponseFormat")
 
 
 @dataclass(frozen=True)
-class PreparedTask:
+class PreparedTask(Generic[ResponseFormat]):
     """A data class representing a complete task configuration for OpenAI API calls.
 
     This class encapsulates all the necessary parameters for executing a task,

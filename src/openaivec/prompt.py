@@ -44,7 +44,7 @@ this will produce an XML string that looks like this:
 
 import difflib
 import logging
-from typing import Any, List
+from typing import List
 from xml.etree import ElementTree
 
 from openai import OpenAI
@@ -459,8 +459,9 @@ class FewShotPromptBuilder:
         self._steps = [Step(id=0, analysis="Original Prompt", prompt=self._prompt)]
 
         # add the histories
-        for step in response.output_parsed.iterations:
-            self._steps.append(step)
+        if response.output_parsed:
+            for step in response.output_parsed.iterations:
+                self._steps.append(step)
 
         # set the final prompt
         self._prompt = self._steps[-1].prompt
@@ -522,11 +523,13 @@ class FewShotPromptBuilder:
         self._validate()
         return self.build_xml()
 
-    def build_json(self, **kwargs: Any) -> str:
+    def build_json(self, **kwargs) -> str:
         """Build and return the prompt as a JSON string.
 
         Args:
-            **kwargs: Keyword arguments forwarded to ``model_dump_json``.
+            **kwargs: Keyword arguments forwarded to Pydantic's ``model_dump_json``.
+                Common options include ``indent``, ``include``, ``exclude``,
+                ``by_alias``, ``exclude_unset``, ``exclude_defaults``, ``exclude_none``.
 
         Returns:
             str: JSON representation of the prompt.
