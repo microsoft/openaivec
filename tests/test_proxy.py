@@ -6,7 +6,7 @@ from typing import List
 
 import pytest
 
-from openaivec.proxy import AsyncBatchingMapProxy, BatchingMapProxy
+from openaivec._proxy import AsyncBatchingMapProxy, BatchingMapProxy
 
 
 def test_batching_map_proxy_batches_calls_by_batch_size():
@@ -116,7 +116,7 @@ def test_batching_map_proxy_rechecks_cache_within_batch_iteration():
 
 
 def test_batching_map_proxy_map_func_length_mismatch_raises_and_releases():
-    from openaivec.proxy import BatchingMapProxy
+    from openaivec._proxy import BatchingMapProxy
 
     p = BatchingMapProxy[int, int](batch_size=3)
 
@@ -135,14 +135,14 @@ def test_batching_map_proxy_map_func_length_mismatch_raises_and_releases():
 
 # -------------------- Internal methods tests --------------------
 def test_internal_unique_in_order():
-    from openaivec.proxy import BatchingMapProxy
+    from openaivec._proxy import BatchingMapProxy
 
     p = BatchingMapProxy[int, int]()
     assert p._unique_in_order([1, 1, 2, 3, 2, 4]) == [1, 2, 3, 4]
 
 
 def test_internal_normalized_batch_size():
-    from openaivec.proxy import BatchingMapProxy
+    from openaivec._proxy import BatchingMapProxy
 
     p = BatchingMapProxy[int, int]()
     assert p._normalized_batch_size(5) == 5  # default None => total
@@ -153,7 +153,7 @@ def test_internal_normalized_batch_size():
 
 
 def test_internal_all_cached_and_values():
-    from openaivec.proxy import BatchingMapProxy
+    from openaivec._proxy import BatchingMapProxy
 
     p = BatchingMapProxy[int, int]()
     # fill cache via public API
@@ -168,7 +168,7 @@ def test_internal_all_cached_and_values():
 def test_internal_acquire_ownership():
     import threading
 
-    from openaivec.proxy import BatchingMapProxy
+    from openaivec._proxy import BatchingMapProxy
 
     p = BatchingMapProxy[int, int]()
     # Cache 1; mark 2 inflight; 3 is missing
@@ -186,7 +186,7 @@ def test_internal_acquire_ownership():
 def test_internal_finalize_success_and_failure():
     import threading
 
-    from openaivec.proxy import BatchingMapProxy
+    from openaivec._proxy import BatchingMapProxy
 
     p = BatchingMapProxy[int, int]()
     inflight = getattr(p, "_inflight")
@@ -215,7 +215,7 @@ def test_internal_finalize_success_and_failure():
 
 
 def test_internal_process_owned_batches_and_skip_cached():
-    from openaivec.proxy import BatchingMapProxy
+    from openaivec._proxy import BatchingMapProxy
 
     calls: list[list[int]] = []
 
@@ -243,7 +243,7 @@ def test_internal_wait_for_with_inflight_event():
     import threading
     import time
 
-    from openaivec.proxy import BatchingMapProxy
+    from openaivec._proxy import BatchingMapProxy
 
     p = BatchingMapProxy[int, int]()
 
@@ -285,7 +285,7 @@ async def _afunc_echo(xs: list[int]) -> list[int]:
 
 
 def test_async_localproxy_basic(event_loop=None):
-    from openaivec.proxy import AsyncBatchingMapProxy
+    from openaivec._proxy import AsyncBatchingMapProxy
 
     calls: list[list[int]] = []
 
@@ -305,7 +305,7 @@ def test_async_localproxy_basic(event_loop=None):
 
 
 def test_async_localproxy_dedup_and_cache(event_loop=None):
-    from openaivec.proxy import AsyncBatchingMapProxy
+    from openaivec._proxy import AsyncBatchingMapProxy
 
     calls: list[list[int]] = []
 
@@ -327,7 +327,7 @@ def test_async_localproxy_dedup_and_cache(event_loop=None):
 
 
 def test_async_localproxy_concurrent_requests(event_loop=None):
-    from openaivec.proxy import AsyncBatchingMapProxy
+    from openaivec._proxy import AsyncBatchingMapProxy
 
     calls: list[list[int]] = []
 
@@ -356,7 +356,7 @@ def test_async_localproxy_concurrent_requests(event_loop=None):
 
 
 def test_async_localproxy_max_concurrency_limit(event_loop=None):
-    from openaivec.proxy import AsyncBatchingMapProxy
+    from openaivec._proxy import AsyncBatchingMapProxy
 
     current = 0
     peak = 0
@@ -384,7 +384,7 @@ def test_async_localproxy_max_concurrency_limit(event_loop=None):
 
 
 def test_async_localproxy_map_func_length_mismatch_raises_and_releases(event_loop=None):
-    from openaivec.proxy import AsyncBatchingMapProxy
+    from openaivec._proxy import AsyncBatchingMapProxy
 
     async def bad(xs: list[int]) -> list[int]:
         return xs[:-1]
@@ -427,7 +427,7 @@ def test_sync_clear_releases_memory_and_recomputes():
 
 def test_batch_size_maximization_with_cache_hits():
     """Test that batch_size is maximized even when some items are cached."""
-    from openaivec.proxy import BatchingMapProxy
+    from openaivec._proxy import BatchingMapProxy
 
     calls: list[list[int]] = []
 
@@ -459,7 +459,7 @@ def test_batch_size_maximization_with_cache_hits():
 
 def test_batch_size_maximization_complex_scenario():
     """Test batch_size maximization with more complex cache hit patterns."""
-    from openaivec.proxy import BatchingMapProxy
+    from openaivec._proxy import BatchingMapProxy
 
     calls: list[list[int]] = []
 
@@ -514,7 +514,7 @@ async def test_async_clear_releases_memory_and_recomputes():
 @pytest.mark.asyncio
 async def test_async_batch_size_maximization_with_cache_hits():
     """Test that batch_size is maximized even when some items are cached (async version)."""
-    from openaivec.proxy import AsyncBatchingMapProxy
+    from openaivec._proxy import AsyncBatchingMapProxy
 
     calls: list[list[int]] = []
 
@@ -548,7 +548,7 @@ async def test_async_batch_size_maximization_with_cache_hits():
 @pytest.mark.asyncio
 async def test_async_batch_size_maximization_complex_scenario():
     """Test batch_size maximization with more complex cache hit patterns (async version)."""
-    from openaivec.proxy import AsyncBatchingMapProxy
+    from openaivec._proxy import AsyncBatchingMapProxy
 
     calls: list[list[int]] = []
 
@@ -585,7 +585,7 @@ async def test_async_batch_size_maximization_complex_scenario():
 
 def test_notebook_environment_detection():
     """Test notebook environment detection functionality."""
-    from openaivec.proxy import ProxyBase
+    from openaivec._proxy import ProxyBase
 
     proxy = ProxyBase()
     # The method should return a boolean and not raise an exception
@@ -595,7 +595,7 @@ def test_notebook_environment_detection():
 
 def test_progress_bar_methods():
     """Test progress bar creation and management methods."""
-    from openaivec.proxy import ProxyBase
+    from openaivec._proxy import ProxyBase
 
     proxy = ProxyBase()
     proxy.show_progress = True
@@ -678,7 +678,7 @@ async def test_async_batching_proxy_with_progress_enabled():
 
 def test_progress_bar_with_forced_notebook_environment():
     """Test progress bar functionality with forced notebook environment."""
-    from openaivec.proxy import ProxyBase
+    from openaivec._proxy import ProxyBase
 
     # Monkey patch the notebook detection to return True
     original_method = ProxyBase._is_notebook_environment
@@ -708,7 +708,7 @@ def test_progress_bar_with_forced_notebook_environment():
 @pytest.mark.asyncio
 async def test_async_progress_bar_with_forced_notebook_environment():
     """Test async progress bar functionality with forced notebook environment."""
-    from openaivec.proxy import ProxyBase
+    from openaivec._proxy import ProxyBase
 
     # Monkey patch the notebook detection to return True
     original_method = ProxyBase._is_notebook_environment

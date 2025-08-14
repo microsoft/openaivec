@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from pyspark.sql.session import SparkSession
 from pyspark.sql.types import ArrayType, FloatType, IntegerType, StringType, StructField, StructType
 
-from openaivec.model import PreparedTask
+from openaivec._model import PreparedTask
 from openaivec.spark import (
     _pydantic_to_spark_schema,
     count_tokens_udf,

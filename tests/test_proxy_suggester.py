@@ -5,7 +5,7 @@ from typing import List
 
 import pytest
 
-from openaivec.proxy import AsyncBatchingMapProxy, BatchingMapProxy
+from openaivec._proxy import AsyncBatchingMapProxy, BatchingMapProxy
 
 
 def test_sync_proxy_uses_suggester_when_batch_size_none():

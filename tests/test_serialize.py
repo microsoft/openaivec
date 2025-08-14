@@ -4,7 +4,7 @@ from unittest import TestCase
 
 from pydantic import BaseModel, Field
 
-from openaivec.serialize import deserialize_base_model, serialize_base_model
+from openaivec._serialize import deserialize_base_model, serialize_base_model
 
 
 class Gender(str, Enum):

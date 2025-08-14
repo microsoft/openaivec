@@ -7,10 +7,10 @@ from openai import AsyncOpenAI, BadRequestError, InternalServerError, OpenAI, Ra
 from openai.types.responses import ParsedResponse
 from pydantic import BaseModel
 
-from openaivec.log import observe
-from openaivec.model import PreparedTask, ResponseFormat
-from openaivec.proxy import AsyncBatchingMapProxy, BatchingMapProxy
-from openaivec.util import backoff, backoff_async
+from openaivec._log import observe
+from openaivec._model import PreparedTask, ResponseFormat
+from openaivec._proxy import AsyncBatchingMapProxy, BatchingMapProxy
+from openaivec._util import backoff, backoff_async
 
 __all__ = [
     "BatchResponses",

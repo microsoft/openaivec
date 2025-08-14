@@ -4,7 +4,7 @@ import unittest
 from openai import OpenAI
 from pydantic import BaseModel
 
-from openaivec.prompt import FewShotPromptBuilder
+from openaivec._prompt import FewShotPromptBuilder
 
 logging.basicConfig(level=logging.INFO, force=True)
 

@@ -7,7 +7,7 @@ from openai import AsyncOpenAI, OpenAI
 from pydantic import BaseModel
 
 from openaivec import BatchResponses
-from openaivec.responses import AsyncBatchResponses
+from openaivec._responses import AsyncBatchResponses
 
 _h: Handler = StreamHandler()
 

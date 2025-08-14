@@ -6,9 +6,9 @@ import numpy as np
 from numpy.typing import NDArray
 from openai import AsyncOpenAI, InternalServerError, OpenAI, RateLimitError
 
-from openaivec.log import observe
-from openaivec.proxy import AsyncBatchingMapProxy, BatchingMapProxy
-from openaivec.util import backoff, backoff_async
+from openaivec._log import observe
+from openaivec._proxy import AsyncBatchingMapProxy, BatchingMapProxy
+from openaivec._util import backoff, backoff_async
 
 __all__ = [
     "BatchEmbeddings",

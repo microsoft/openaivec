@@ -57,11 +57,11 @@ __all__ = [
 ]
 from pydantic import BaseModel
 
-from openaivec.embeddings import AsyncBatchEmbeddings, BatchEmbeddings
-from openaivec.model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
-from openaivec.provider import CONTAINER, _check_azure_v1_api_url
-from openaivec.proxy import AsyncBatchingMapProxy, BatchingMapProxy
-from openaivec.responses import AsyncBatchResponses, BatchResponses
+from openaivec._embeddings import AsyncBatchEmbeddings, BatchEmbeddings
+from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
+from openaivec._provider import CONTAINER, _check_azure_v1_api_url
+from openaivec._proxy import AsyncBatchingMapProxy, BatchingMapProxy
+from openaivec._responses import AsyncBatchResponses, BatchResponses
 from openaivec.task.table import FillNaResponse, fillna
 
 __all__ = [

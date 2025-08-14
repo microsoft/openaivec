@@ -3,7 +3,7 @@ from typing import List
 
 import pytest
 
-from openaivec.di import CircularDependencyError, Container, ProviderError
+from openaivec._di import CircularDependencyError, Container, ProviderError
 
 
 class ServiceA:

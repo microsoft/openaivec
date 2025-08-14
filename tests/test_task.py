@@ -3,7 +3,7 @@ from dataclasses import FrozenInstanceError
 
 from pydantic import BaseModel, Field
 
-from openaivec.model import PreparedTask
+from openaivec._model import PreparedTask
 from openaivec.task.nlp import MULTILINGUAL_TRANSLATION
 from openaivec.task.nlp.translation import TranslatedString
 

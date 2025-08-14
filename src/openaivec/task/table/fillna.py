@@ -33,7 +33,7 @@ Example:
 
     ```python
     from openai import OpenAI
-    from openaivec.responses import BatchResponses
+    from openaivec._responses import BatchResponses
     from openaivec.task.table import fillna
 
     client = OpenAI()
@@ -70,8 +70,8 @@ from typing import Dict, List
 import pandas as pd
 from pydantic import BaseModel, Field
 
-from openaivec.model import PreparedTask
-from openaivec.prompt import FewShotPromptBuilder
+from openaivec._model import PreparedTask
+from openaivec._prompt import FewShotPromptBuilder
 
 __all__ = ["fillna", "FillNaResponse"]
 
