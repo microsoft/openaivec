@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 from openai import AsyncOpenAI
 
-from openaivec.embeddings import AsyncBatchEmbeddings
+from openaivec._embeddings import AsyncBatchEmbeddings
 
 
 @unittest.skipIf(not os.getenv("OPENAI_API_KEY"), "OPENAI_API_KEY not set in environment")

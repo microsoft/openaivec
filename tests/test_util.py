@@ -4,7 +4,7 @@ from unittest import TestCase
 
 import tiktoken
 
-from openaivec.util import TextChunker, backoff, backoff_async
+from openaivec._util import TextChunker, backoff, backoff_async
 
 
 class TestTextChunker(TestCase):

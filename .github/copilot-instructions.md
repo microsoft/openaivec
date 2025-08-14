@@ -13,37 +13,40 @@ This repository-wide guide tells GitHub Copilot how to propose code that fits ou
 
 ## Architecture and roles
 
-- `src/openaivec/proxy.py`
+- `src/openaivec/_proxy.py` (internal)
   - Core batching, deduplication, order preservation, and caching
   - `BatchingMapProxy[S, T]` (sync) / `AsyncBatchingMapProxy[S, T]` (async)
   - The map_func contract is strict: return a list of the same length and order as the inputs
   - Progress bars only in notebook environments via `tqdm.auto`, gated by `show_progress=True`
-- `src/openaivec/responses.py`
+- `src/openaivec/_responses.py` (internal)
   - Batched wrapper over OpenAI Responses JSON-mode API
   - `BatchResponses` / `AsyncBatchResponses` use the proxy internally
   - Retries via `backoff`/`backoff_async` for transient errors (RateLimit, 5xx)
   - Reasoning models (o1/o3 family) must use `temperature=None`; helpful guidance on errors
-- `src/openaivec/embeddings.py`
+- `src/openaivec/_embeddings.py` (internal)
   - Batched embeddings (sync/async)
-- `src/openaivec/pandas_ext.py`
+- `src/openaivec/pandas_ext.py` (public)
   - `Series.ai` / `Series.aio` entry points for responses/embeddings
-  - Uses DI container (`provider.CONTAINER`) to get client and model names
+  - Uses DI container (`_provider.CONTAINER`) to get client and model names
   - Supports batch size, progress, and cache sharing (`*_with_cache`)
-- `src/openaivec/spark.py`
+- `src/openaivec/spark.py` (public)
   - UDF builders: `responses_udf` / `task_udf` / `embeddings_udf` / `count_tokens_udf` / `split_to_chunks_udf`
   - Per-partition duplicate caching to reduce API calls
   - Pydantic → Spark StructType schema conversion
-- `src/openaivec/provider.py`
+- `src/openaivec/_provider.py` (internal)
   - DI container and automatic OpenAI/Azure OpenAI client provisioning
-  - Warns if Azure base URL isn’t v1 format
-- `src/openaivec/util.py`
+  - Warns if Azure base URL isn't v1 format
+- `src/openaivec/_util.py` (internal)
   - `backoff` / `backoff_async` and `TextChunker`
-- Additional modules from CLAUDE.md
-  - `src/openaivec/di.py`: lightweight DI container
-  - `src/openaivec/log.py`: logging/observe helpers
-  - `src/openaivec/prompt.py`: few-shot prompt building
-  - `src/openaivec/serialize.py`: Pydantic schema (de)serialization
-  - `src/openaivec/task/`: pre-built, structured task library
+- Additional internal modules
+  - `src/openaivec/_di.py`: lightweight DI container
+  - `src/openaivec/_log.py`: logging/observe helpers
+  - `src/openaivec/_prompt.py`: few-shot prompt building
+  - `src/openaivec/_serialize.py`: Pydantic schema (de)serialization
+  - `src/openaivec/_model.py`: task configuration models
+  - `src/openaivec/_optimize.py`: performance optimization
+- `src/openaivec/task/` (public)
+  - Pre-built, structured task library
 
 ## Dev commands (uv)
 
@@ -76,17 +79,17 @@ uv run mkdocs serve
 
 ## API contracts and critical rules
 
-- Proxy (BatchingMapProxy / AsyncBatchingMapProxy)
+- Proxy (`_proxy.py` - BatchingMapProxy / AsyncBatchingMapProxy)
   - map_func must return a list with the same length and order as inputs; on mismatch, release events and raise ValueError
   - Inputs are de-duplicated while preserving first-occurrence order; outputs are restored to the original order
   - Progress is only shown in notebooks when `show_progress=True`
   - Async version enforces `max_concurrency` via `asyncio.Semaphore`
-- Responses
+- Responses (`_responses.py`)
   - Use OpenAI Responses JSON mode (`responses.parse`)
   - For reasoning models (o1/o3 families), you MUST set `temperature=None`; helpful error messaging is built-in
   - Strongly prefer structured outputs with Pydantic models
   - Retries with exponential backoff for RateLimit/5xx
-- Embeddings
+- Embeddings (`_embeddings.py`)
   - Return NumPy float32 arrays
 - pandas extensions
   - `.ai.responses` / `.ai.embeddings` strictly preserve Series index and length
@@ -97,9 +100,9 @@ uv run mkdocs serve
   - Convert Pydantic models to Spark schemas; treat Enum/Literal as strings
   - Reasoning models require `temperature=None`
   - Provide token counting and text chunking helpers
-- Provider/DI and Azure
+- Provider/DI and Azure (`_provider.py` / `_di.py`)
   - Auto-detect OpenAI vs Azure OpenAI from env vars
-  - Azure requires v1 base URL (warn otherwise) and uses deployment name as the “model”
+  - Azure requires v1 base URL (warn otherwise) and uses deployment name as the "model"
 
 ## Preferred patterns (Do) and Avoid (Don’t)
 
@@ -141,20 +144,26 @@ Don’t
 ## Package Visibility Guidelines (`__all__`)
 
 ### Public API Modules
-These modules are part of the public API and should have comprehensive `__all__` declarations:
+These modules are part of the public API and have appropriate `__all__` declarations:
 
-- `embeddings.py` - Batch embedding processing
-- `model.py` - Task configuration models  
-- `prompt.py` - Few-shot prompt building
-- `responses.py` - Batch response processing
-- `spark.py` - Apache Spark UDF builders
-- `pandas_ext.py` - Pandas DataFrame/Series extensions
+- `pandas_ext.py` - Pandas DataFrame/Series extensions with `.ai/.aio` accessors
+- `spark.py` - Apache Spark UDF builders for distributed processing
 - `task/*` - All task modules (NLP, customer support, table operations)
 
-### Internal Modules
-These modules are for internal use only and should have `__all__ = []`:
+### Internal Modules (underscore-prefixed)
+These modules are for internal use only and have `__all__ = []`:
 
-- All other modules not listed above (util.py, serialize.py, log.py, provider.py, proxy.py, di.py, optimize.py, etc.)
+- `_embeddings.py` - Batch embedding processing (internal implementation)
+- `_model.py` - Task configuration models (internal types)
+- `_prompt.py` - Few-shot prompt building (internal implementation)  
+- `_responses.py` - Batch response processing (internal implementation)
+- `_util.py`, `_serialize.py`, `_log.py`, `_provider.py`, `_proxy.py`, `_di.py`, `_optimize.py` - Internal utilities
+
+### Main Package API
+Users access core functionality through `__init__.py` exports:
+- `BatchResponses`, `AsyncBatchResponses`
+- `BatchEmbeddings`, `AsyncBatchEmbeddings` 
+- `PreparedTask`, `FewShotPromptBuilder`
 
 ### `__all__` Best Practices
 
@@ -202,7 +211,7 @@ These modules are for internal use only and should have `__all__ = []`:
 - pandas `.ai` with shared cache
 
   ```python
-  from openaivec.proxy import BatchingMapProxy
+  from openaivec._proxy import BatchingMapProxy
 
   shared = BatchingMapProxy[str, str](batch_size=64)
   df["text"].ai.responses_with_cache("instructions", cache=shared)

@@ -488,7 +488,7 @@ return rendered prompt with XML format.
 Here is an example:
 
 ```python
-from openaivec.prompt import FewShotPromptBuilder
+from openaivec import FewShotPromptBuilder
 
 prompt: str = (
     FewShotPromptBuilder()
@@ -551,7 +551,7 @@ Here is an example:
 
 ```python
 from openai import OpenAI
-from openaivec.prompt import FewShotPromptBuilder
+from openaivec import FewShotPromptBuilder
 
 client = OpenAI(...)
 model_name = "<your-model-name>"

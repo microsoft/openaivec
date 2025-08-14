@@ -32,7 +32,7 @@ Specialized tasks for customer service operations:
 ### Quick Start with Default Tasks
 ```python
 from openai import OpenAI
-from openaivec.responses import BatchResponses
+from openaivec._responses import BatchResponses
 from openaivec.task import nlp, customer_support
 
 client = OpenAI()

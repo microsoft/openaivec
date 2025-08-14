@@ -63,13 +63,9 @@ nav:
       - FAQ Generation: examples/generate_faq.ipynb
       - Token Count and Processing Time: examples/batch_size.ipynb
   - API Reference:
-      - di: api/di.md
+      - Main Package: api/main.md
       - pandas_ext: api/pandas_ext.md
       - spark: api/spark.md
-      - prompt: api/prompt.md
-      - util: api/util.md
-      - responses: api/responses.md
-      - embeddings: api/embeddings.md
       - task: api/task.md
   - Task Domains:
       - Natural Language Processing:

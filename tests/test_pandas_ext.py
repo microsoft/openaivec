@@ -352,7 +352,7 @@ class TestPandasExt(unittest.TestCase):
 
     def test_shared_cache_responses_sync(self):
         """Test that multiple Series instances can share the same cache for responses."""
-        from openaivec.proxy import BatchingMapProxy
+        from openaivec._proxy import BatchingMapProxy
 
         # Create a shared cache with custom batch size
         shared_cache = BatchingMapProxy(batch_size=32)
@@ -386,7 +386,7 @@ class TestPandasExt(unittest.TestCase):
         """Test that multiple Series instances can share the same cache for embeddings."""
         import numpy as np
 
-        from openaivec.proxy import BatchingMapProxy
+        from openaivec._proxy import BatchingMapProxy
 
         # Create a shared cache with custom batch size
         shared_cache = BatchingMapProxy(batch_size=32)
@@ -417,7 +417,7 @@ class TestPandasExt(unittest.TestCase):
 
     def test_shared_cache_dataframe_responses_sync(self):
         """Test that DataFrame instances can share the same cache for responses."""
-        from openaivec.proxy import BatchingMapProxy
+        from openaivec._proxy import BatchingMapProxy
 
         # Create a shared cache
         shared_cache = BatchingMapProxy(batch_size=32)
@@ -454,7 +454,7 @@ class TestPandasExt(unittest.TestCase):
 
     def test_shared_cache_responses_async(self):
         """Test that multiple async Series instances can share the same cache for responses."""
-        from openaivec.proxy import AsyncBatchingMapProxy
+        from openaivec._proxy import AsyncBatchingMapProxy
 
         async def run_test():
             # Create a shared cache with custom batch size
@@ -492,7 +492,7 @@ class TestPandasExt(unittest.TestCase):
         """Test that multiple async Series instances can share the same cache for embeddings."""
         import numpy as np
 
-        from openaivec.proxy import AsyncBatchingMapProxy
+        from openaivec._proxy import AsyncBatchingMapProxy
 
         async def run_test():
             # Create a shared cache with custom batch size
@@ -528,7 +528,7 @@ class TestPandasExt(unittest.TestCase):
 
     def test_shared_cache_dataframe_responses_async(self):
         """Test that async DataFrame instances can share the same cache for responses."""
-        from openaivec.proxy import AsyncBatchingMapProxy
+        from openaivec._proxy import AsyncBatchingMapProxy
 
         async def run_test():
             # Create a shared cache

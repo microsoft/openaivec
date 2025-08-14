@@ -13,7 +13,7 @@ Example:
 
     ```python
     from openai import OpenAI
-    from openaivec.responses import BatchResponses
+    from openaivec._responses import BatchResponses
     from openaivec.task import nlp
 
     client = OpenAI()
@@ -75,7 +75,7 @@ Note:
 from openai import BaseModel
 from pydantic import Field
 
-from openaivec.model import PreparedTask
+from openaivec._model import PreparedTask
 
 __all__ = ["MULTILINGUAL_TRANSLATION"]
 

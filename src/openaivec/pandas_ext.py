@@ -57,11 +57,11 @@ __all__ = [
 ]
 from pydantic import BaseModel
 
-from openaivec.embeddings import AsyncBatchEmbeddings, BatchEmbeddings
-from openaivec.model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
-from openaivec.provider import CONTAINER, _check_azure_v1_api_url
-from openaivec.proxy import AsyncBatchingMapProxy, BatchingMapProxy
-from openaivec.responses import AsyncBatchResponses, BatchResponses
+from openaivec._embeddings import AsyncBatchEmbeddings, BatchEmbeddings
+from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
+from openaivec._provider import CONTAINER, _check_azure_v1_api_url
+from openaivec._proxy import AsyncBatchingMapProxy, BatchingMapProxy
+from openaivec._responses import AsyncBatchResponses, BatchResponses
 from openaivec.task.table import FillNaResponse, fillna
 
 __all__ = [
@@ -199,7 +199,7 @@ class OpenAIVecSeriesAccessor:
 
         Example:
             ```python
-            from openaivec.proxy import BatchingMapProxy
+            from openaivec._proxy import BatchingMapProxy
             import numpy as np
 
             # Create a shared cache with custom batch size
@@ -297,8 +297,8 @@ class OpenAIVecSeriesAccessor:
 
         Example:
             ```python
-            from openaivec.model import PreparedTask
-            from openaivec.proxy import BatchingMapProxy
+            from openaivec._model import PreparedTask
+            from openaivec._proxy import BatchingMapProxy
 
             # Create a shared cache with custom batch size
             shared_cache = BatchingMapProxy(batch_size=64)
@@ -330,7 +330,7 @@ class OpenAIVecSeriesAccessor:
 
         Example:
             ```python
-            from openaivec.model import PreparedTask
+            from openaivec._model import PreparedTask
 
             # Assume you have a prepared task for sentiment analysis
             sentiment_task = PreparedTask(...)
@@ -517,7 +517,7 @@ class OpenAIVecDataFrameAccessor:
 
         Example:
             ```python
-            from openaivec.proxy import BatchingMapProxy
+            from openaivec._proxy import BatchingMapProxy
 
             # Create a shared cache with custom batch size
             shared_cache = BatchingMapProxy(batch_size=64)
@@ -614,7 +614,7 @@ class OpenAIVecDataFrameAccessor:
 
         Example:
             ```python
-            from openaivec.model import PreparedTask
+            from openaivec._model import PreparedTask
 
             # Assume you have a prepared task for data analysis
             analysis_task = PreparedTask(...)
@@ -777,7 +777,7 @@ class AsyncOpenAIVecSeriesAccessor:
 
         Example:
             ```python
-            from openaivec.proxy import AsyncBatchingMapProxy
+            from openaivec._proxy import AsyncBatchingMapProxy
 
             # Create a shared cache with custom batch size and concurrency
             shared_cache = AsyncBatchingMapProxy(batch_size=64, max_concurrency=4)
@@ -829,7 +829,7 @@ class AsyncOpenAIVecSeriesAccessor:
 
         Example:
             ```python
-            from openaivec.proxy import AsyncBatchingMapProxy
+            from openaivec._proxy import AsyncBatchingMapProxy
             import numpy as np
 
             # Create a shared cache with custom batch size and concurrency
@@ -885,8 +885,8 @@ class AsyncOpenAIVecSeriesAccessor:
 
         Example:
             ```python
-            from openaivec.model import PreparedTask
-            from openaivec.proxy import AsyncBatchingMapProxy
+            from openaivec._model import PreparedTask
+            from openaivec._proxy import AsyncBatchingMapProxy
 
             # Create a shared cache with custom batch size and concurrency
             shared_cache = AsyncBatchingMapProxy(batch_size=64, max_concurrency=4)
@@ -1034,7 +1034,7 @@ class AsyncOpenAIVecSeriesAccessor:
 
         Example:
             ```python
-            from openaivec.model import PreparedTask
+            from openaivec._model import PreparedTask
 
             # Assume you have a prepared task for sentiment analysis
             sentiment_task = PreparedTask(...)
@@ -1117,7 +1117,7 @@ class AsyncOpenAIVecDataFrameAccessor:
 
         Example:
             ```python
-            from openaivec.proxy import AsyncBatchingMapProxy
+            from openaivec._proxy import AsyncBatchingMapProxy
 
             # Create a shared cache with custom batch size and concurrency
             shared_cache = AsyncBatchingMapProxy(batch_size=64, max_concurrency=4)
@@ -1231,7 +1231,7 @@ class AsyncOpenAIVecDataFrameAccessor:
 
         Example:
             ```python
-            from openaivec.model import PreparedTask
+            from openaivec._model import PreparedTask
 
             # Assume you have a prepared task for data analysis
             analysis_task = PreparedTask(...)

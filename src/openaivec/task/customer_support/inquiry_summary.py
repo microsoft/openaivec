@@ -9,7 +9,7 @@ Example:
 
     ```python
     from openai import OpenAI
-    from openaivec.responses import BatchResponses
+    from openaivec._responses import BatchResponses
     from openaivec.task import customer_support
 
     client = OpenAI()
@@ -63,7 +63,7 @@ from typing import List, Literal
 
 from pydantic import BaseModel, Field
 
-from openaivec.model import PreparedTask
+from openaivec._model import PreparedTask
 
 __all__ = ["inquiry_summary"]
 

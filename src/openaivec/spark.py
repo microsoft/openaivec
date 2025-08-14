@@ -136,10 +136,10 @@ from pyspark.sql.udf import UserDefinedFunction
 from typing_extensions import Literal
 
 from openaivec import pandas_ext
-from openaivec.model import PreparedTask, ResponseFormat
-from openaivec.proxy import AsyncBatchingMapProxy
-from openaivec.serialize import deserialize_base_model, serialize_base_model
-from openaivec.util import TextChunker
+from openaivec._model import PreparedTask, ResponseFormat
+from openaivec._proxy import AsyncBatchingMapProxy
+from openaivec._serialize import deserialize_base_model, serialize_base_model
+from openaivec._util import TextChunker
 
 __all__ = [
     "responses_udf",

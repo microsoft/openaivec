@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from openaivec.optimize import BatchSizeSuggester, PerformanceMetric
+from openaivec._optimize import BatchSizeSuggester, PerformanceMetric
 
 
 class TestPerformanceMetric:
@@ -161,7 +161,7 @@ class TestBatchSizeSuggester:
                 time.sleep(0.001)
 
         # Simulate batch size change
-        with patch("openaivec.optimize.datetime") as mock_datetime:
+        with patch("openaivec._optimize.datetime") as mock_datetime:
             change_time = datetime.now(timezone.utc)
             mock_datetime.now.return_value = change_time
             suggester._batch_size_changed_at = change_time
