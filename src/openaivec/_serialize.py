@@ -17,18 +17,33 @@ def serialize_base_model(obj: Type[BaseModel]) -> Dict[str, Any]:
 
 
 def dereference_json_schema(json_schema: Dict[str, Any]) -> Dict[str, Any]:
-    """Dereference JSON schema by resolving $ref pointers."""
+    """Dereference JSON schema by resolving $ref pointers with circular reference protection."""
     model_map = json_schema.get("$defs", {})
 
-    def dereference(obj):
+    def dereference(obj, current_path=None):
+        if current_path is None:
+            current_path = []
+
         if isinstance(obj, dict):
             if "$ref" in obj:
                 ref = obj["$ref"].split("/")[-1]
-                return dereference(model_map[ref])
+
+                # Check for circular reference
+                if ref in current_path:
+                    # Return a placeholder to break the cycle
+                    return {"type": "object", "description": f"Circular reference to {ref}"}
+
+                if ref in model_map:
+                    # Add to path and recurse
+                    new_path = current_path + [ref]
+                    return dereference(model_map[ref], new_path)
+                else:
+                    # Invalid reference, return placeholder
+                    return {"type": "object", "description": f"Invalid reference to {ref}"}
             else:
-                return {k: dereference(v) for k, v in obj.items()}
+                return {k: dereference(v, current_path) for k, v in obj.items()}
         elif isinstance(obj, list):
-            return [dereference(x) for x in obj]
+            return [dereference(x, current_path) for x in obj]
         else:
             return obj
 
@@ -60,9 +75,9 @@ def _resolve_union_type(union_options: List[Dict[str, Any]]) -> Type:
     elif len(union_types) == 2 and type(None) in union_types:
         # Optional type: T | None
         non_none_type = next(t for t in union_types if t is not type(None))
-        return Union[non_none_type, type(None)]
+        return Union[non_none_type, type(None)]  # type: ignore[return-value]
     else:
-        return Union[tuple(union_types)]
+        return Union[tuple(union_types)]  # type: ignore[return-value]
 
 
 def _resolve_basic_type(type_name: str, field_def: Dict[str, Any]) -> Type:
@@ -76,7 +91,7 @@ def _resolve_basic_type(type_name: str, field_def: Dict[str, Any]) -> Type:
     }
 
     if type_name in type_mapping:
-        return type_mapping[type_name]
+        return type_mapping[type_name]  # type: ignore[return-value]
     elif type_name == "object":
         # Check if it's a nested model or generic dict
         if "properties" in field_def:
@@ -106,7 +121,7 @@ def parse_field(field_def: Dict[str, Any]) -> Type:
 
     # Handle basic types
     if "type" not in field_def:
-        return Any
+        return Any  # type: ignore[return-value]
 
     return _resolve_basic_type(field_def["type"], field_def)
 
@@ -116,7 +131,7 @@ def parse_field(field_def: Dict[str, Any]) -> Type:
 # ============================================================================
 
 
-def _create_field_info(description: str | None, default_value: Any, is_required: bool) -> Field:
+def _create_field_info(description: str | None, default_value: Any, is_required: bool) -> Field:  # type: ignore[type-arg]
     """Create Field info with consistent logic."""
     if is_required and default_value is None:
         # Required field without default
@@ -136,7 +151,7 @@ def _make_optional_if_needed(field_type: Type, is_required: bool, has_default: b
         return field_type
 
     # Make optional
-    return Union[field_type, type(None)]
+    return Union[field_type, type(None)]  # type: ignore[return-value]
 
 
 # ============================================================================
@@ -144,7 +159,7 @@ def _make_optional_if_needed(field_type: Type, is_required: bool, has_default: b
 # ============================================================================
 
 
-def _process_enum_field(field_name: str, field_def: Dict[str, Any], is_required: bool) -> Tuple[Type, Field]:
+def _process_enum_field(field_name: str, field_def: Dict[str, Any], is_required: bool) -> Tuple[Type, Field]:  # type: ignore[type-arg]
     """Process enum field with Literal type."""
     enum_values = field_def["enum"]
 
@@ -160,14 +175,14 @@ def _process_enum_field(field_name: str, field_def: Dict[str, Any], is_required:
     has_default = default_value is not None
 
     if not is_required and not has_default:
-        literal_type = Union[literal_type, type(None)]
+        literal_type = Union[literal_type, type(None)]  # type: ignore[assignment]
         default_value = None
 
     field_info = _create_field_info(description, default_value, is_required)
-    return literal_type, field_info
+    return literal_type, field_info  # type: ignore[return-value]
 
 
-def _process_regular_field(field_name: str, field_def: Dict[str, Any], is_required: bool) -> Tuple[Type, Field]:
+def _process_regular_field(field_name: str, field_def: Dict[str, Any], is_required: bool) -> Tuple[Type, Field]:  # type: ignore[type-arg]
     """Process regular (non-enum) field."""
     field_type = parse_field(field_def)
     description = field_def.get("description")
