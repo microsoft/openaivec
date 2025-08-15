@@ -1,31 +1,10 @@
-"""Serialization utilities for Pydantic BaseModel classes.
+"""Refactored serialization utilities for Pydantic BaseModel classes.
 
 This module provides utilities for converting Pydantic BaseModel classes
-to and from JSON schema representations. It supports dynamic model creation
-from JSON schemas with special handling for enum fields, which are converted
-to Literal types for better type safety and compatibility.
-
-Example:
-    Basic serialization and deserialization:
-
-    ```python
-    from pydantic import BaseModel
-    from typing import Literal
-
-    class Status(BaseModel):
-        value: Literal["active", "inactive"]
-        description: str
-
-    # Serialize to JSON schema
-    schema = serialize_base_model(Status)
-
-    # Deserialize back to BaseModel class
-    DynamicStatus = deserialize_base_model(schema)
-    instance = DynamicStatus(value="active", description="User is active")
-    ```
+to and from JSON schema representations with simplified, maintainable code.
 """
 
-from typing import Any, Dict, List, Literal, Type
+from typing import Any, Dict, List, Literal, Tuple, Type, Union
 
 from pydantic import BaseModel, Field, create_model
 
@@ -33,54 +12,12 @@ __all__ = []
 
 
 def serialize_base_model(obj: Type[BaseModel]) -> Dict[str, Any]:
-    """Serialize a Pydantic BaseModel to JSON schema.
-
-    Args:
-        obj (Type[BaseModel]): The Pydantic BaseModel class to serialize.
-
-    Returns:
-        A dictionary containing the JSON schema representation of the model.
-
-    Example:
-        ```python
-        from pydantic import BaseModel
-
-        class Person(BaseModel):
-            name: str
-            age: int
-
-        schema = serialize_base_model(Person)
-        ```
-    """
+    """Serialize a Pydantic BaseModel to JSON schema."""
     return obj.model_json_schema()
 
 
 def dereference_json_schema(json_schema: Dict[str, Any]) -> Dict[str, Any]:
-    """Dereference JSON schema by resolving $ref pointers.
-
-    This function resolves all $ref references in a JSON schema by replacing
-    them with the actual referenced definitions from the $defs section.
-
-    Args:
-        json_schema (Dict[str, Any]): The JSON schema containing potential $ref references.
-
-    Returns:
-        A dereferenced JSON schema with all $ref pointers resolved.
-
-    Example:
-        ```python
-        schema = {
-            "properties": {
-                "user": {"$ref": "#/$defs/User"}
-            },
-            "$defs": {
-                "User": {"type": "object", "properties": {"name": {"type": "string"}}}
-            }
-        }
-        dereferenced = dereference_json_schema(schema)
-        # user property will contain the actual User definition
-        ```
-    """
+    """Dereference JSON schema by resolving $ref pointers."""
     model_map = json_schema.get("$defs", {})
 
     def dereference(obj):
@@ -90,7 +27,6 @@ def dereference_json_schema(json_schema: Dict[str, Any]) -> Dict[str, Any]:
                 return dereference(model_map[ref])
             else:
                 return {k: dereference(v) for k, v in obj.items()}
-
         elif isinstance(obj, list):
             return [dereference(x) for x in obj]
         else:
@@ -100,134 +36,180 @@ def dereference_json_schema(json_schema: Dict[str, Any]) -> Dict[str, Any]:
     for k, v in json_schema.items():
         if k == "$defs":
             continue
-
         result[k] = dereference(v)
 
     return result
 
 
-def parse_field(v: Dict[str, Any]) -> Any:
-    """Parse a JSON schema field definition to a Python type.
+# ============================================================================
+# Type Resolution - Separated into focused functions
+# ============================================================================
 
-    Converts JSON schema field definitions to corresponding Python types
-    for use in Pydantic model creation.
 
-    Args:
-        v (Dict[str, Any]): A dictionary containing the JSON schema field definition.
+def _resolve_union_type(union_options: List[Dict[str, Any]]) -> Type:
+    """Resolve anyOf/oneOf to Union type."""
+    union_types = []
+    for option in union_options:
+        if option.get("type") == "null":
+            union_types.append(type(None))
+        else:
+            union_types.append(parse_field(option))
 
-    Returns:
-        The corresponding Python type (str, int, float, bool, dict, List, or BaseModel).
+    if len(union_types) == 1:
+        return union_types[0]
+    elif len(union_types) == 2 and type(None) in union_types:
+        # Optional type: T | None
+        non_none_type = next(t for t in union_types if t is not type(None))
+        return Union[non_none_type, type(None)]
+    else:
+        return Union[tuple(union_types)]
 
-    Raises:
-        ValueError: If the field type is not supported.
 
-    Example:
-        ```python
-        field_def = {"type": "string"}
-        python_type = parse_field(field_def)  # Returns str
+def _resolve_basic_type(type_name: str, field_def: Dict[str, Any]) -> Type:
+    """Resolve basic JSON schema types to Python types."""
+    type_mapping = {
+        "string": str,
+        "integer": int,
+        "number": float,
+        "boolean": bool,
+        "null": type(None),
+    }
 
-        array_def = {"type": "array", "items": {"type": "integer"}}
-        python_type = parse_field(array_def)  # Returns List[int]
-        ```
-    """
-    t = v["type"]
-    if t == "string":
-        return str
-    elif t == "integer":
-        return int
-    elif t == "number":
-        return float
-    elif t == "boolean":
-        return bool
-    elif t == "object":
-        # Check if it's a generic object (dict) or a nested model
-        if "properties" in v:
-            return deserialize_base_model(v)
+    if type_name in type_mapping:
+        return type_mapping[type_name]
+    elif type_name == "object":
+        # Check if it's a nested model or generic dict
+        if "properties" in field_def:
+            return deserialize_base_model(field_def)
         else:
             return dict
-    elif t == "array":
-        inner_type = parse_field(v["items"])
-        return List[inner_type]
+    elif type_name == "array":
+        if "items" in field_def:
+            inner_type = parse_field(field_def["items"])
+            return List[inner_type]
+        else:
+            return List[Any]
     else:
-        raise ValueError(f"Unsupported type: {t}")
+        raise ValueError(f"Unsupported type: {type_name}")
+
+
+def parse_field(field_def: Dict[str, Any]) -> Type:
+    """Parse a JSON schema field definition to a Python type.
+
+    Simplified version with clear separation of concerns.
+    """
+    # Handle union types
+    if "anyOf" in field_def:
+        return _resolve_union_type(field_def["anyOf"])
+    if "oneOf" in field_def:
+        return _resolve_union_type(field_def["oneOf"])
+
+    # Handle basic types
+    if "type" not in field_def:
+        return Any
+
+    return _resolve_basic_type(field_def["type"], field_def)
+
+
+# ============================================================================
+# Field Information Creation - Centralized logic
+# ============================================================================
+
+
+def _create_field_info(description: str | None, default_value: Any, is_required: bool) -> Field:
+    """Create Field info with consistent logic."""
+    if is_required and default_value is None:
+        # Required field without default
+        return Field(description=description) if description else Field()
+    else:
+        # Optional field or field with default
+        return Field(default=default_value, description=description) if description else Field(default=default_value)
+
+
+def _make_optional_if_needed(field_type: Type, is_required: bool, has_default: bool) -> Type:
+    """Make field type optional if needed."""
+    if is_required or has_default:
+        return field_type
+
+    # Check if already nullable
+    if hasattr(field_type, "__origin__") and field_type.__origin__ is Union and type(None) in field_type.__args__:
+        return field_type
+
+    # Make optional
+    return Union[field_type, type(None)]
+
+
+# ============================================================================
+# Field Processing - Separated enum and regular field logic
+# ============================================================================
+
+
+def _process_enum_field(field_name: str, field_def: Dict[str, Any], is_required: bool) -> Tuple[Type, Field]:
+    """Process enum field with Literal type."""
+    enum_values = field_def["enum"]
+
+    # Create Literal type
+    if len(enum_values) == 1:
+        literal_type = Literal[enum_values[0]]
+    else:
+        literal_type = Literal[tuple(enum_values)]
+
+    # Handle optionality
+    description = field_def.get("description")
+    default_value = field_def.get("default")
+    has_default = default_value is not None
+
+    if not is_required and not has_default:
+        literal_type = Union[literal_type, type(None)]
+        default_value = None
+
+    field_info = _create_field_info(description, default_value, is_required)
+    return literal_type, field_info
+
+
+def _process_regular_field(field_name: str, field_def: Dict[str, Any], is_required: bool) -> Tuple[Type, Field]:
+    """Process regular (non-enum) field."""
+    field_type = parse_field(field_def)
+    description = field_def.get("description")
+    default_value = field_def.get("default")
+    has_default = default_value is not None
+
+    # Handle optionality
+    field_type = _make_optional_if_needed(field_type, is_required, has_default)
+
+    if not is_required and not has_default:
+        default_value = None
+
+    field_info = _create_field_info(description, default_value, is_required)
+    return field_type, field_info
+
+
+# ============================================================================
+# Main Schema Processing - Clean and focused
+# ============================================================================
 
 
 def deserialize_base_model(json_schema: Dict[str, Any]) -> Type[BaseModel]:
     """Deserialize a JSON schema to a Pydantic BaseModel class.
 
-    Creates a dynamic Pydantic BaseModel class from a JSON schema definition.
-    For enum fields, this function uses Literal types instead of Enum classes
-    for better type safety and compatibility with systems like Apache Spark.
-
-    Args:
-        json_schema (Dict[str, Any]): A dictionary containing the JSON schema definition.
-
-    Returns:
-        A dynamically created Pydantic BaseModel class.
-
-    Example:
-        ```python
-        schema = {
-            "title": "Person",
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Person's name"},
-                "status": {
-                    "type": "string",
-                    "enum": ["active", "inactive"],
-                    "description": "Person's status"
-                }
-            }
-        }
-
-        PersonModel = deserialize_base_model(schema)
-        person = PersonModel(name="John", status="active")
-        ```
-
-    Note:
-        Enum fields are converted to Literal types for improved compatibility
-        and type safety. This ensures better integration with data processing
-        frameworks like Apache Spark.
+    Refactored version with clear separation of concerns and simplified logic.
     """
+    # Basic setup
+    title = json_schema.get("title", "DynamicModel")
+    dereferenced_schema = dereference_json_schema(json_schema)
+    properties = dereferenced_schema.get("properties", {})
+    required_fields = set(dereferenced_schema.get("required", []))
+
+    # Process each field
     fields = {}
-    properties = dereference_json_schema(json_schema).get("properties", {})
+    for field_name, field_def in properties.items():
+        is_required = field_name in required_fields
 
-    for k, v in properties.items():
-        if "enum" in v:
-            enum_values = v["enum"]
-
-            # Always use Literal instead of Enum for better type safety and Spark compatibility
-            if len(enum_values) == 1:
-                literal_type = Literal[enum_values[0]]
-            else:
-                # Create Literal with multiple values
-                literal_type = Literal[tuple(enum_values)]
-
-            description = v.get("description")
-            default_value = v.get("default")
-
-            if default_value is not None:
-                field_info = (
-                    Field(default=default_value, description=description)
-                    if description is not None
-                    else Field(default=default_value)
-                )
-            else:
-                field_info = Field(description=description) if description is not None else Field()
-
-            fields[k] = (literal_type, field_info)
+        if "enum" in field_def:
+            field_type, field_info = _process_enum_field(field_name, field_def, is_required)
         else:
-            description = v.get("description")
-            default_value = v.get("default")
+            field_type, field_info = _process_regular_field(field_name, field_def, is_required)
 
-            if default_value is not None:
-                field_info = (
-                    Field(default=default_value, description=description)
-                    if description is not None
-                    else Field(default=default_value)
-                )
-            else:
-                field_info = Field(description=description) if description is not None else Field()
+        fields[field_name] = (field_type, field_info)
 
-            fields[k] = (parse_field(v), field_info)
-    return create_model(json_schema["title"], **fields)
+    return create_model(title, **fields)
