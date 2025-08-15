@@ -14,4 +14,6 @@ All core functionality is accessible through the main package imports:
 
 ::: openaivec.AsyncBatchEmbeddings
 
+## Prompt Building
+
 ::: openaivec.FewShotPromptBuilder

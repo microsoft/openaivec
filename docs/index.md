@@ -67,12 +67,10 @@ Get started with these comprehensive examples:
 
 Detailed documentation for all components:
 
+🔗 **[Main Package](api/main.md)** - Core classes (BatchResponses, BatchEmbeddings, FewShotPromptBuilder)  
 🔗 **[pandas_ext](api/pandas_ext.md)** - Pandas Series and DataFrame extensions  
 🔗 **[spark](api/spark.md)** - Apache Spark UDF builders  
-🔗 **[responses](api/responses.md)** - Batch response processing  
-🔗 **[embeddings](api/embeddings.md)** - Batch embedding generation  
-🔗 **[prompt](api/prompt.md)** - Few-shot prompt building  
-🔗 **[util](api/util.md)** - Utility functions and helpers
+🔗 **[task](api/task.md)** - Pre-built task modules for NLP and customer support
 
 ## Quick Start
 
