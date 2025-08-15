@@ -1,19 +1,16 @@
-import json
 from dataclasses import dataclass
-from json import JSONDecodeError
-from typing import Any, Dict, List, Literal, Optional, Type
+from enum import Enum
+from typing import List, Literal, Optional, Type
 
 from openai import OpenAI
 from openai.types.responses import ParsedResponse
-from pydantic import BaseModel, Field
-
-from openaivec._serialize import deserialize_base_model
+from pydantic import BaseModel, Field, create_model
 
 # Internal module: explicitly not part of public API
 __all__: list[str] = []
 
 
-class SuggestedField(BaseModel):
+class FieldSpec(BaseModel):
     name: str = Field(
         description=(
             "Lower snake_case identifier (regex: ^[a-z][a-z0-9_]*$). Must be unique across all fields and "
@@ -44,46 +41,38 @@ class SuggestedField(BaseModel):
     )
 
 
-class SuggestedSchema(BaseModel):
+class InferredSchema(BaseModel):
     purpose: str = Field(
         description=(
             "Normalized, unambiguous restatement of the user objective with redundant, vague, or "
             "conflicting phrasing removed."
         )
     )
-    example_data_description: str = Field(
+    examples_summary: str = Field(
         description=(
             "Objective characterization of the provided examples: content domain, structure, recurring "
             "patterns, and notable constraints."
         )
     )
-    suggested_schema: List[SuggestedField] = Field(
+    fields: List[FieldSpec] = Field(
         description=(
             "Ordered list of proposed fields derived strictly from observable, repeatable signals in the "
             "examples and aligned with the purpose."
         )
     )
-    json_schema_string: str = Field(
-        description=(
-            "JSON Schema (Draft 2020-12) as a string, following Pydantic v2 export conventions. Must "
-            "exactly reflect the fields in 'suggested_schema' (names, types) without adding, removing, or "
-            "renaming any field."
-        )
-    )
-    suggested_prompt: str = Field(
+    inference_prompt: str = Field(
         description=(
             "Canonical, reusable extraction prompt for structuring future inputs with this schema. "
-            "Must be fully derivable from 'purpose', 'example_data_description', and 'suggested_schema' "
-            "(no new unstated facts or speculation). It MUST: (1) instruct the model to output only the "
-            "listed fields with the exact names and primitive types; (2) forbid adding, removing, or "
-            "renaming fields; (3) avoid subjective or marketing language; (4) be self-contained (no TODOs, "
-            "no external references, no unresolved placeholders). Intended for direct reuse as the prompt "
-            "in an extraction phase to ensure deterministic alignment with 'json_schema_string'."
+            "Must be fully derivable from 'purpose', 'examples_summary', and 'fields' (no new unstated facts or "
+            "speculation). It MUST: (1) instruct the model to output only the listed fields with the exact names "
+            "and primitive types; (2) forbid adding, removing, or renaming fields; (3) avoid subjective or "
+            "marketing language; (4) be self-contained (no TODOs, no external references, no unresolved "
+            "placeholders). Intended for direct reuse as the prompt for deterministic alignment with 'fields'."
         )
     )
 
 
-class ExampleData(BaseModel):
+class SchemaInferenceInput(BaseModel):
     examples: List[str] = Field(
         description=(
             "Representative sample texts (strings). Provide only data the schema should generalize over; "
@@ -98,277 +87,170 @@ class ExampleData(BaseModel):
     )
 
 
-def _validate_consistency(parsed: SuggestedSchema, schema_dict: Dict[str, Any]) -> None:
-    """Validate that the machine schema matches the intermediate field proposal.
-
-    We enforce a strict 1:1 correspondence between ``suggested_schema`` entries and
-    the properties defined in ``json_schema_string`` to catch drift introduced by the
-    model during the final serialization step.
-    """
-
-    # Normalize schema first (tolerate common LLM deviations)
-    _normalize_schema(schema_dict)
-
-    props = schema_dict.get("properties")
-    if not isinstance(props, dict):  # Defensive; model must output object schema
-        raise ValueError("json_schema_string must define an object with 'properties'.")
-
-    suggested_names = [f.name for f in parsed.suggested_schema]
-    schema_names = list(props.keys())
-
-    if suggested_names != schema_names:
-        raise ValueError(
-            "Inconsistent field ordering or names between suggested_schema and json_schema_string: "
-            f"suggested={suggested_names} schema={schema_names}"
-        )
-
-    type_map = {"float": "number", "integer": "integer", "string": "string", "boolean": "boolean"}
-    for f in parsed.suggested_schema:
-        spec = props.get(f.name)
-        if not isinstance(spec, dict):
-            raise ValueError(f"Property '{f.name}' missing in json_schema_string.")
-        declared_type = spec.get("type")
-        expected_type = type_map[f.type]
-        # Tolerate 'float' as an alias for JSON Schema 'number'
-        if declared_type == "float" and expected_type == "number":
-            # Normalize in-place so downstream consumers see canonical form
-            spec["type"] = "number"
-            declared_type = "number"
-        if declared_type != expected_type:
-            raise ValueError(
-                f"Type mismatch for field '{f.name}': suggested '{f.type}' -> expected schema type "
-                f"'{expected_type}', got '{declared_type}'."
-            )
-        # Enum consistency (only allowed for string fields)
-        if f.enum_values is not None:
-            if f.type != "string":
-                raise ValueError(
-                    f"Field '{f.name}' supplies enum_values but type is '{f.type}' (only 'string' may define enum)."
-                )
-            schema_enum = spec.get("enum")
-            if not isinstance(schema_enum, list):
-                # Tolerant repair: inject missing enum array to align with suggested_schema
-                spec["enum"] = f.enum_values
-                schema_enum = f.enum_values
-            if schema_enum != f.enum_values:
-                raise ValueError(f"Field '{f.name}' enum mismatch: suggested {f.enum_values} schema {schema_enum}.")
-        else:
-            # If schema has enum but model omitted enum_values, allow (model may have inferred a closed set).
-            pass
-
-
-INSTRUCTIONS = """
+_INFER_INSTRUCTIONS = """
 You are a schema inference engine.
 
 Task:
-1. Normalize the user's purpose (remove ambiguity, redundancy, and contradictions).
-2. Objectively summarize the example data's observable structure and patterns.
-3. Propose a minimal, sufficient set of flat scalar fields (no nesting, arrays, or objects) that can be
-    reliably extracted.
-4. Avoid introducing a field if it would plausibly be missing for a significant portion of examples (~>20%).
-5. Where a field represents a small closed set of categorical labels (classification), infer an enum of
-    stable, distinct lowercase values (2–24). Do NOT invent categories not evidenced or strongly implied; omit
-    enum otherwise.
-6. If the purpose indicates a predictive task (mentions words like 'predict', 'probability', 'likelihood'), treat
-        the goal as feature engineering: propose explanatory (independent) features only. DO NOT create fields that
-        restate or trivially encode the prediction target itself (e.g., do not add 'attrition_probability', 'will_buy',
-        'purchase_likelihood'). Instead surface stable, textual signals that could help a downstream model.
-7. Produce a JSON Schema Draft 2020-12 (Pydantic v2 style) whose properties exactly correspond to the proposed fields.
+1. Normalize the user's purpose (eliminate ambiguity, redundancy, contradictions).
+2. Objectively summarize observable patterns in the example texts.
+3. Propose a minimal flat set of scalar fields (no nesting / arrays) that are reliably extractable.
+4. Skip fields likely missing in a large share (>~20%) of realistic inputs.
+5. Provide enum_values ONLY when a small stable closed categorical set (2–24 lowercase tokens)
+    is clearly evidenced; never invent.
+6. If the purpose indicates prediction (predict / probability / likelihood), output only
+    explanatory features (no target restatement).
 
 Rules:
-- Field names: lower snake_case; regex ^[a-z][a-z0-9_]*$; unique; no subjective adjectives.
-- Allowed types: string | integer | float | boolean.
-  * Use integer only if all observed numeric values are whole numbers.
-  * Use float if any numeric value may contain decimals or represents a score/ratio.
-  * Use boolean only when examples clearly encode a binary state (true/false or yes/no consistently).
-  * Otherwise use string.
-- Do not output arrays, objects, nested structures, or composite types.
-- Do not hallucinate fields not clearly inferable from examples + purpose.
-- Do not merge multiple independent concepts into one field.
-- The 'json_schema_string' must: (a) define an object type, (b) include a 'properties' object, (c) include
-    every field in suggested_schema in the same order, (d) not introduce additional properties.
-- Keep descriptions concise and objective; avoid marketing, emotion, or speculation.
-- For enum_values: only supply for string fields when the set is finite, closed, and small. Omit if open-ended.
-- Field definitions MUST NOT include implicit lists concatenated in strings (e.g. comma-separated lists)
-    to emulate arrays.
-- If uncertainty exists between two potential fields, prefer the single clearer, consistently extractable one.
-- For predictive/feature engineering purposes: exclude direct outcome labels or probabilities; focus on stable
-    precursors, signals, or attributes derivable from the text (e.g. 'expressed_sentiment', 'delivery_issue_type').
+- Names: lower snake_case, unique, regex ^[a-z][a-z0-9_]*$, no subjective adjectives.
+- Types: string | integer | float | boolean
+    * integer = all whole numbers
+    * float = any decimals / ratios
+    * boolean = explicit binary
+    * else use string
+- No arrays, objects, composite encodings, or merged multi-concept fields.
+- Descriptions: concise, objective extraction rules (no marketing/emotion/speculation).
+- enum_values only for string fields with stable closed vocab; omit otherwise.
+- Exclude direct outcome labels (e.g. attrition_probability, will_buy, purchase_likelihood)
+    in predictive / feature engineering contexts.
 
 Output contract:
-Return data strictly conforming to the Provided Pydantic model (SuggestedSchema). Do not add fields.
+Return exactly an InferredSchema object with JSON keys:
+    - purpose (string)
+    - examples_summary (string)
+    - fields (array of FieldSpec objects: name, type, description, enum_values?)
+    - inference_prompt (string)
 """.strip()
 
 
 @dataclass(frozen=True)
-class SchemaSuggester:
+class SchemaInferer:
     """Infer and materialize a dynamic Pydantic model from representative examples.
 
-    The class orchestrates a structured call to the OpenAI Responses API, requesting
-    an intermediate reasoning object (``SuggestedSchema``) plus a machine‑readable
-    JSON Schema. It then validates strict consistency between the intermediate
-    field proposal and the JSON Schema prior to constructing a concrete ``BaseModel``
-    subclass via dynamic deserialization.
+    The ordered list of ``FieldSpec`` instances (``InferredSchema.fields``) is the
+    single source of truth. No JSON Schema string is generated or validated.
 
     Attributes:
-        client (OpenAI): Instantiated OpenAI client used for the Responses API.
-        model_name (str): Model (or Azure deployment) identifier passed to the
-            Responses API.
+        client (OpenAI): OpenAI client used for Responses API structured parsing.
+        model_name (str): Model (or Azure deployment) identifier.
     """
 
     client: OpenAI
     model_name: str
 
-    def suggest_schema(self, data: ExampleData, *args, max_retries: int = 3, **kwargs) -> SuggestedSchema:
-        """Infer and return a validated ``SuggestedSchema`` object.
+    def infer_schema(self, data: "SchemaInferenceInput", *args, max_retries: int = 3, **kwargs) -> "InferredSchema":
+        """Infer and return an ``InferredSchema`` object.
 
         Args:
-            data (ExampleData): Representative example texts plus extraction purpose.
+            data (SchemaInferenceInput): Representative example texts plus extraction purpose.
             *args: Additional positional arguments forwarded to ``client.responses.parse``.
             max_retries (int): Maximum attempts to obtain a structurally consistent schema when
                 the model output fails validation. Must be >= 1.
             **kwargs: Additional keyword arguments forwarded to ``client.responses.parse``.
 
         Returns:
-            SuggestedSchema: Parsed structured schema proposal (purpose, data summary, field specs,
-            JSON Schema string, canonical extraction prompt) guaranteed to be internally consistent.
+            InferredSchema: Structured schema proposal (purpose, examples summary, field specs, inference prompt).
 
         Raises:
-            ValueError: If after ``max_retries`` attempts the JSON schema and intermediate field list still
-                differ in order, names, types, or enum specifications.
+            ValueError: If after retries the field list fails basic validation rules.
         """
         if max_retries < 1:
             raise ValueError("max_retries must be >= 1")
 
         last_err: Exception | None = None
-        for attempt in range(1, max_retries + 1):
-            response: ParsedResponse[SuggestedSchema] = self.client.responses.parse(
+        for attempt in range(max_retries):
+            response: ParsedResponse[InferredSchema] = self.client.responses.parse(
                 model=self.model_name,
-                instructions=INSTRUCTIONS,
+                instructions=_INFER_INSTRUCTIONS,
                 input=data.model_dump_json(),
-                text_format=SuggestedSchema,
+                text_format=InferredSchema,
                 *args,
                 **kwargs,
             )
-
             parsed = response.output_parsed
-            json_schema_dict = _load_lenient_json(parsed.json_schema_string)
-            # Apply normalization early so downstream validation and tests receive cleaned schema
-            _normalize_schema(json_schema_dict)
-            # Persist normalized form back onto the parsed object so callers see the cleaned schema
             try:
-                # Secondary normalization: convert any lingering 'float' primitive types to JSON Schema 'number'
-                props = json_schema_dict.get("properties")
-                if isinstance(props, dict):
-                    for _n, _spec in props.items():
-                        if isinstance(_spec, dict) and _spec.get("type") == "float":
-                            _spec["type"] = "number"
-                parsed.json_schema_string = json.dumps(json_schema_dict, ensure_ascii=False)
-            except Exception:
-                # Non-fatal; continue with validation using normalized dict
-                pass
-            try:
-                _validate_consistency(parsed, json_schema_dict)
-                return parsed
-            except ValueError as e:  # Structural mismatch; retry if attempts remain
+                _basic_field_list_validation(parsed)
+            except ValueError as e:
                 last_err = e
-                if attempt == max_retries:
+                if attempt == max_retries - 1:
                     raise
                 continue
-
-        # Defensive (loop should return or raise)
-        if last_err:
+            return parsed
+        if last_err:  # pragma: no cover
             raise last_err
-        raise RuntimeError("Schema inference failed unexpectedly without error context.")
+        raise RuntimeError("unreachable retry loop state")  # pragma: no cover
 
 
-def materialize_model(suggestion: SuggestedSchema) -> Type[BaseModel]:
-    """Construct a dynamic ``BaseModel`` subclass from a validated ``SuggestedSchema``.
+def build_model(suggestion: InferredSchema) -> Type[BaseModel]:
+    """Build a dynamic model (alias of ``materialize_model_simple``)."""
+    return materialize_model_simple(suggestion)
 
-    This is a convenience helper to turn the already consistency-checked JSON Schema string
-    into a concrete Pydantic model class for downstream parsing / validation tasks.
+
+def materialize_model_simple(suggestion: InferredSchema) -> Type[BaseModel]:
+    """Build a dynamic Pydantic model directly from the field list.
+
+    Rules:
+      - Primitive mapping: string->str, integer->int, float->float, boolean->bool
+      - If ``enum_values`` is present for a field, a dynamic Enum subclass is created; the
+        field type becomes that Enum.
+      - All fields are required (``...``) – adjust here if optional logic is introduced later.
 
     Args:
-        suggestion (SuggestedSchema): A schema suggestion returned by ``SchemaSuggester.suggest_schema``.
+        suggestion: Parsed ``InferredSchema`` (must already be internally consistent).
 
     Returns:
-        Type[BaseModel]: Dynamically created model type matching the suggestion.
+        A dynamically created ``BaseModel`` subclass representing the inferred schema.
     """
 
-    return deserialize_base_model(_load_lenient_json(suggestion.json_schema_string))
+    type_map: dict[str, type] = {"string": str, "integer": int, "float": float, "boolean": bool}
+    fields: dict[str, tuple[type, object]] = {}
+
+    for spec in suggestion.fields:
+        py_type: type
+        if spec.enum_values:
+            # Build a stable, sanitized Enum class name based on field name
+            enum_class_name = "Enum_" + "".join(part.capitalize() for part in spec.name.split("_"))
+            # Sanitize member names (uppercase, replace invalid chars with underscore)
+            members: dict[str, str] = {}
+            for raw in spec.enum_values:
+                sanitized = raw.upper().replace("-", "_").replace(" ", "_")
+                if not sanitized or sanitized[0].isdigit():
+                    sanitized = f"V_{sanitized}"
+                # Ensure uniqueness (very unlikely collisions, but guard anyway)
+                base = sanitized
+                i = 2
+                while sanitized in members:
+                    sanitized = f"{base}_{i}"
+                    i += 1
+                members[sanitized] = raw
+            enum_cls = Enum(enum_class_name, members)  # type: ignore[arg-type]
+            py_type = enum_cls
+        else:
+            py_type = type_map[spec.type]
+        fields[spec.name] = (py_type, ...)
+
+    model = create_model("InferredSchema", **fields)  # type: ignore[call-arg]
+    return model
 
 
-def _load_lenient_json(text: str) -> Dict[str, Any]:
-    """Attempt to parse JSON, tolerating trailing unmatched closing braces produced by LLMs.
-
-    Strategy: try normal json.loads; on Extra data error, use JSONDecoder.raw_decode to grab the first
-    complete JSON value and ensure the remainder contains only closing braces / whitespace. If so, accept
-    the first value; otherwise re-raise.
-    """
-
-    try:
-        return json.loads(text)
-    except JSONDecodeError:
-        # Heuristic: find the last position where braces are balanced and truncate there.
-        depth = 0
-        last_good_index = None
-        for i, ch in enumerate(text):
-            if ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    last_good_index = i + 1
-        if last_good_index is not None:
-            candidate = text[:last_good_index]
-            try:
-                obj = json.loads(candidate)
-                if not isinstance(obj, dict):
-                    raise ValueError("Top-level JSON schema must be an object")
-                return obj
-            except JSONDecodeError:
-                pass
-        # Fallback to original exception behavior
-        raise
+def _basic_field_list_validation(parsed: InferredSchema) -> None:
+    names = [f.name for f in parsed.fields]
+    if not names:
+        raise ValueError("no fields suggested")
+    if len(names) != len(set(names)):
+        raise ValueError("duplicate field names detected")
+    allowed = {"string", "integer", "float", "boolean"}
+    for f in parsed.fields:
+        if f.type not in allowed:
+            raise ValueError(f"unsupported field type: {f.type}")
+        if f.enum_values is not None:
+            if f.type != "string":
+                raise ValueError(f"enum_values only allowed for string field: {f.name}")
+            if not (2 <= len(f.enum_values) <= 24):
+                raise ValueError(f"enum_values length out of bounds for field {f.name}")
 
 
-def _normalize_schema(schema_dict: Dict[str, Any]) -> None:
-    """In-place normalization of common LLM schema quirks for consistency checking.
+def _generate_json_schema_from_fields(_parsed: InferredSchema) -> str:  # pragma: no cover
+    raise RuntimeError("json_schema export removed")
 
-    - Convert 'enum_values' -> 'enum' where appropriate
-    - Collapse optional patterns encoded as anyOf/oneOf [T, null] into a single 'type'
-    - Remove unknown keys that can cause noise (currently only pass-through)
-    """
 
-    props = schema_dict.get("properties")
-    if not isinstance(props, dict):
-        return
-    for name, spec in props.items():
-        if not isinstance(spec, dict):
-            continue
-        # enum_values -> enum
-        if "enum_values" in spec and "enum" not in spec:
-            ev = spec.get("enum_values")
-            if isinstance(ev, list) and all(isinstance(x, str) for x in ev):
-                spec["enum"] = ev
-            spec.pop("enum_values", None)
-        # anyOf optional pattern (allow rewriting even if 'type' present but ambiguous)
-        if "anyOf" in spec:
-            any_of = spec.get("anyOf")
-            if isinstance(any_of, list):
-                non_null = [x for x in any_of if isinstance(x, dict) and x.get("type") not in {None, "null"}]
-                if len(non_null) == 1 and isinstance(non_null[0], dict):
-                    candidate_type = non_null[0].get("type")
-                    if candidate_type in {"string", "integer", "number", "boolean"}:
-                        spec["type"] = candidate_type
-                        if "enum" in non_null[0] and "enum" not in spec:
-                            spec["enum"] = non_null[0]["enum"]
-                        spec.pop("anyOf", None)
-        # Final safeguard: if still no type but an anyOf with primitive + null exists, force collapse
-        if "type" not in spec and isinstance(spec.get("anyOf"), list):
-            primitives = [
-                x.get("type") for x in spec["anyOf"] if isinstance(x, dict) and x.get("type") not in {None, "null"}
-            ]
-            if len(primitives) == 1 and primitives[0] in {"string", "integer", "number", "boolean"}:
-                spec["type"] = primitives[0]
-                spec.pop("anyOf", None)
+__all__ = []
