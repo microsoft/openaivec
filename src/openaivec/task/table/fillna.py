@@ -79,7 +79,7 @@ __all__ = ["fillna", "FillNaResponse"]
 def get_examples(df: pd.DataFrame, target_column_name: str, max_examples: int) -> List[Dict]:
     examples: List[Dict] = []
 
-    samples: pd.DataFrame = df.sample(frac=1)
+    samples: pd.DataFrame = df.sample(frac=1).reset_index(drop=True).drop_duplicates()
     samples = samples.dropna(subset=[target_column_name])
 
     for i, row in samples.head(max_examples).iterrows():
@@ -109,7 +109,7 @@ def get_instructions(df: pd.DataFrame, target_column_name: str, max_examples: in
             output_value=json.dumps({"index": row["index"], "output": row["output"]}, ensure_ascii=False),
         )
 
-    return builder.build()
+    return builder.improve().build()
 
 
 class FillNaResponse(BaseModel):
