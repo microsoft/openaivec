@@ -72,7 +72,7 @@ survey_responses.assign(
 ).ai.extract("structured")  # Auto-expands to columns
 ```
 
-📓 **[See more examples →](https://microsoft.github.io/openaivec/examples/)**
+📓 **[See more examples →](https://microsoft.github.io/openaivec/examples/pandas/)**
 
 # Overview
 
@@ -720,7 +720,7 @@ uv run ruff check . --fix
 📓 **[Survey data transformation →](https://microsoft.github.io/openaivec/examples/survey_transformation/)** - Unstructured to structured data  
 📓 **[Asynchronous processing examples →](https://microsoft.github.io/openaivec/examples/aio/)** - High-performance async workflows  
 📓 **[Auto-generate FAQs from documents →](https://microsoft.github.io/openaivec/examples/generate_faq/)** - Create FAQs using AI  
-📓 **[All examples →](https://microsoft.github.io/openaivec/examples/)** - Complete collection of tutorials and use cases
+📓 **[All examples →](https://microsoft.github.io/openaivec/examples/pandas/)** - Complete collection of tutorials and use cases
 
 ## Community
 
