@@ -382,7 +382,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         client: AsyncOpenAI,
         model_name: str,
         system_message: str,
-        temperature: float | None = 0.0,
+        temperature: float | None = None,
         top_p: float = 1.0,
         response_format: Type[ResponseFormat] = str,
         batch_size: int | None = None,
