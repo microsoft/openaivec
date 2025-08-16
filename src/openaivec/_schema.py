@@ -71,6 +71,19 @@ class InferredSchema(BaseModel):
         )
     )
 
+    @classmethod
+    def load(cls, path: str) -> "InferredSchema":
+        """Load an inferred schema from a JSON file.
+
+        Args:
+            path (str): File path to load the schema JSON.
+
+        Returns:
+            InferredSchema: Loaded schema object.
+        """
+        with open(path, "r", encoding="utf-8") as f:
+            return cls.model_validate_json(f.read())
+
     @property
     def model(self) -> Type[BaseModel]:
         """Return the Pydantic model type for this inferred schema.
@@ -116,6 +129,15 @@ class InferredSchema(BaseModel):
 
         model = create_model("InferredSchema", **fields)  # type: ignore[call-arg]
         return model
+
+    def save(self, path: str) -> None:
+        """Save the inferred schema as a JSON file.
+
+        Args:
+            path (str): File path to save the schema JSON.
+        """
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(self.model_dump_json(indent=2))
 
 
 class SchemaInferenceInput(BaseModel):
