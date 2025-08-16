@@ -1,3 +1,52 @@
+"""Internal schema inference & dynamic model materialization utilities.
+
+This (non-public) module converts a small *representative* sample of free‑text
+examples plus a *purpose* statement into:
+
+1. A vetted, flat list of scalar field specifications (``FieldSpec``) that can
+    be *reliably* extracted across similar future inputs.
+2. A reusable, self‑contained extraction prompt (``inference_prompt``) that
+    freezes the agreed schema contract (no additions / renames / omissions).
+3. A dynamically generated Pydantic model whose fields mirror the inferred
+    schema, enabling immediate typed parsing with the OpenAI Responses API.
+4. A ``PreparedTask`` wrapper (``InferredSchema.task``) for downstream batched
+    responses/structured extraction flows in pandas or Spark.
+
+Core goals:
+* Minimize manual, subjective schema design iterations.
+* Enforce objective naming / typing / enum rules early (guard rails rather than
+  after‑the‑fact cleaning).
+* Provide deterministic reusability: the same prompt + model yield stable
+  column ordering & types for analytics or feature engineering.
+* Avoid outcome / target label leakage in predictive (feature engineering)
+  contexts by explicitly excluding direct target restatements.
+
+This module is intentionally **internal** (``__all__ = []``). Public users
+should interact through higher‑level batch APIs once a schema has been inferred.
+
+Design constraints:
+* Flat schema only (no nesting / arrays) to simplify Spark & pandas alignment.
+* Primitive types limited to {string, integer, float, boolean}.
+* Optional enumerations for *closed*, *observed* categorical sets only.
+* Validation retries ensure a structurally coherent suggestion before returning.
+
+Example (conceptual):
+     from openai import OpenAI
+     client = OpenAI()
+     inferer = SchemaInferer(client=client, model_name="gpt-4.1-mini")
+     schema = inferer.infer_schema(
+          SchemaInferenceInput(
+                examples=["Order #123 delayed due to weather", "Order #456 delivered"],
+                purpose="Extract operational status signals for logistics analytics",
+          )
+     )
+     Model = schema.model  # dynamic Pydantic model
+     task = schema.task    # PreparedTask for batch extraction
+
+The implementation purposefully does *not* emit or depend on JSON Schema; the
+authoritative contract is the ordered list of ``FieldSpec`` instances.
+"""
+
 from dataclasses import dataclass
 from enum import Enum
 from typing import List, Literal, Optional, Type
@@ -13,6 +62,28 @@ __all__: list[str] = []
 
 
 class FieldSpec(BaseModel):
+    """Specification for a single candidate output field.
+
+    Each ``FieldSpec`` encodes a *flat*, scalar, semantically atomic unit the
+    model should extract. These become columns in downstream DataFrames.
+
+    Validation focuses on: objective naming, primitive typing, and *optional*
+    closed categorical vocabularies. Enumerations are intentionally conservative
+    (must derive from clear evidence) to reduce over‑fitted schemas.
+
+    Attributes:
+        name: Lower snake_case unique identifier (regex ^[a-z][a-z0-9_]*$). Avoid
+            subjective modifiers ("best", "great", "high_quality").
+        type: One of ``string|integer|float|boolean``. ``integer`` only if all
+            observed numeric values are whole numbers; ``float`` if any decimal
+            or ratio appears. ``boolean`` strictly for explicit binary forms.
+        description: Concise, objective extraction rule (what qualifies / what
+            to ignore). Disambiguate from overlapping fields if needed.
+        enum_values: Optional stable closed set of lowercase string labels
+            (2–24). Only for *string* type when the vocabulary is clearly
+            evidenced; never hallucinate or extrapolate.
+    """
+
     name: str = Field(
         description=(
             "Lower snake_case identifier (regex: ^[a-z][a-z0-9_]*$). Must be unique across all fields and "
@@ -44,6 +115,26 @@ class FieldSpec(BaseModel):
 
 
 class InferredSchema(BaseModel):
+    """Result of a schema inference round.
+
+    Contains the normalized *purpose*, an objective *examples_summary*, the
+    ordered ``fields`` contract, and the canonical reusable ``inference_prompt``.
+
+    The prompt is constrained to be fully derivable from the other components;
+    adding novel unstated facts is disallowed to preserve traceability.
+
+    Attributes:
+        purpose: Unambiguous restatement of the user's objective (noise &
+            redundancy removed).
+        examples_summary: Neutral description of structural / semantic patterns
+            observed in the examples (domain, recurring signals, constraints).
+        fields: Ordered list of ``FieldSpec`` objects comprising the schema's
+            sole authoritative contract.
+        inference_prompt: Self-contained extraction instructions enforcing an
+            exact field set (names, order, primitive types) with prohibition on
+            alterations or subjective flourishes.
+    """
+
     purpose: str = Field(
         description=(
             "Normalized, unambiguous restatement of the user objective with redundant, vague, or "
@@ -78,38 +169,48 @@ class InferredSchema(BaseModel):
         """Load an inferred schema from a JSON file.
 
         Args:
-            path (str): File path to load the schema JSON.
+            path: Path to a UTF‑8 JSON document previously produced via ``save``.
 
         Returns:
-            InferredSchema: Loaded schema object.
+            InferredSchema: Reconstructed instance.
         """
         with open(path, "r", encoding="utf-8") as f:
             return cls.model_validate_json(f.read())
 
     @property
     def model(self) -> Type[BaseModel]:
-        """Return the Pydantic model type for this inferred schema.
+        """Dynamically materialized Pydantic model for the inferred schema.
 
-        This is a convenience property that calls ``build_model()`` to create the dynamic model.
+        Equivalent to calling :meth:`build_model` each access (not cached).
+
+        Returns:
+            Type[BaseModel]: Fresh model type reflecting ``fields`` ordering.
         """
         return self.build_model()
 
     @property
     def task(self) -> PreparedTask:
+        """PreparedTask integrating the schema's extraction prompt & model.
+
+        Returns:
+            PreparedTask: Ready for batched structured extraction calls.
+        """
         return PreparedTask(
             instructions=self.inference_prompt, response_format=self.model, top_p=None, temperature=None
         )
 
     def build_model(self) -> Type[BaseModel]:
-        """Materialize a dynamic ``BaseModel`` matching this inferred schema.
+        """Create a new dynamic ``BaseModel`` class adhering to this schema.
 
-        Rules:
-          - Primitive mapping: string->str, integer->int, float->float, boolean->bool
-          - If ``enum_values`` present, a dynamic ``Enum`` subclass is created and used as the field type.
-          - All fields are required (``...``). Adjust here if optionality is introduced later.
+        Implementation details:
+            * Maps primitive types: string→``str``, integer→``int``, float→``float``, boolean→``bool``.
+            * For enumerated string fields, constructs an ad‑hoc ``Enum`` subclass with
+              stable member names (collision‑safe, normalized to ``UPPER_SNAKE``).
+            * All fields are required (ellipsis ``...``). Optionality can be
+              introduced later by modifying this logic if needed.
 
         Returns:
-            Type[BaseModel]: Dynamically created Pydantic model whose fields mirror ``self.fields``.
+            Type[BaseModel]: New (not cached) model type; order matches ``fields``.
         """
         type_map: dict[str, type] = {"string": str, "integer": int, "float": float, "boolean": bool}
         fields: dict[str, tuple[type, object]] = {}
@@ -139,16 +240,27 @@ class InferredSchema(BaseModel):
         return model
 
     def save(self, path: str) -> None:
-        """Save the inferred schema as a JSON file.
+        """Persist this inferred schema as pretty‑printed JSON.
 
         Args:
-            path (str): File path to save the schema JSON.
+            path: Destination filesystem path.
         """
         with open(path, "w", encoding="utf-8") as f:
             f.write(self.model_dump_json(indent=2))
 
 
 class SchemaInferenceInput(BaseModel):
+    """Input payload for schema inference.
+
+    Attributes:
+        examples: Representative sample texts restricted to the in‑scope
+            distribution (exclude outliers / noise). Size should be *minimal*
+            yet sufficient to surface recurring patterns.
+        purpose: Plain language description of downstream usage (analytics,
+            filtering, enrichment, feature engineering, etc.). Guides field
+            relevance & exclusion of outcome labels.
+    """
+
     examples: List[str] = Field(
         description=(
             "Representative sample texts (strings). Provide only data the schema should generalize over; "
@@ -200,34 +312,48 @@ Return exactly an InferredSchema object with JSON keys:
 
 @dataclass(frozen=True)
 class SchemaInferer:
-    """Infer and materialize a dynamic Pydantic model from representative examples.
+    """High-level orchestrator for schema inference against the Responses API.
 
-    The ordered list of ``FieldSpec`` instances (``InferredSchema.fields``) is the
-    single source of truth. No JSON Schema string is generated or validated.
+    Responsibilities:
+        * Issue a structured parsing request with strict instructions.
+        * Retry (up to ``max_retries``) when the produced field list violates
+          baseline structural rules (duplicate names, unsupported types, etc.).
+        * Return a fully validated ``InferredSchema`` ready for dynamic model
+          generation & downstream batch extraction.
+
+    The inferred schema intentionally avoids JSON Schema intermediates; the
+    authoritative contract is the ordered ``FieldSpec`` list.
 
     Attributes:
-        client (OpenAI): OpenAI client used for Responses API structured parsing.
-        model_name (str): Model (or Azure deployment) identifier.
+        client: OpenAI client for calling ``responses.parse``.
+        model_name: Model / deployment identifier.
     """
 
     client: OpenAI
     model_name: str
 
     def infer_schema(self, data: "SchemaInferenceInput", *args, max_retries: int = 3, **kwargs) -> "InferredSchema":
-        """Infer and return an ``InferredSchema`` object.
+        """Infer a validated schema from representative examples.
+
+        Workflow:
+            1. Submit ``SchemaInferenceInput`` (JSON) + instructions via
+               ``responses.parse`` requesting an ``InferredSchema`` object.
+            2. Validate the returned field list with ``_basic_field_list_validation``.
+            3. Retry (up to ``max_retries``) if validation fails.
 
         Args:
-            data (SchemaInferenceInput): Representative example texts plus extraction purpose.
-            *args: Additional positional arguments forwarded to ``client.responses.parse``.
-            max_retries (int): Maximum attempts to obtain a structurally consistent schema when
-                the model output fails validation. Must be >= 1.
-            **kwargs: Additional keyword arguments forwarded to ``client.responses.parse``.
+            data: Representative examples + purpose.
+            *args: Positional passthrough to ``client.responses.parse``.
+            max_retries: Attempts before surfacing the last validation error
+                (must be >= 1).
+            **kwargs: Keyword passthrough to ``client.responses.parse``.
 
         Returns:
-            InferredSchema: Structured schema proposal (purpose, examples summary, field specs, inference prompt).
+            InferredSchema: Fully validated schema (purpose, examples summary,
+            ordered fields, extraction prompt).
 
         Raises:
-            ValueError: If after retries the field list fails basic validation rules.
+            ValueError: Validation still fails after exhausting retries.
         """
         if max_retries < 1:
             raise ValueError("max_retries must be >= 1")
@@ -257,6 +383,20 @@ class SchemaInferer:
 
 
 def _basic_field_list_validation(parsed: InferredSchema) -> None:
+    """Lightweight structural validation of an inferred field list.
+
+    Checks:
+        * Non-empty field set.
+        * No duplicate names.
+        * All types in the allowed primitive set.
+        * ``enum_values`` only on string fields and size within bounds (2–24).
+
+    Args:
+        parsed: Candidate ``InferredSchema`` instance.
+
+    Raises:
+        ValueError: Any invariant is violated.
+    """
     names = [f.name for f in parsed.fields]
     if not names:
         raise ValueError("no fields suggested")
