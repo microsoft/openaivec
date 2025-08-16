@@ -71,8 +71,7 @@ class InferredSchema(BaseModel):
         )
     )
 
-    # Convenience -----------------------------------------------------------------
-    def build_model(self) -> Type[BaseModel]:  # pragma: no cover - thin logic, exercised indirectly in tests
+    def build_model(self) -> Type[BaseModel]:
         """Materialize a dynamic ``BaseModel`` matching this inferred schema.
 
         Rules:
