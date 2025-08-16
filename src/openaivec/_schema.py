@@ -6,6 +6,8 @@ from openai import OpenAI
 from openai.types.responses import ParsedResponse
 from pydantic import BaseModel, Field, create_model
 
+from openaivec._model import PreparedTask
+
 # Internal module: explicitly not part of public API
 __all__: list[str] = []
 
@@ -91,6 +93,12 @@ class InferredSchema(BaseModel):
         This is a convenience property that calls ``build_model()`` to create the dynamic model.
         """
         return self.build_model()
+
+    @property
+    def task(self) -> PreparedTask:
+        return PreparedTask(
+            instructions=self.inference_prompt, response_format=self.model, top_p=None, temperature=None
+        )
 
     def build_model(self) -> Type[BaseModel]:
         """Materialize a dynamic ``BaseModel`` matching this inferred schema.
