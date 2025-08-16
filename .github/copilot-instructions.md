@@ -130,20 +130,38 @@ Don’t
 
 ## Testing strategy (pytest)
 
-- Tests live in `tests/`; cover both sync and async where applicable
-- Prefer mocks/stubs for external API calls; keep data small and deterministic
-- Focus areas:
-  - Order/length preservation
-  - Deduplication and cache reuse
-  - Event release on exceptions (deadlock prevention)
-  - `max_concurrency` is not exceeded
-  - Reasoning model guidance (`temperature=None`)
-- Use `asyncio.run` in async tests (mirrors existing tests)
-- Optional integration tests can run with valid API keys; keep unit tests independent of network
+Policy shift: Unit tests are expected to exercise the real OpenAI (or Azure OpenAI) Responses / Embeddings APIs whenever practical. This ensures early detection of contract drift (SDK, model behavior, structured parsing) and keeps examples realistic. Only introduce mocks/stubs when a test would otherwise be: (a) nondeterministic beyond acceptable variance, (b) prohibitively slow/costly, or (c) needs to simulate rare fault paths (rate limit bursts, 5xx cascades) that are unsafe to trigger live.
+
+Guidelines:
+
+1. Default live calls: Tests SHOULD call the real API if they validate core behavior (batching, order preservation, schema inference, dynamic model parsing, embeddings shape/type).
+2. Fast & frugal: Keep prompts short and batch sizes minimal (1–4) to control latency and cost. Reuse shared small corpora across tests.
+3. Determinism envelope: Accept minor natural-language variation (e.g., enum label ordering, near‑synonym field names). Write assertions to allow permissible variability rather than pin exact strings.
+4. Skip logic: Tests that absolutely require live calls MUST skip (not fail) when `OPENAI_API_KEY` (or Azure equivalents) is absent. Use `self.skipTest("OPENAI_API_KEY not set")` early.
+5. Mocks: Use targeted mocks only for: retry/backoff logic, forced structural validation failures, or internal pure utilities (e.g., TextChunker). Keep these isolated and clearly named.
+6. Fault injection: For backoff/retry coverage, patch the smallest internal function (e.g., validation hook) instead of stubbing the entire client.
+7. Rate limits: Stagger concurrency in async tests (small `max_concurrency`) and prefer lightweight models (e.g., `gpt-4.1-mini`, `gpt-5-mini`, or Azure deployment equivalents) unless a reasoning model edge case is explicitly under test.
+8. Cost guardrails: Avoid large loops of unique prompts; leverage de‑duplication semantics to validate caching behaviors.
+9. Azure parity: When adding a test covering provider differences, parametrize to run once with OpenAI and once with Azure (skipping Azure path if its env vars aren’t configured).
+10. Flake triage: If a test becomes flaky due to upstream model changes, broaden assertions (e.g. containment / regex) rather than freezing brittle expectations.
+
+Focus areas (still primary):
+
+- Order/length preservation
+- Deduplication and cache reuse
+- Event release on exceptions (deadlock prevention)
+- `max_concurrency` enforcement
+- Reasoning model temperature rules (`temperature=None`)
+- Structured parsing fidelity (Pydantic model alignment)
+
+Async tests should continue to use `asyncio.run` for simplicity.
+
+Note: CI should separate a fast “core” subset (still live) from heavier optional suites if needed via markers (e.g., `@pytest.mark.heavy_live`).
 
 ## Package Visibility Guidelines (`__all__`)
 
 ### Public API Modules
+
 These modules are part of the public API and have appropriate `__all__` declarations:
 
 - `pandas_ext.py` - Pandas DataFrame/Series extensions with `.ai/.aio` accessors
@@ -151,18 +169,21 @@ These modules are part of the public API and have appropriate `__all__` declarat
 - `task/*` - All task modules (NLP, customer support, table operations)
 
 ### Internal Modules (underscore-prefixed)
+
 These modules are for internal use only and have `__all__ = []`:
 
 - `_embeddings.py` - Batch embedding processing (internal implementation)
 - `_model.py` - Task configuration models (internal types)
-- `_prompt.py` - Few-shot prompt building (internal implementation)  
+- `_prompt.py` - Few-shot prompt building (internal implementation)
 - `_responses.py` - Batch response processing (internal implementation)
 - `_util.py`, `_serialize.py`, `_log.py`, `_provider.py`, `_proxy.py`, `_di.py`, `_optimize.py` - Internal utilities
 
 ### Main Package API
+
 Users access core functionality through `__init__.py` exports:
+
 - `BatchResponses`, `AsyncBatchResponses`
-- `BatchEmbeddings`, `AsyncBatchEmbeddings` 
+- `BatchEmbeddings`, `AsyncBatchEmbeddings`
 - `PreparedTask`, `FewShotPromptBuilder`
 
 ### `__all__` Best Practices
@@ -181,11 +202,12 @@ Users access core functionality through `__init__.py` exports:
 
 ## PR checklist (pre-merge)
 
-- [ ] Ruff check/format passes (line-length 120, absolute imports)
+- [ ] Ruff check / format passes (line-length 120, absolute imports)
 - [ ] Public API contracts (order/length/types) are satisfied
 - [ ] Large-scale processing is batched via the Proxy
 - [ ] Reasoning models use `temperature=None` where applicable
-- [ ] Tests added/updated without calling live external APIs
+- [ ] New/updated tests exercise real API where feasible (skip gracefully if no credentials)
+- [ ] Mock usage (if any) is justified (fault injection, cost, determinism) and minimal
 - [ ] Docs updated if needed (`docs/` and/or examples)
 
 ## Common snippets (what to suggest)
