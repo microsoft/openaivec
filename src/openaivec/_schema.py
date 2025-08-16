@@ -71,6 +71,14 @@ class InferredSchema(BaseModel):
         )
     )
 
+    @property
+    def model(self) -> Type[BaseModel]:
+        """Return the Pydantic model type for this inferred schema.
+
+        This is a convenience property that calls ``build_model()`` to create the dynamic model.
+        """
+        return self.build_model()
+
     def build_model(self) -> Type[BaseModel]:
         """Materialize a dynamic ``BaseModel`` matching this inferred schema.
 
