@@ -300,7 +300,7 @@ class BatchResponses(Generic[ResponseFormat]):
         return cast(ParsedResponse[Response[ResponseFormat]], completion)
 
     @observe(_LOGGER)
-    def _predict_chunk(self, user_messages: List[str]) -> List[ResponseFormat | None]:
+    def _predict_chunk(self, user_messages: List[str], **api_kwargs: Any) -> List[ResponseFormat | None]:
         """Helper executed for every unique minibatch.
 
             This method:
@@ -312,7 +312,7 @@ class BatchResponses(Generic[ResponseFormat]):
         only on its arguments – which allows safe reuse.
         """
         messages = [Message(id=i, body=message) for i, message in enumerate(user_messages)]
-        responses: ParsedResponse[Response[ResponseFormat]] = self._request_llm(messages)
+        responses: ParsedResponse[Response[ResponseFormat]] = self._request_llm(messages, **api_kwargs)
         if not responses.output_parsed:
             return [None] * len(messages)
         response_dict = {message.id: message.body for message in responses.output_parsed.assistant_messages}
@@ -338,15 +338,10 @@ class BatchResponses(Generic[ResponseFormat]):
         if not api_kwargs:
             return self.cache.map(inputs, self._predict_chunk)  # type: ignore[return-value]
 
-        def _predict_with_kwargs(xs: List[str]) -> List[ResponseFormat | None]:
-            messages = [Message(id=i, body=message) for i, message in enumerate(xs)]
-            responses: ParsedResponse[Response[ResponseFormat]] = self._request_llm(messages, **api_kwargs)
-            if not responses.output_parsed:
-                return [None] * len(messages)
-            response_dict = {m.id: m.body for m in responses.output_parsed.assistant_messages}
-            return [response_dict.get(m.id, None) for m in messages]
+        def _predict_with(xs: List[str]) -> List[ResponseFormat | None]:
+            return self._predict_chunk(xs, **api_kwargs)
 
-        return self.cache.map(inputs, _predict_with_kwargs)  # type: ignore[return-value]
+        return self.cache.map(inputs, _predict_with)  # type: ignore[return-value]
 
 
 @dataclass(frozen=True)
@@ -542,7 +537,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         return cast(ParsedResponse[Response[ResponseFormat]], completion)
 
     @observe(_LOGGER)
-    async def _predict_chunk(self, user_messages: List[str]) -> List[ResponseFormat | None]:
+    async def _predict_chunk(self, user_messages: List[str], **api_kwargs: Any) -> List[ResponseFormat | None]:
         """Async helper executed for every unique minibatch.
 
             This method:
@@ -553,7 +548,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         The function is pure – it has no side‑effects and the result depends only on its arguments.
         """
         messages = [Message(id=i, body=message) for i, message in enumerate(user_messages)]
-        responses: ParsedResponse[Response[ResponseFormat]] = await self._request_llm(messages)  # type: ignore[call-issue]
+        responses: ParsedResponse[Response[ResponseFormat]] = await self._request_llm(messages, **api_kwargs)  # type: ignore[call-issue]
         if not responses.output_parsed:
             return [None] * len(messages)
         response_dict = {message.id: message.body for message in responses.output_parsed.assistant_messages}
@@ -580,12 +575,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         if not api_kwargs:
             return await self.cache.map(inputs, self._predict_chunk)  # type: ignore[return-value]
 
-        async def _predict_with_kwargs(xs: List[str]) -> List[ResponseFormat | None]:
-            messages = [Message(id=i, body=message) for i, message in enumerate(xs)]
-            responses: ParsedResponse[Response[ResponseFormat]] = await self._request_llm(messages, **api_kwargs)  # type: ignore[call-issue]
-            if not responses.output_parsed:
-                return [None] * len(messages)
-            response_dict = {m.id: m.body for m in responses.output_parsed.assistant_messages}
-            return [response_dict.get(m.id, None) for m in messages]
+        async def _predict_with(xs: List[str]) -> List[ResponseFormat | None]:
+            return await self._predict_chunk(xs, **api_kwargs)
 
-        return await self.cache.map(inputs, _predict_with_kwargs)  # type: ignore[return-value]
+        return await self.cache.map(inputs, _predict_with)  # type: ignore[return-value]
