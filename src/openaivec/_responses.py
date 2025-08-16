@@ -163,7 +163,7 @@ class BatchResponses(Generic[ResponseFormat]):
     client: OpenAI
     model_name: str  # For Azure: deployment name, for OpenAI: model name
     system_message: str
-    temperature: float | None = 0.0
+    temperature: float | None = None
     top_p: float = 1.0
     response_format: Type[ResponseFormat] = str  # type: ignore[assignment]
     cache: BatchingMapProxy[str, ResponseFormat] = field(default_factory=lambda: BatchingMapProxy(batch_size=None))
