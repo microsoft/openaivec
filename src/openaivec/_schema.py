@@ -71,6 +71,45 @@ class InferredSchema(BaseModel):
         )
     )
 
+    # Convenience -----------------------------------------------------------------
+    def build_model(self) -> Type[BaseModel]:  # pragma: no cover - thin logic, exercised indirectly in tests
+        """Materialize a dynamic ``BaseModel`` matching this inferred schema.
+
+        Rules:
+          - Primitive mapping: string->str, integer->int, float->float, boolean->bool
+          - If ``enum_values`` present, a dynamic ``Enum`` subclass is created and used as the field type.
+          - All fields are required (``...``). Adjust here if optionality is introduced later.
+
+        Returns:
+            Type[BaseModel]: Dynamically created Pydantic model whose fields mirror ``self.fields``.
+        """
+        type_map: dict[str, type] = {"string": str, "integer": int, "float": float, "boolean": bool}
+        fields: dict[str, tuple[type, object]] = {}
+
+        for spec in self.fields:
+            py_type: type
+            if spec.enum_values:
+                enum_class_name = "Enum_" + "".join(part.capitalize() for part in spec.name.split("_"))
+                members: dict[str, str] = {}
+                for raw in spec.enum_values:
+                    sanitized = raw.upper().replace("-", "_").replace(" ", "_")
+                    if not sanitized or sanitized[0].isdigit():
+                        sanitized = f"V_{sanitized}"
+                    base = sanitized
+                    i = 2
+                    while sanitized in members:
+                        sanitized = f"{base}_{i}"
+                        i += 1
+                    members[sanitized] = raw
+                enum_cls = Enum(enum_class_name, members)  # type: ignore[arg-type]
+                py_type = enum_cls
+            else:
+                py_type = type_map[spec.type]
+            fields[spec.name] = (py_type, ...)
+
+        model = create_model("InferredSchema", **fields)  # type: ignore[call-arg]
+        return model
+
 
 class SchemaInferenceInput(BaseModel):
     examples: List[str] = Field(
@@ -180,58 +219,6 @@ class SchemaInferer:
         raise RuntimeError("unreachable retry loop state")  # pragma: no cover
 
 
-def build_model(suggestion: InferredSchema) -> Type[BaseModel]:
-    """Build a dynamic model (alias of ``materialize_model_simple``)."""
-    return materialize_model_simple(suggestion)
-
-
-def materialize_model_simple(suggestion: InferredSchema) -> Type[BaseModel]:
-    """Build a dynamic Pydantic model directly from the field list.
-
-    Rules:
-      - Primitive mapping: string->str, integer->int, float->float, boolean->bool
-      - If ``enum_values`` is present for a field, a dynamic Enum subclass is created; the
-        field type becomes that Enum.
-      - All fields are required (``...``) – adjust here if optional logic is introduced later.
-
-    Args:
-        suggestion: Parsed ``InferredSchema`` (must already be internally consistent).
-
-    Returns:
-        A dynamically created ``BaseModel`` subclass representing the inferred schema.
-    """
-
-    type_map: dict[str, type] = {"string": str, "integer": int, "float": float, "boolean": bool}
-    fields: dict[str, tuple[type, object]] = {}
-
-    for spec in suggestion.fields:
-        py_type: type
-        if spec.enum_values:
-            # Build a stable, sanitized Enum class name based on field name
-            enum_class_name = "Enum_" + "".join(part.capitalize() for part in spec.name.split("_"))
-            # Sanitize member names (uppercase, replace invalid chars with underscore)
-            members: dict[str, str] = {}
-            for raw in spec.enum_values:
-                sanitized = raw.upper().replace("-", "_").replace(" ", "_")
-                if not sanitized or sanitized[0].isdigit():
-                    sanitized = f"V_{sanitized}"
-                # Ensure uniqueness (very unlikely collisions, but guard anyway)
-                base = sanitized
-                i = 2
-                while sanitized in members:
-                    sanitized = f"{base}_{i}"
-                    i += 1
-                members[sanitized] = raw
-            enum_cls = Enum(enum_class_name, members)  # type: ignore[arg-type]
-            py_type = enum_cls
-        else:
-            py_type = type_map[spec.type]
-        fields[spec.name] = (py_type, ...)
-
-    model = create_model("InferredSchema", **fields)  # type: ignore[call-arg]
-    return model
-
-
 def _basic_field_list_validation(parsed: InferredSchema) -> None:
     names = [f.name for f in parsed.fields]
     if not names:
@@ -247,10 +234,3 @@ def _basic_field_list_validation(parsed: InferredSchema) -> None:
                 raise ValueError(f"enum_values only allowed for string field: {f.name}")
             if not (2 <= len(f.enum_values) <= 24):
                 raise ValueError(f"enum_values length out of bounds for field {f.name}")
-
-
-def _generate_json_schema_from_fields(_parsed: InferredSchema) -> str:  # pragma: no cover
-    raise RuntimeError("json_schema export removed")
-
-
-__all__ = []
