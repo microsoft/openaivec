@@ -377,10 +377,31 @@ class SchemaInferer:
             raise ValueError("max_retries must be >= 1")
 
         last_err: Exception | None = None
+        previous_errors: list[str] = []
         for attempt in range(max_retries):
+            if attempt == 0:
+                instructions = _INFER_INSTRUCTIONS
+            else:
+                # Provide structured feedback for correction. Keep concise and prohibit speculative expansion.
+                feedback_lines = [
+                    "--- PRIOR VALIDATION FEEDBACK ---",
+                ]
+                for i, err in enumerate(previous_errors[-5:], 1):  # include last up to 5 errors
+                    feedback_lines.append(f"{i}. {err}")
+                feedback_lines.extend(
+                    [
+                        "Adjust ONLY listed issues; avoid adding brand-new fields unless essential.",
+                        "Don't hallucinate or broaden enum_values unless enum rule caused failure.",
+                        "Duplicate names: minimally rename; keep semantics.",
+                        "Unsupported type: change to string|integer|float|boolean (no new facts).",
+                        "Bad enum length: drop enum or constrain to 2–24 evidenced tokens.",
+                    ]
+                )
+                instructions = _INFER_INSTRUCTIONS + "\n\n" + "\n".join(feedback_lines)
+
             response: ParsedResponse[InferredSchema] = self.client.responses.parse(
                 model=self.model_name,
-                instructions=_INFER_INSTRUCTIONS,
+                instructions=instructions,
                 input=data.model_dump_json(),
                 text_format=InferredSchema,
                 *args,
@@ -389,10 +410,10 @@ class SchemaInferer:
             parsed = response.output_parsed
             try:
                 _basic_field_list_validation(parsed)
-                # Ensure the model can be built without issues
-                parsed.build_model()
+                parsed.build_model()  # ensure dynamic model creation succeeds
             except ValueError as e:
                 last_err = e
+                previous_errors.append(str(e))
                 if attempt == max_retries - 1:
                     raise
                 continue
