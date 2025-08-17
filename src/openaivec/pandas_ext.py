@@ -712,7 +712,13 @@ class OpenAIVecDataFrameAccessor:
             **api_kwargs,
         )
 
-    def fillna(self, target_column_name: str, max_examples: int = 500, batch_size: int | None = None) -> pd.DataFrame:
+    def fillna(
+        self,
+        target_column_name: str,
+        max_examples: int = 500,
+        batch_size: int | None = None,
+        show_progress: bool = False,
+    ) -> pd.DataFrame:
         """Fill missing values in a DataFrame column using AI-powered inference.
 
         This method uses machine learning to intelligently fill missing (NaN) values
@@ -729,6 +735,7 @@ class OpenAIVecDataFrameAccessor:
             batch_size (int | None, optional): Number of requests sent in one batch
                 to optimize API usage. Defaults to ``None`` (automatic batch size
                 optimization based on execution time). Set to a positive integer for fixed batch size.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
 
         Returns:
             pandas.DataFrame: A new DataFrame with missing values filled in the target
@@ -744,6 +751,10 @@ class OpenAIVecDataFrameAccessor:
 
             # Fill missing values in the 'name' column
             filled_df = df.ai.fillna('name')
+
+            # With progress bar for large datasets
+            large_df = pd.DataFrame({'name': [None] * 1000, 'age': list(range(1000))})
+            filled_df = large_df.ai.fillna('name', batch_size=32, show_progress=True)
             ```
 
         Note:
@@ -756,7 +767,9 @@ class OpenAIVecDataFrameAccessor:
         if missing_rows.empty:
             return self._obj
 
-        filled_values: List[FillNaResponse] = missing_rows.ai.task(task=task, batch_size=batch_size)
+        filled_values: List[FillNaResponse] = missing_rows.ai.task(
+            task=task, batch_size=batch_size, show_progress=show_progress
+        )
 
         # get deep copy of the DataFrame to avoid modifying the original
         df = self._obj.copy()
@@ -1482,7 +1495,12 @@ class AsyncOpenAIVecDataFrameAccessor:
         return df_current
 
     async def fillna(
-        self, target_column_name: str, max_examples: int = 500, batch_size: int | None = None, max_concurrency: int = 8
+        self,
+        target_column_name: str,
+        max_examples: int = 500,
+        batch_size: int | None = None,
+        max_concurrency: int = 8,
+        show_progress: bool = False,
     ) -> pd.DataFrame:
         """Fill missing values in a DataFrame column using AI-powered inference (asynchronously).
 
@@ -1502,6 +1520,7 @@ class AsyncOpenAIVecDataFrameAccessor:
                 optimization based on execution time). Set to a positive integer for fixed batch size.
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to 8.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
 
         Returns:
             pandas.DataFrame: A new DataFrame with missing values filled in the target
@@ -1517,6 +1536,15 @@ class AsyncOpenAIVecDataFrameAccessor:
 
             # Fill missing values in the 'name' column (must be awaited)
             filled_df = await df.aio.fillna('name')
+
+            # With progress bar for large datasets
+            large_df = pd.DataFrame({'name': [None] * 1000, 'age': list(range(1000))})
+            filled_df = await large_df.aio.fillna(
+                'name',
+                batch_size=32,
+                max_concurrency=4,
+                show_progress=True
+            )
             ```
 
         Note:
@@ -1531,7 +1559,7 @@ class AsyncOpenAIVecDataFrameAccessor:
             return self._obj
 
         filled_values: List[FillNaResponse] = await missing_rows.aio.task(
-            task=task, batch_size=batch_size, max_concurrency=max_concurrency
+            task=task, batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
         )
 
         # get deep copy of the DataFrame to avoid modifying the original
