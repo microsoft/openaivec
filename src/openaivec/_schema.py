@@ -128,6 +128,12 @@ class InferredSchema(BaseModel):
             redundancy removed).
         examples_summary: Neutral description of structural / semantic patterns
             observed in the examples (domain, recurring signals, constraints).
+        examples_purpose_alignment: Analytical explanation of how the concrete
+            recurring patterns in the provided examples *justify*, *constrain*,
+            or *refine* the stated purpose. Should map purpose facets to
+            observed evidence (or explicitly note gaps) to discourage
+            hallucinated fields and anchor extraction scope. This is an
+            internal quality aid – downstream consumers typically ignore it.
         fields: Ordered list of ``FieldSpec`` objects comprising the schema's
             sole authoritative contract.
         inference_prompt: Self-contained extraction instructions enforcing an
@@ -145,6 +151,13 @@ class InferredSchema(BaseModel):
         description=(
             "Objective characterization of the provided examples: content domain, structure, recurring "
             "patterns, and notable constraints."
+        )
+    )
+    examples_purpose_alignment: str = Field(
+        description=(
+            "Explanation of how observable recurring patterns in the examples substantiate and bound the stated "
+            "purpose. Should reference purpose facets and cite supporting example evidence (or note any gaps) to "
+            "reduce hallucinated fields. Internal diagnostic / quality aid; not required for downstream extraction."
         )
     )
     fields: List[FieldSpec] = Field(
@@ -305,6 +318,7 @@ Output contract:
 Return exactly an InferredSchema object with JSON keys:
     - purpose (string)
     - examples_summary (string)
+    - examples_purpose_alignment (string)
     - fields (array of FieldSpec objects: name, type, description, enum_values?)
     - inference_prompt (string)
 """.strip()

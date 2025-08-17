@@ -136,6 +136,7 @@ class TestInferredSchemaBuildModel(unittest.TestCase):
         schema = InferredSchema(
             purpose="Test primitive types",
             examples_summary="Various primitive type examples",
+            examples_purpose_alignment="Primitive examples justify coverage of all base types",
             fields=[
                 FieldSpec(name="text_field", type="string", description="A string field"),
                 FieldSpec(name="number_field", type="integer", description="An integer field"),
@@ -163,6 +164,7 @@ class TestInferredSchemaBuildModel(unittest.TestCase):
         schema = InferredSchema(
             purpose="Test enum types",
             examples_summary="Enum examples",
+            examples_purpose_alignment="Stable status labels appear repeatedly, supporting enum creation",
             fields=[
                 FieldSpec(
                     name="status_field",
@@ -194,6 +196,7 @@ class TestInferredSchemaBuildModel(unittest.TestCase):
         schema = InferredSchema(
             purpose="Test enum sanitization",
             examples_summary="Enum sanitization examples",
+            examples_purpose_alignment="Enum labels contain special chars requiring sanitization",
             fields=[
                 FieldSpec(
                     name="complex_status",
@@ -220,6 +223,7 @@ class TestInferredSchemaBuildModel(unittest.TestCase):
         schema = InferredSchema(
             purpose="Test enum collision handling",
             examples_summary="Enum collision examples",
+            examples_purpose_alignment="Similar raw labels could collide after normalization",
             fields=[
                 FieldSpec(
                     name="collision_test",
@@ -253,6 +257,7 @@ class TestInferredSchemaBuildModel(unittest.TestCase):
         schema = InferredSchema(
             purpose="Test field ordering",
             examples_summary="Field ordering examples",
+            examples_purpose_alignment="Ordering matters for deterministic downstream column alignment",
             fields=fields,
             inference_prompt="Test prompt",
         )
@@ -268,6 +273,7 @@ class TestInferredSchemaBuildModel(unittest.TestCase):
         schema = InferredSchema(
             purpose="Test field descriptions",
             examples_summary="Description examples",
+            examples_purpose_alignment="Descriptions guide extraction disambiguation",
             fields=[
                 FieldSpec(name="described_field", type="string", description="This is a detailed description"),
                 FieldSpec(name="another_field", type="integer", description="Another detailed description"),
@@ -285,7 +291,11 @@ class TestInferredSchemaBuildModel(unittest.TestCase):
     def test_build_model_empty_fields(self):
         """Test behavior with empty fields list."""
         schema = InferredSchema(
-            purpose="Test empty fields", examples_summary="Empty examples", fields=[], inference_prompt="Test prompt"
+            purpose="Test empty fields",
+            examples_summary="Empty examples",
+            examples_purpose_alignment="Edge case of no extractable signals",
+            fields=[],
+            inference_prompt="Test prompt",
         )
 
         model_cls = schema.build_model()
@@ -303,6 +313,7 @@ class TestInferredSchemaBuildModel(unittest.TestCase):
         schema = InferredSchema(
             purpose="Test mixed field types",
             examples_summary="Mixed type examples",
+            examples_purpose_alignment="Examples demonstrate diverse field types including enums",
             fields=[
                 FieldSpec(
                     name="priority", type="string", description="Priority level", enum_values=["high", "medium", "low"]
@@ -338,6 +349,7 @@ class TestInferredSchemaBuildModel(unittest.TestCase):
         schema = InferredSchema(
             purpose="Test independence",
             examples_summary="Independence examples",
+            examples_purpose_alignment="Independence ensures rebuilding yields fresh class objects",
             fields=[
                 FieldSpec(name="test_field", type="string", description="Test field"),
             ],
