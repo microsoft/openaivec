@@ -234,7 +234,7 @@ class InferredSchema(BaseModel):
                 py_type = enum_cls
             else:
                 py_type = type_map[spec.type]
-            fields[spec.name] = (py_type, ...)
+            fields[spec.name] = (py_type, Field(description=spec.description))
 
         model = create_model("InferredSchema", **fields)  # type: ignore[call-arg]
         return model
