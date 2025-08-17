@@ -62,15 +62,16 @@ class TestSchemaInferer(unittest.TestCase):
         self.assertTrue(props)
 
     def test_retry(self):
-        calls: list[int] = []
+        call_count = 0
 
-        def flaky_once(parsed):  # type: ignore
-            calls.append(1)
-            if len(calls) == 1:
+        def fail_first_call(parsed):  # type: ignore
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
                 raise ValueError("synthetic mismatch to trigger retry")
-            return None
+            # Let subsequent calls succeed by not raising
 
-        with patch("openaivec._schema._basic_field_list_validation", side_effect=flaky_once):
+        with patch("openaivec._schema._basic_field_list_validation", side_effect=fail_first_call):
             ds = self.DATASETS["retry_case"]
             client = OpenAI()
             inferer = SchemaInferer(client=client, model_name=SCHEMA_TEST_MODEL)
@@ -86,14 +87,9 @@ class TestSchemaInferer(unittest.TestCase):
                 self.assertGreaterEqual(len(f.enum_values), 2)
                 self.assertLessEqual(len(f.enum_values), 24)
 
-        # Verify that the validation function was called at least once
-        # In successful retry scenarios, it should be called at least twice:
-        # once to fail and trigger retry, once to succeed
-        # However, the exact number may vary based on API response timing
-        self.assertGreaterEqual(len(calls), 1)
-        # If the retry mechanism worked correctly, it should be called exactly 2 times
-        # But we'll be lenient to account for potential API variations
-        self.assertLessEqual(len(calls), 3)
+        # Verify that retry mechanism was triggered - should have at least 2 calls
+        # (first fails, second succeeds)
+        self.assertGreaterEqual(call_count, 2, f"Expected at least 2 validation calls, got {call_count}")
 
     def test_structuring_basic(self):
         inferred = self.INFERRED["basic_support"]
