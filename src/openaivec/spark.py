@@ -237,6 +237,7 @@ def responses_udf(
     temperature: float | None = 0.0,
     top_p: float = 1.0,
     max_concurrency: int = 8,
+    **api_kwargs,
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF for generating responses.
 
@@ -276,6 +277,11 @@ def responses_udf(
             Higher values increase throughput but may hit OpenAI rate limits.
             Recommended: 4-12 per executor. Defaults to 8.
 
+    Additional Keyword Args:
+        Arbitrary OpenAI Responses API parameters (e.g. ``frequency_penalty``, ``presence_penalty``,
+        ``seed``, ``max_output_tokens``, etc.) are forwarded verbatim to the underlying API calls.
+        These parameters are applied to all API requests made by the UDF.
+
     Returns:
         UserDefinedFunction: A Spark pandas UDF configured to generate responses asynchronously.
             Output schema is `StringType` or a struct derived from `response_format`.
@@ -313,6 +319,7 @@ def responses_udf(
                             temperature=temperature,
                             top_p=top_p,
                             cache=cache,
+                            **api_kwargs,
                         )
                     )
                     yield pd.DataFrame(predictions.map(_safe_dump).tolist())
@@ -340,6 +347,7 @@ def responses_udf(
                             temperature=temperature,
                             top_p=top_p,
                             cache=cache,
+                            **api_kwargs,
                         )
                     )
                     yield predictions.map(_safe_cast_str)
@@ -357,6 +365,7 @@ def task_udf(
     model_name: str = "gpt-4.1-mini",
     batch_size: int | None = None,
     max_concurrency: int = 8,
+    **api_kwargs,
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF from a predefined task.
 
@@ -380,6 +389,12 @@ def task_udf(
             Total cluster concurrency = max_concurrency × number_of_executors.
             Higher values increase throughput but may hit OpenAI rate limits.
             Recommended: 4-12 per executor. Defaults to 8.
+
+    Additional Keyword Args:
+        Arbitrary OpenAI Responses API parameters (e.g. ``frequency_penalty``, ``presence_penalty``,
+        ``seed``, ``max_output_tokens``, etc.) are forwarded verbatim to the underlying API calls.
+        These parameters are applied to all API requests made by the UDF and override any
+        parameters set in the task configuration.
 
     Returns:
         UserDefinedFunction: A Spark pandas UDF configured to execute the specified task
@@ -429,6 +444,7 @@ def task_udf(
                             temperature=task_temperature,
                             top_p=task_top_p,
                             cache=cache,
+                            **api_kwargs,
                         )
                     )
                     yield pd.DataFrame(predictions.map(_safe_dump).tolist())
@@ -456,6 +472,7 @@ def task_udf(
                             temperature=task_temperature,
                             top_p=task_top_p,
                             cache=cache,
+                            **api_kwargs,
                         )
                     )
                     yield predictions.map(_safe_cast_str)
@@ -594,7 +611,10 @@ def similarity_udf() -> UserDefinedFunction:
             Cosine similarity between the two vectors.
         """
         # Import pandas_ext to ensure .ai accessor is available in Spark workers
-        from openaivec import pandas_ext  # noqa: F401
+        from openaivec import pandas_ext
+
+        # Explicitly reference pandas_ext to satisfy linters
+        assert pandas_ext is not None
 
         return pd.DataFrame({"a": a, "b": b}).ai.similarity("a", "b")
 
