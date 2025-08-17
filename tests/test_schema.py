@@ -98,8 +98,6 @@ class TestSchemaInferer(unittest.TestCase):
         structured = parsed.output_parsed
         self.assertIsInstance(structured, BaseModel)
 
-    # Removed all other structuring variants; they provided only name-sensitive coverage.
-
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

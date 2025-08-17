@@ -165,6 +165,7 @@ class OpenAIVecSeriesAccessor:
         response_format: Type[ResponseFormat] = str,
         temperature: float | None = 0.0,
         top_p: float = 1.0,
+        **api_kwargs,
     ) -> pd.Series:
         client: BatchResponses = BatchResponses(
             client=CONTAINER.resolve(OpenAI),
@@ -176,7 +177,8 @@ class OpenAIVecSeriesAccessor:
             top_p=top_p,
         )
 
-        return pd.Series(client.parse(self._obj.tolist()), index=self._obj.index, name=self._obj.name)
+        # Forward any extra kwargs to the underlying Responses API.
+        return pd.Series(client.parse(self._obj.tolist(), **api_kwargs), index=self._obj.index, name=self._obj.name)
 
     def embeddings_with_cache(
         self,
@@ -229,6 +231,7 @@ class OpenAIVecSeriesAccessor:
         temperature: float | None = 0.0,
         top_p: float = 1.0,
         show_progress: bool = False,
+        **api_kwargs,
     ) -> pd.Series:
         """Call an LLM once for every Series element.
 
@@ -271,6 +274,7 @@ class OpenAIVecSeriesAccessor:
             response_format=response_format,
             temperature=temperature,
             top_p=top_p,
+            **api_kwargs,
         )
 
     def task_with_cache(
@@ -495,6 +499,7 @@ class OpenAIVecDataFrameAccessor:
         response_format: Type[ResponseFormat] = str,
         temperature: float | None = 0.0,
         top_p: float = 1.0,
+        **api_kwargs,
     ) -> pd.Series:
         """Generate a response for each row after serialising it to JSON using a provided cache.
 
@@ -543,6 +548,7 @@ class OpenAIVecDataFrameAccessor:
                     response_format=response_format,
                     temperature=temperature,
                     top_p=top_p,
+                    **api_kwargs,
                 )
             )
         )
@@ -555,6 +561,7 @@ class OpenAIVecDataFrameAccessor:
         temperature: float | None = 0.0,
         top_p: float = 1.0,
         show_progress: bool = False,
+        **api_kwargs,
     ) -> pd.Series:
         """Generate a response for each row after serialising it to JSON.
 
@@ -602,6 +609,7 @@ class OpenAIVecDataFrameAccessor:
             response_format=response_format,
             temperature=temperature,
             top_p=top_p,
+            **api_kwargs,
         )
 
     def task(self, task: PreparedTask, batch_size: int | None = None, show_progress: bool = False) -> pd.Series:
@@ -754,6 +762,7 @@ class AsyncOpenAIVecSeriesAccessor:
         response_format: Type[ResponseFormat] = str,
         temperature: float | None = 0.0,
         top_p: float = 1.0,
+        **api_kwargs,
     ) -> pd.Series:
         """Call an LLM once for every Series element using a provided cache (asynchronously).
 
@@ -769,24 +778,24 @@ class AsyncOpenAIVecSeriesAccessor:
                 Set cache.batch_size=None to enable automatic batch size optimization.
             response_format (Type[ResponseFormat], optional): Pydantic model or built‑in
                 type the assistant should return. Defaults to ``str``.
-            temperature (float, optional): Sampling temperature. Defaults to ``0.0``.
+            temperature (float | None, optional): Sampling temperature. ``None`` omits the
+                parameter (recommended for reasoning models). Defaults to ``0.0``.
             top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
+            **api_kwargs: Additional keyword arguments forwarded verbatim to
+                ``AsyncOpenAI.responses.parse`` (e.g. ``max_output_tokens``, penalties,
+                future parameters). Core batching keys (model, instructions, input,
+                text_format) are protected and silently ignored if provided.
 
         Returns:
             pandas.Series: Series whose values are instances of ``response_format``.
 
         Example:
             ```python
-            from openaivec._proxy import AsyncBatchingMapProxy
-
-            # Create a shared cache with custom batch size and concurrency
-            shared_cache = AsyncBatchingMapProxy(batch_size=64, max_concurrency=4)
-
-            animals = pd.Series(["cat", "dog", "elephant"])
-            # Must be awaited
-            result = await animals.aio.responses_with_cache(
-                "translate to French",
-                cache=shared_cache
+            result = await series.aio.responses_with_cache(
+                "classify",
+                cache=shared,
+                max_output_tokens=256,
+                frequency_penalty=0.2,
             )
             ```
 
@@ -802,9 +811,7 @@ class AsyncOpenAIVecSeriesAccessor:
             temperature=temperature,
             top_p=top_p,
         )
-        # Await the async operation
-        results = await client.parse(self._obj.tolist())
-
+        results = await client.parse(self._obj.tolist(), **api_kwargs)
         return pd.Series(results, index=self._obj.index, name=self._obj.name)
 
     async def embeddings_with_cache(
@@ -926,6 +933,7 @@ class AsyncOpenAIVecSeriesAccessor:
         top_p: float = 1.0,
         max_concurrency: int = 8,
         show_progress: bool = False,
+        **api_kwargs,
     ) -> pd.Series:
         """Call an LLM once for every Series element (asynchronously).
 
@@ -976,6 +984,7 @@ class AsyncOpenAIVecSeriesAccessor:
             response_format=response_format,
             temperature=temperature,
             top_p=top_p,
+            **api_kwargs,
         )
 
     async def embeddings(
@@ -1094,6 +1103,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         response_format: Type[ResponseFormat] = str,
         temperature: float | None = 0.0,
         top_p: float = 1.0,
+        **api_kwargs,
     ) -> pd.Series:
         """Generate a response for each row after serialising it to JSON using a provided cache (asynchronously).
 
@@ -1151,6 +1161,7 @@ class AsyncOpenAIVecDataFrameAccessor:
             response_format=response_format,
             temperature=temperature,
             top_p=top_p,
+            **api_kwargs,
         )
 
     async def responses(
@@ -1162,6 +1173,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         top_p: float = 1.0,
         max_concurrency: int = 8,
         show_progress: bool = False,
+        **api_kwargs,
     ) -> pd.Series:
         """Generate a response for each row after serialising it to JSON (asynchronously).
 
@@ -1217,6 +1229,7 @@ class AsyncOpenAIVecDataFrameAccessor:
             response_format=response_format,
             temperature=temperature,
             top_p=top_p,
+            **api_kwargs,
         )
 
     async def task(
