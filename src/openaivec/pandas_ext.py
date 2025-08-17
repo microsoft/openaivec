@@ -264,10 +264,6 @@ class OpenAIVecSeriesAccessor:
                 show_progress=True
             )
             ```
-            This method returns a Series of strings, each containing the
-            assistant's response to the corresponding input.
-            The model used is set by the `responses_model` function.
-            The default model is `gpt-4.1-mini`.
 
         Args:
             instructions (str): System prompt prepended to every user message.
@@ -343,10 +339,6 @@ class OpenAIVecSeriesAccessor:
     ) -> pd.Series:
         """Execute a prepared task on every Series element.
 
-        This method applies a pre-configured task to each element in the Series,
-        using the task's instructions and response format to generate structured
-        responses from the language model.
-
         Example:
             ```python
             from openaivec._model import PreparedTask
@@ -366,8 +358,6 @@ class OpenAIVecSeriesAccessor:
                 show_progress=True
             )
             ```
-            This method returns a Series containing the task results for each
-            corresponding input element, following the task's defined structure.
 
         Args:
             task (PreparedTask): A pre-configured task containing instructions,
@@ -382,10 +372,6 @@ class OpenAIVecSeriesAccessor:
             ``seed``, etc.) are forwarded verbatim to the underlying client. Core batching / routing
             keys (``model``, ``instructions`` / system message, user ``input``) are managed by the
             library and cannot be overridden.
-
-        Additional Keyword Args:
-            Arbitrary OpenAI Responses API parameters forwarded verbatim (e.g. ``frequency_penalty``,
-            ``presence_penalty``, ``seed``). Core routing keys are managed internally.
 
         Returns:
             pandas.Series: Series whose values are instances of the task's response format.
@@ -412,10 +398,6 @@ class OpenAIVecSeriesAccessor:
                 show_progress=True
             )
             ```
-            This method returns a Series of numpy arrays, each containing the
-            embedding vector for the corresponding input.
-            The embedding model is set by the `embeddings_model` function.
-            The default embedding model is `text-embedding-3-small`.
 
         Args:
             batch_size (int | None, optional): Number of inputs grouped into a
@@ -602,11 +584,6 @@ class OpenAIVecDataFrameAccessor:
                 show_progress=True
             )
             ```
-            This method returns a Series of strings, each containing the
-            assistant's response to the corresponding input.
-            Each row is serialised to JSON before being sent to the assistant.
-            The model used is set by the `responses_model` function.
-            The default model is `gpt-4.1-mini`.
 
         Args:
             instructions (str): System prompt for the assistant.
@@ -640,11 +617,6 @@ class OpenAIVecDataFrameAccessor:
     ) -> pd.Series:
         """Execute a prepared task on each DataFrame row after serialising it to JSON.
 
-        This method applies a pre-configured task to each row in the DataFrame,
-        using the task's instructions and response format to generate structured
-        responses from the language model. Each row is serialised to JSON before
-        being processed by the task.
-
         Example:
             ```python
             from openaivec._model import PreparedTask
@@ -657,10 +629,17 @@ class OpenAIVecDataFrameAccessor:
                 {"name": "dog", "legs": 4},
                 {"name": "elephant", "legs": 4},
             ])
+            # Basic usage
             results = df.ai.task(analysis_task)
+
+            # With progress bar for large datasets
+            large_df = pd.DataFrame({"id": list(range(1000))})
+            results = large_df.ai.task(
+                analysis_task,
+                batch_size=50,
+                show_progress=True
+            )
             ```
-            This method returns a Series containing the task results for each
-            corresponding row, following the task's defined structure.
 
         Args:
             task (PreparedTask): A pre-configured task containing instructions,
@@ -1026,10 +1005,6 @@ class AsyncOpenAIVecSeriesAccessor:
                 show_progress=True
             )
             ```
-            This method returns a Series of strings, each containing the
-            assistant's response to the corresponding input.
-            The model used is set by the `responses_model` function.
-            The default model is `gpt-4.1-mini`.
 
         Args:
             instructions (str): System prompt prepended to every user message.
@@ -1080,10 +1055,6 @@ class AsyncOpenAIVecSeriesAccessor:
                 show_progress=True
             )
             ```
-            This method returns a Series of numpy arrays, each containing the
-            embedding vector for the corresponding input.
-            The embedding model is set by the `embeddings_model` function.
-            The default embedding model is `text-embedding-3-small`.
 
         Args:
             batch_size (int | None, optional): Number of inputs grouped into a
@@ -1116,10 +1087,6 @@ class AsyncOpenAIVecSeriesAccessor:
     ) -> pd.Series:
         """Execute a prepared task on every Series element (asynchronously).
 
-        This method applies a pre-configured task to each element in the Series,
-        using the task's instructions and response format to generate structured
-        responses from the language model.
-
         Example:
             ```python
             from openaivec._model import PreparedTask
@@ -1140,8 +1107,6 @@ class AsyncOpenAIVecSeriesAccessor:
                 show_progress=True
             )
             ```
-            This method returns a Series containing the task results for each
-            corresponding input element, following the task's defined structure.
 
         Args:
             task (PreparedTask): A pre-configured task containing instructions,
@@ -1259,27 +1224,22 @@ class AsyncOpenAIVecDataFrameAccessor:
         Example:
             ```python
             df = pd.DataFrame([
-                {\"name\": \"cat\", \"legs\": 4},
-                {\"name\": \"dog\", \"legs\": 4},
-                {\"name\": \"elephant\", \"legs\": 4},
+                {"name": "cat", "legs": 4},
+                {"name": "dog", "legs": 4},
+                {"name": "elephant", "legs": 4},
             ])
             # Must be awaited
-            results = await df.aio.responses(\"what is the animal\'s name?\")
+            results = await df.aio.responses("what is the animal's name?")
 
             # With progress bar for large datasets
-            large_df = pd.DataFrame({\"id\": list(range(1000))})
+            large_df = pd.DataFrame({"id": list(range(1000))})
             results = await large_df.aio.responses(
-                \"generate a name for this ID\",
+                "generate a name for this ID",
                 batch_size=20,
                 max_concurrency=4,
                 show_progress=True
             )
             ```
-            This method returns a Series of strings, each containing the
-            assistant's response to the corresponding input.
-            Each row is serialised to JSON before being sent to the assistant.
-            The model used is set by the `responses_model` function.
-            The default model is `gpt-4.1-mini`.
 
         Args:
             instructions (str): System prompt for the assistant.
@@ -1321,11 +1281,6 @@ class AsyncOpenAIVecDataFrameAccessor:
     ) -> pd.Series:
         """Execute a prepared task on each DataFrame row after serialising it to JSON (asynchronously).
 
-        This method applies a pre-configured task to each row in the DataFrame,
-        using the task's instructions and response format to generate structured
-        responses from the language model. Each row is serialised to JSON before
-        being processed by the task.
-
         Example:
             ```python
             from openaivec._model import PreparedTask
@@ -1350,8 +1305,6 @@ class AsyncOpenAIVecDataFrameAccessor:
                 show_progress=True
             )
             ```
-            This method returns a Series containing the task results for each
-            corresponding row, following the task's defined structure.
 
         Args:
             task (PreparedTask): A pre-configured task containing instructions,
