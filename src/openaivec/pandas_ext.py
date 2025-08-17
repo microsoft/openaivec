@@ -250,7 +250,7 @@ class OpenAIVecSeriesAccessor:
             batch_size (int | None, optional): Number of prompts grouped into a single
                 request. Defaults to ``None`` (automatic batch size optimization
                 based on execution time). Set to a positive integer for fixed batch size.
-            temperature (float, optional): Sampling temperature. Defaults to ``0.0``.
+            temperature (float | None, optional): Sampling temperature. Defaults to ``0.0``.
             top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
 
@@ -276,15 +276,6 @@ class OpenAIVecSeriesAccessor:
         a pre-configured BatchingMapProxy instance, enabling cache sharing
         across multiple operations or custom batch size management.
 
-        Args:
-            cache (BatchingMapProxy[str, np.ndarray]): Pre-configured cache
-                instance for managing API call batching and deduplication.
-                Set cache.batch_size=None to enable automatic batch size optimization.
-
-        Returns:
-            pandas.Series: Series whose values are ``np.ndarray`` objects
-                (dtype ``float32``).
-
         Example:
             ```python
             from openaivec._proxy import BatchingMapProxy
@@ -296,6 +287,15 @@ class OpenAIVecSeriesAccessor:
             animals = pd.Series(["cat", "dog", "elephant"])
             embeddings = animals.ai.embeddings_with_cache(cache=shared_cache)
             ```
+
+        Args:
+            cache (BatchingMapProxy[str, np.ndarray]): Pre-configured cache
+                instance for managing API call batching and deduplication.
+                Set cache.batch_size=None to enable automatic batch size optimization.
+
+        Returns:
+            pandas.Series: Series whose values are ``np.ndarray`` objects
+                (dtype ``float32``).
         """
         client: BatchEmbeddings = BatchEmbeddings(
             client=CONTAINER.resolve(OpenAI),
@@ -352,6 +352,13 @@ class OpenAIVecSeriesAccessor:
         response format, temperature and top_p. A supplied ``BatchingMapProxy`` enables
         cross‑operation deduplicated reuse and external batch size / progress control.
 
+        Example:
+            ```python
+            from openaivec._proxy import BatchingMapProxy
+            shared_cache = BatchingMapProxy(batch_size=64)
+            reviews.ai.task_with_cache(sentiment_task, cache=shared_cache)
+            ```
+
         Args:
             task (PreparedTask): Prepared task (instructions + response_format + sampling params).
             cache (BatchingMapProxy[str, ResponseFormat]): Pre‑configured cache instance.
@@ -363,13 +370,6 @@ class OpenAIVecSeriesAccessor:
 
         Returns:
             pandas.Series: Task results aligned with the original Series index.
-
-        Example:
-            ```python
-            from openaivec._proxy import BatchingMapProxy
-            shared_cache = BatchingMapProxy(batch_size=64)
-            reviews.ai.task_with_cache(sentiment_task, cache=shared_cache)
-            ```
         """
         client: BatchResponses = BatchResponses(
             client=CONTAINER.resolve(OpenAI),
@@ -497,24 +497,11 @@ class OpenAIVecDataFrameAccessor:
         top_p: float = 1.0,
         **api_kwargs,
     ) -> pd.Series:
-        """Generate a response for each row after serialising it to JSON using a provided cache.
+        """Generate a response for each row after serializing it to JSON using a provided cache.
 
         This method allows external control over caching behavior by accepting
         a pre-configured BatchingMapProxy instance, enabling cache sharing
         across multiple operations or custom batch size management.
-
-        Args:
-            instructions (str): System prompt for the assistant.
-            cache (BatchingMapProxy[str, ResponseFormat]): Pre-configured cache
-                instance for managing API call batching and deduplication.
-                Set cache.batch_size=None to enable automatic batch size optimization.
-            response_format (Type[ResponseFormat], optional): Desired Python type of the
-                responses. Defaults to ``str``.
-            temperature (float, optional): Sampling temperature. Defaults to ``0.0``.
-            top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
-
-        Returns:
-            pandas.Series: Responses aligned with the DataFrame's original index.
 
         Example:
             ```python
@@ -533,6 +520,19 @@ class OpenAIVecDataFrameAccessor:
                 cache=shared_cache
             )
             ```
+
+        Args:
+            instructions (str): System prompt for the assistant.
+            cache (BatchingMapProxy[str, ResponseFormat]): Pre-configured cache
+                instance for managing API call batching and deduplication.
+                Set cache.batch_size=None to enable automatic batch size optimization.
+            response_format (Type[ResponseFormat], optional): Desired Python type of the
+                responses. Defaults to ``str``.
+            temperature (float | None, optional): Sampling temperature. Defaults to ``0.0``.
+            top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
+
+        Returns:
+            pandas.Series: Responses aligned with the DataFrame's original index.
         """
         return _df_rows_to_json_series(self._obj).ai.responses_with_cache(
             instructions=instructions,
@@ -553,7 +553,7 @@ class OpenAIVecDataFrameAccessor:
         show_progress: bool = False,
         **api_kwargs,
     ) -> pd.Series:
-        """Generate a response for each row after serialising it to JSON.
+        """Generate a response for each row after serializing it to JSON.
 
         Example:
             ```python
@@ -581,7 +581,7 @@ class OpenAIVecDataFrameAccessor:
             batch_size (int | None, optional): Number of requests sent in one batch.
                 Defaults to ``None`` (automatic batch size optimization
                 based on execution time). Set to a positive integer for fixed batch size.
-            temperature (float, optional): Sampling temperature. Defaults to ``0.0``.
+            temperature (float | None, optional): Sampling temperature. Defaults to ``0.0``.
             top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
 
@@ -629,7 +629,7 @@ class OpenAIVecDataFrameAccessor:
         show_progress: bool = False,
         **api_kwargs,
     ) -> pd.Series:
-        """Execute a prepared task on each DataFrame row after serialising it to JSON.
+        """Execute a prepared task on each DataFrame row after serializing it to JSON.
 
         Example:
             ```python
@@ -844,6 +844,16 @@ class AsyncOpenAIVecSeriesAccessor:
         across multiple operations or custom batch size management. The concurrency
         is controlled by the cache instance itself.
 
+        Example:
+            ```python
+            result = await series.aio.responses_with_cache(
+                "classify",
+                cache=shared,
+                max_output_tokens=256,
+                frequency_penalty=0.2,
+            )
+            ```
+
         Args:
             instructions (str): System prompt prepended to every user message.
             cache (AsyncBatchingMapProxy[str, ResponseFormat]): Pre-configured cache
@@ -861,16 +871,6 @@ class AsyncOpenAIVecSeriesAccessor:
 
         Returns:
             pandas.Series: Series whose values are instances of ``response_format``.
-
-        Example:
-            ```python
-            result = await series.aio.responses_with_cache(
-                "classify",
-                cache=shared,
-                max_output_tokens=256,
-                frequency_penalty=0.2,
-            )
-            ```
 
         Note:
             This is an asynchronous method and must be awaited.
@@ -923,7 +923,7 @@ class AsyncOpenAIVecSeriesAccessor:
             batch_size (int | None, optional): Number of prompts grouped into a single
                 request. Defaults to ``None`` (automatic batch size optimization
                 based on execution time). Set to a positive integer for fixed batch size.
-            temperature (float, optional): Sampling temperature. Defaults to ``0.0``.
+            temperature (float | None, optional): Sampling temperature. Defaults to ``0.0``.
             top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to ``8``.
@@ -957,15 +957,6 @@ class AsyncOpenAIVecSeriesAccessor:
         across multiple operations or custom batch size management. The concurrency
         is controlled by the cache instance itself.
 
-        Args:
-            cache (AsyncBatchingMapProxy[str, np.ndarray]): Pre-configured cache
-                instance for managing API call batching and deduplication.
-                Set cache.batch_size=None to enable automatic batch size optimization.
-
-        Returns:
-            pandas.Series: Series whose values are ``np.ndarray`` objects
-                (dtype ``float32``).
-
         Example:
             ```python
             from openaivec._proxy import AsyncBatchingMapProxy
@@ -980,6 +971,15 @@ class AsyncOpenAIVecSeriesAccessor:
             # Must be awaited
             embeddings = await animals.aio.embeddings_with_cache(cache=shared_cache)
             ```
+
+        Args:
+            cache (AsyncBatchingMapProxy[str, np.ndarray]): Pre-configured cache
+                instance for managing API call batching and deduplication.
+                Set cache.batch_size=None to enable automatic batch size optimization.
+
+        Returns:
+            pandas.Series: Series whose values are ``np.ndarray`` objects
+                (dtype ``float32``).
 
         Note:
             This is an asynchronous method and must be awaited.
@@ -1060,16 +1060,6 @@ class AsyncOpenAIVecSeriesAccessor:
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
 
-        Additional Keyword Args:
-            Arbitrary OpenAI Responses API parameters (e.g. ``frequency_penalty``, ``presence_penalty``,
-            ``seed``, etc.) are forwarded verbatim to the underlying client. Core batching / routing
-            keys (``model``, ``instructions`` / system message, user ``input``) are managed by the
-            library and cannot be overridden.
-
-        Returns:
-            pandas.Series: Series whose values are instances of the task's
-                response format, aligned with the original Series index.
-
         Example:
             ```python
             from openaivec._model import PreparedTask
@@ -1085,6 +1075,16 @@ class AsyncOpenAIVecSeriesAccessor:
             # Must be awaited
             results = await reviews.aio.task_with_cache(sentiment_task, cache=shared_cache)
             ```
+
+        Additional Keyword Args:
+            Arbitrary OpenAI Responses API parameters (e.g. ``frequency_penalty``, ``presence_penalty``,
+            ``seed``, etc.) are forwarded verbatim to the underlying client. Core batching / routing
+            keys (``model``, ``instructions`` / system message, user ``input``) are managed by the
+            library and cannot be overridden.
+
+        Returns:
+            pandas.Series: Series whose values are instances of the task's
+                response format, aligned with the original Series index.
 
         Note:
             This is an asynchronous method and must be awaited.
@@ -1182,25 +1182,12 @@ class AsyncOpenAIVecDataFrameAccessor:
         top_p: float = 1.0,
         **api_kwargs,
     ) -> pd.Series:
-        """Generate a response for each row after serialising it to JSON using a provided cache (asynchronously).
+        """Generate a response for each row after serializing it to JSON using a provided cache (asynchronously).
 
         This method allows external control over caching behavior by accepting
         a pre-configured AsyncBatchingMapProxy instance, enabling cache sharing
         across multiple operations or custom batch size management. The concurrency
         is controlled by the cache instance itself.
-
-        Args:
-            instructions (str): System prompt for the assistant.
-            cache (AsyncBatchingMapProxy[str, ResponseFormat]): Pre-configured cache
-                instance for managing API call batching and deduplication.
-                Set cache.batch_size=None to enable automatic batch size optimization.
-            response_format (Type[ResponseFormat], optional): Desired Python type of the
-                responses. Defaults to ``str``.
-            temperature (float, optional): Sampling temperature. Defaults to ``0.0``.
-            top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
-
-        Returns:
-            pandas.Series: Responses aligned with the DataFrame's original index.
 
         Example:
             ```python
@@ -1220,6 +1207,19 @@ class AsyncOpenAIVecDataFrameAccessor:
                 cache=shared_cache
             )
             ```
+
+        Args:
+            instructions (str): System prompt for the assistant.
+            cache (AsyncBatchingMapProxy[str, ResponseFormat]): Pre-configured cache
+                instance for managing API call batching and deduplication.
+                Set cache.batch_size=None to enable automatic batch size optimization.
+            response_format (Type[ResponseFormat], optional): Desired Python type of the
+                responses. Defaults to ``str``.
+            temperature (float | None, optional): Sampling temperature. Defaults to ``0.0``.
+            top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
+
+        Returns:
+            pandas.Series: Responses aligned with the DataFrame's original index.
 
         Note:
             This is an asynchronous method and must be awaited.
@@ -1245,7 +1245,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         show_progress: bool = False,
         **api_kwargs,
     ) -> pd.Series:
-        """Generate a response for each row after serialising it to JSON (asynchronously).
+        """Generate a response for each row after serializing it to JSON (asynchronously).
 
         Example:
             ```python
@@ -1274,7 +1274,7 @@ class AsyncOpenAIVecDataFrameAccessor:
             batch_size (int | None, optional): Number of requests sent in one batch.
                 Defaults to ``None`` (automatic batch size optimization
                 based on execution time). Set to a positive integer for fixed batch size.
-            temperature (float, optional): Sampling temperature. Defaults to ``0.0``.
+            temperature (float | None, optional): Sampling temperature. Defaults to ``0.0``.
             top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to ``8``.
@@ -1332,7 +1332,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         show_progress: bool = False,
         **api_kwargs,
     ) -> pd.Series:
-        """Execute a prepared task on each DataFrame row after serialising it to JSON (asynchronously).
+        """Execute a prepared task on each DataFrame row after serializing it to JSON (asynchronously).
 
         Example:
             ```python
