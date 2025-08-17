@@ -697,6 +697,7 @@ class OpenAIVecDataFrameAccessor:
         max_examples: int = 500,
         batch_size: int | None = None,
         show_progress: bool = False,
+        **api_kwargs,
     ) -> pd.DataFrame:
         """Fill missing values in a DataFrame column using AI-powered inference.
 
@@ -715,6 +716,10 @@ class OpenAIVecDataFrameAccessor:
                 to optimize API usage. Defaults to ``None`` (automatic batch size
                 optimization based on execution time). Set to a positive integer for fixed batch size.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
+
+        Additional Keyword Args:
+            Arbitrary OpenAI Responses API parameters (e.g. ``frequency_penalty``, ``presence_penalty``,
+            ``seed``, etc.) are forwarded verbatim to the underlying task execution.
 
         Returns:
             pandas.DataFrame: A new DataFrame with missing values filled in the target
@@ -747,7 +752,7 @@ class OpenAIVecDataFrameAccessor:
             return self._obj
 
         filled_values: List[FillNaResponse] = missing_rows.ai.task(
-            task=task, batch_size=batch_size, show_progress=show_progress
+            task=task, batch_size=batch_size, show_progress=show_progress, **api_kwargs
         )
 
         # get deep copy of the DataFrame to avoid modifying the original
@@ -1454,6 +1459,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         batch_size: int | None = None,
         max_concurrency: int = 8,
         show_progress: bool = False,
+        **api_kwargs,
     ) -> pd.DataFrame:
         """Fill missing values in a DataFrame column using AI-powered inference (asynchronously).
 
@@ -1474,6 +1480,10 @@ class AsyncOpenAIVecDataFrameAccessor:
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to 8.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
+
+        Additional Keyword Args:
+            Arbitrary OpenAI Responses API parameters (e.g. ``frequency_penalty``, ``presence_penalty``,
+            ``seed``, etc.) are forwarded verbatim to the underlying task execution.
 
         Returns:
             pandas.DataFrame: A new DataFrame with missing values filled in the target
@@ -1512,7 +1522,7 @@ class AsyncOpenAIVecDataFrameAccessor:
             return self._obj
 
         filled_values: List[FillNaResponse] = await missing_rows.aio.task(
-            task=task, batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
+            task=task, batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress, **api_kwargs
         )
 
         # get deep copy of the DataFrame to avoid modifying the original
