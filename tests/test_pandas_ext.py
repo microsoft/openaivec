@@ -566,3 +566,173 @@ class TestPandasExt(unittest.TestCase):
         # the responses should be identical due to cache sharing
         self.assertIsNotNone(result1[1])  # Dog response from df1
         self.assertIsNotNone(result2[0])  # Dog response from df2 (should be cached)
+
+    def test_series_ai_task(self):
+        """Test Series.ai.task method."""
+        from openaivec._model import PreparedTask
+        from pydantic import BaseModel
+
+        class SimpleResponse(BaseModel):
+            result: str
+
+        task = PreparedTask(
+            instructions="Return a simple result",
+            response_format=SimpleResponse,
+            temperature=0.0,
+            top_p=1.0,
+        )
+
+        # Test basic task execution
+        series = pd.Series(["test1", "test2", "test3"])
+        # We can't test actual API calls without mocking, but we can test the method exists
+        # and accepts the right parameters
+        self.assertTrue(hasattr(series.ai, "task"))
+        self.assertTrue(callable(series.ai.task))
+
+    def test_series_aio_task(self):
+        """Test Series.aio.task method (async)."""
+        from openaivec._model import PreparedTask
+        from pydantic import BaseModel
+
+        class SimpleResponse(BaseModel):
+            result: str
+
+        task = PreparedTask(
+            instructions="Return a simple result",
+            response_format=SimpleResponse,
+            temperature=0.0,
+            top_p=1.0,
+        )
+
+        # Test that async task method exists and is callable
+        series = pd.Series(["test1", "test2", "test3"])
+        self.assertTrue(hasattr(series.aio, "task"))
+        self.assertTrue(callable(series.aio.task))
+
+    def test_dataframe_ai_task(self):
+        """Test DataFrame.ai.task method."""
+        from openaivec._model import PreparedTask
+        from pydantic import BaseModel
+
+        class SimpleResponse(BaseModel):
+            result: str
+
+        task = PreparedTask(
+            instructions="Return a simple result",
+            response_format=SimpleResponse,
+            temperature=0.0,
+            top_p=1.0,
+        )
+
+        # Test basic task execution
+        df = pd.DataFrame({"col1": ["test1", "test2"], "col2": ["a", "b"]})
+        # We can't test actual API calls without mocking, but we can test the method exists
+        # and accepts the right parameters
+        self.assertTrue(hasattr(df.ai, "task"))
+        self.assertTrue(callable(df.ai.task))
+
+    def test_dataframe_aio_task(self):
+        """Test DataFrame.aio.task method (async)."""
+        from openaivec._model import PreparedTask
+        from pydantic import BaseModel
+
+        class SimpleResponse(BaseModel):
+            result: str
+
+        task = PreparedTask(
+            instructions="Return a simple result",
+            response_format=SimpleResponse,
+            temperature=0.0,
+            top_p=1.0,
+        )
+
+        # Test that async task method exists and is callable
+        df = pd.DataFrame({"col1": ["test1", "test2"], "col2": ["a", "b"]})
+        self.assertTrue(hasattr(df.aio, "task"))
+        self.assertTrue(callable(df.aio.task))
+
+    def test_aio_fillna(self):
+        """Test DataFrame.aio.fillna method (async)."""
+        async def run_test():
+            df_with_missing = pd.DataFrame(
+                {
+                    "name": ["Alice", "Bob", "Charlie"],
+                    "age": [25, 30, 35],
+                    "city": ["Tokyo", "Osaka", "Kyoto"],
+                }
+            )
+            # Test that fillna returns same DataFrame when no missing values
+            result = await df_with_missing.aio.fillna("name")
+            return result, df_with_missing
+
+        result, original = asyncio.run(run_test())
+        # When no missing values, should return identical DataFrame
+        pd.testing.assert_frame_equal(result, original)
+
+    def test_show_progress_parameter_consistency(self):
+        """Test that show_progress parameter is consistently available across methods."""
+        import inspect
+
+        series = pd.Series(["test"])
+        df = pd.DataFrame({"col": ["test"]})
+
+        # Check sync methods have show_progress
+        self.assertIn("show_progress", inspect.signature(series.ai.responses).parameters)
+        self.assertIn("show_progress", inspect.signature(series.ai.embeddings).parameters)
+        self.assertIn("show_progress", inspect.signature(series.ai.task).parameters)
+        self.assertIn("show_progress", inspect.signature(df.ai.responses).parameters)
+        self.assertIn("show_progress", inspect.signature(df.ai.task).parameters)
+        self.assertIn("show_progress", inspect.signature(df.ai.fillna).parameters)
+
+        # Check async methods have show_progress
+        self.assertIn("show_progress", inspect.signature(series.aio.responses).parameters)
+        self.assertIn("show_progress", inspect.signature(series.aio.embeddings).parameters)
+        self.assertIn("show_progress", inspect.signature(series.aio.task).parameters)
+        self.assertIn("show_progress", inspect.signature(df.aio.responses).parameters)
+        self.assertIn("show_progress", inspect.signature(df.aio.task).parameters)
+        self.assertIn("show_progress", inspect.signature(df.aio.fillna).parameters)
+
+    def test_max_concurrency_parameter_consistency(self):
+        """Test that max_concurrency parameter is consistently available in async methods only."""
+        import inspect
+
+        series = pd.Series(["test"])
+        df = pd.DataFrame({"col": ["test"]})
+
+        # Check sync methods DON'T have max_concurrency
+        self.assertNotIn("max_concurrency", inspect.signature(series.ai.responses).parameters)
+        self.assertNotIn("max_concurrency", inspect.signature(series.ai.embeddings).parameters)
+        self.assertNotIn("max_concurrency", inspect.signature(series.ai.task).parameters)
+        self.assertNotIn("max_concurrency", inspect.signature(df.ai.responses).parameters)
+        self.assertNotIn("max_concurrency", inspect.signature(df.ai.task).parameters)
+        self.assertNotIn("max_concurrency", inspect.signature(df.ai.fillna).parameters)
+
+        # Check async methods DO have max_concurrency
+        self.assertIn("max_concurrency", inspect.signature(series.aio.responses).parameters)
+        self.assertIn("max_concurrency", inspect.signature(series.aio.embeddings).parameters)
+        self.assertIn("max_concurrency", inspect.signature(series.aio.task).parameters)
+        self.assertIn("max_concurrency", inspect.signature(df.aio.responses).parameters)
+        self.assertIn("max_concurrency", inspect.signature(df.aio.task).parameters)
+        self.assertIn("max_concurrency", inspect.signature(df.aio.fillna).parameters)
+
+    def test_method_parameter_ordering(self):
+        """Test that parameters appear in consistent order across similar methods."""
+        import inspect
+
+        series = pd.Series(["test"])
+
+        # Get parameter lists for comparison
+        responses_params = list(inspect.signature(series.ai.responses).parameters.keys())
+        aio_responses_params = list(inspect.signature(series.aio.responses).parameters.keys())
+
+        # Common parameters should be in same order (excluding max_concurrency which is async-only)
+        common_params = ["instructions", "response_format", "batch_size", "temperature", "top_p", "show_progress"]
+        
+        # Check sync version has these in order
+        sync_filtered = [p for p in responses_params if p in common_params]
+        self.assertEqual(sync_filtered, common_params)
+
+        # Check async version has these in order (with max_concurrency inserted before show_progress)
+        async_filtered = [p for p in aio_responses_params if p in common_params or p == "max_concurrency"]
+        expected_async = common_params[:5] + ["max_concurrency"] + [common_params[5]]
+        self.assertEqual(async_filtered, expected_async)
