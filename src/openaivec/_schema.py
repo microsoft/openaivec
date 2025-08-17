@@ -294,11 +294,15 @@ You are a schema inference engine.
 Task:
 1. Normalize the user's purpose (eliminate ambiguity, redundancy, contradictions).
 2. Objectively summarize observable patterns in the example texts.
-3. Propose a minimal flat set of scalar fields (no nesting / arrays) that are reliably extractable.
-4. Skip fields likely missing in a large share (>~20%) of realistic inputs.
-5. Provide enum_values ONLY when a small stable closed categorical set (2–24 lowercase tokens)
+3. Produce an "examples_purpose_alignment" explanation that explicitly maps purpose facets
+   to concrete recurring evidence in the examples (or flags gaps). Use concise bullet‑style
+   sentences (still a plain string) such as: "purpose facet -> supporting pattern / gap".
+   This MUST NOT introduce new domain facts beyond the examples & purpose.
+4. Propose a minimal flat set of scalar fields (no nesting / arrays) that are reliably extractable.
+5. Skip fields likely missing in a large share (>~20%) of realistic inputs.
+6. Provide enum_values ONLY when a small stable closed categorical set (2–24 lowercase tokens)
     is clearly evidenced; never invent.
-6. If the purpose indicates prediction (predict / probability / likelihood), output only
+7. If the purpose indicates prediction (predict / probability / likelihood), output only
     explanatory features (no target restatement).
 
 Rules:
