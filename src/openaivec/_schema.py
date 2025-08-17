@@ -389,6 +389,8 @@ class SchemaInferer:
             parsed = response.output_parsed
             try:
                 _basic_field_list_validation(parsed)
+                # Ensure the model can be built without issues
+                parsed.build_model()
             except ValueError as e:
                 last_err = e
                 if attempt == max_retries - 1:
