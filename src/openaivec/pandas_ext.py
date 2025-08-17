@@ -74,6 +74,21 @@ __all__ = [
 _LOGGER = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Internal helpers (not exported)
+# ---------------------------------------------------------------------------
+def _df_rows_to_json_series(df: pd.DataFrame) -> pd.Series:
+    """Return a Series of JSON strings (UTF-8, no ASCII escaping) representing DataFrame rows.
+
+    Each element is the JSON serialisation of the corresponding row as a dict. Index and
+    name are preserved so downstream operations retain alignment. This consolidates the
+    previously duplicated inline pipeline used by responses*/task* DataFrame helpers.
+    """
+    return pd.Series(df.to_dict(orient="records"), index=df.index, name="record").map(
+        lambda x: json.dumps(x, ensure_ascii=False)
+    )
+
+
 T = TypeVar("T")  # For pipe function return type
 
 
@@ -285,43 +300,30 @@ class OpenAIVecSeriesAccessor:
     ) -> pd.Series:
         """Execute a prepared task on every Series element using a provided cache.
 
-        This method allows external control over caching behavior by accepting
-        a pre-configured BatchingMapProxy instance, enabling cache sharing
-        across multiple operations or custom batch size management.
+        This mirrors ``responses_with_cache`` but uses the task's stored instructions,
+        response format, temperature and top_p. A supplied ``BatchingMapProxy`` enables
+        cross‑operation deduplicated reuse and external batch size / progress control.
 
         Args:
-            task (PreparedTask): A pre-configured task containing instructions,
-                response format, and other parameters for processing the inputs.
-            cache (BatchingMapProxy[str, ResponseFormat]): Pre-configured cache
-                instance for managing API call batching and deduplication.
-                Set cache.batch_size=None to enable automatic batch size optimization.
+            task (PreparedTask): Prepared task (instructions + response_format + sampling params).
+            cache (BatchingMapProxy[str, ResponseFormat]): Pre‑configured cache instance.
 
         Additional Keyword Args:
             Arbitrary OpenAI Responses API parameters (e.g. ``frequency_penalty``, ``presence_penalty``,
-            ``seed``, etc.) are forwarded verbatim to the underlying client. Core batching / routing
-            keys (``model``, ``instructions`` / system message, user ``input``) are managed by the
-            library and cannot be overridden.
+            ``seed``, etc.) forwarded verbatim to the underlying client. Core routing keys
+            (``model``, system instructions, user input) are managed internally and cannot be overridden.
 
         Returns:
-            pandas.Series: Series whose values are instances of the task's
-                response format, aligned with the original Series index.
+            pandas.Series: Task results aligned with the original Series index.
 
         Example:
             ```python
-            from openaivec._model import PreparedTask
             from openaivec._proxy import BatchingMapProxy
-
-            # Create a shared cache with custom batch size
             shared_cache = BatchingMapProxy(batch_size=64)
-
-            # Assume you have a prepared task for sentiment analysis
-            sentiment_task = PreparedTask(...)
-
-            reviews = pd.Series(["Great product!", "Not satisfied", "Amazing quality"])
-            results = reviews.ai.task_with_cache(sentiment_task, cache=shared_cache)
+            reviews.ai.task_with_cache(sentiment_task, cache=shared_cache)
             ```
         """
-        client = BatchResponses(
+        client: BatchResponses = BatchResponses(
             client=CONTAINER.resolve(OpenAI),
             model_name=CONTAINER.resolve(ResponsesModelName).value,
             system_message=task.instructions,
@@ -381,9 +383,12 @@ class OpenAIVecSeriesAccessor:
             keys (``model``, ``instructions`` / system message, user ``input``) are managed by the
             library and cannot be overridden.
 
+        Additional Keyword Args:
+            Arbitrary OpenAI Responses API parameters forwarded verbatim (e.g. ``frequency_penalty``,
+            ``presence_penalty``, ``seed``). Core routing keys are managed internally.
+
         Returns:
-            pandas.Series: Series whose values are instances of the task's
-                response format, aligned with the original Series index.
+            pandas.Series: Series whose values are instances of the task's response format.
         """
         return self.task_with_cache(
             task=task,
@@ -558,19 +563,13 @@ class OpenAIVecDataFrameAccessor:
             )
             ```
         """
-        return self._obj.pipe(
-            lambda df: (
-                df.pipe(lambda df: pd.Series(df.to_dict(orient="records"), index=df.index, name="record"))
-                .map(lambda x: json.dumps(x, ensure_ascii=False))
-                .ai.responses_with_cache(
-                    instructions=instructions,
-                    cache=cache,
-                    response_format=response_format,
-                    temperature=temperature,
-                    top_p=top_p,
-                    **api_kwargs,
-                )
-            )
+        return _df_rows_to_json_series(self._obj).ai.responses_with_cache(
+            instructions=instructions,
+            cache=cache,
+            response_format=response_format,
+            temperature=temperature,
+            top_p=top_p,
+            **api_kwargs,
         )
 
     def responses(
@@ -681,12 +680,36 @@ class OpenAIVecDataFrameAccessor:
             pandas.Series: Series whose values are instances of the task's
                 response format, aligned with the DataFrame's original index.
         """
-        return self._obj.pipe(
-            lambda df: (
-                df.pipe(lambda df: pd.Series(df.to_dict(orient="records"), index=df.index, name="record"))
-                .map(lambda x: json.dumps(x, ensure_ascii=False))
-                .ai.task(task=task, batch_size=batch_size, show_progress=show_progress, **api_kwargs)
-            )
+        return _df_rows_to_json_series(self._obj).ai.task(
+            task=task,
+            batch_size=batch_size,
+            show_progress=show_progress,
+            **api_kwargs,
+        )
+
+    def task_with_cache(
+        self,
+        task: PreparedTask[ResponseFormat],
+        cache: BatchingMapProxy[str, ResponseFormat],
+        **api_kwargs,
+    ) -> pd.Series:
+        """Execute a prepared task on each DataFrame row after serializing it to JSON using a provided cache.
+
+        Args:
+            task (PreparedTask): Prepared task (instructions + response_format + sampling params).
+            cache (BatchingMapProxy[str, ResponseFormat]): Pre‑configured cache instance.
+
+        Additional Keyword Args:
+            Arbitrary OpenAI Responses API parameters (e.g. ``frequency_penalty``, ``presence_penalty``,
+            ``seed``) forwarded verbatim. Core routing keys are managed internally.
+
+        Returns:
+            pandas.Series: Task results aligned with the DataFrame's original index.
+        """
+        return _df_rows_to_json_series(self._obj).ai.task_with_cache(
+            task=task,
+            cache=cache,
+            **api_kwargs,
         )
 
     def fillna(self, target_column_name: str, max_examples: int = 500, batch_size: int | None = None) -> pd.DataFrame:
@@ -1197,15 +1220,8 @@ class AsyncOpenAIVecDataFrameAccessor:
         Note:
             This is an asynchronous method and must be awaited.
         """
-        series_of_json = self._obj.pipe(
-            lambda df: (
-                pd.Series(df.to_dict(orient="records"), index=df.index, name="record").map(
-                    lambda x: json.dumps(x, ensure_ascii=False)
-                )
-            )
-        )
         # Await the call to the async Series method using .aio
-        return await series_of_json.aio.responses_with_cache(
+        return await _df_rows_to_json_series(self._obj).aio.responses_with_cache(
             instructions=instructions,
             cache=cache,
             response_format=response_format,
@@ -1347,19 +1363,39 @@ class AsyncOpenAIVecDataFrameAccessor:
         Note:
             This is an asynchronous method and must be awaited.
         """
-        series_of_json = self._obj.pipe(
-            lambda df: (
-                pd.Series(df.to_dict(orient="records"), index=df.index, name="record").map(
-                    lambda x: json.dumps(x, ensure_ascii=False)
-                )
-            )
-        )
         # Await the call to the async Series method using .aio
-        return await series_of_json.aio.task(
+        return await _df_rows_to_json_series(self._obj).aio.task(
             task=task,
             batch_size=batch_size,
             max_concurrency=max_concurrency,
             show_progress=show_progress,
+            **api_kwargs,
+        )
+
+    async def task_with_cache(
+        self,
+        task: PreparedTask[ResponseFormat],
+        cache: AsyncBatchingMapProxy[str, ResponseFormat],
+        **api_kwargs,
+    ) -> pd.Series:
+        """Execute a prepared task on each DataFrame row after serializing it to JSON using a provided cache (async).
+
+        Args:
+            task (PreparedTask): Prepared task (instructions + response_format + sampling params).
+            cache (AsyncBatchingMapProxy[str, ResponseFormat]): Pre‑configured async cache instance.
+
+        Additional Keyword Args:
+            Arbitrary OpenAI Responses API parameters forwarded verbatim. Core routing keys are protected.
+
+        Returns:
+            pandas.Series: Task results aligned with the DataFrame's original index.
+
+        Note:
+            This is an asynchronous method and must be awaited.
+        """
+        return await _df_rows_to_json_series(self._obj).aio.task_with_cache(
+            task=task,
+            cache=cache,
             **api_kwargs,
         )
 
