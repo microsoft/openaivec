@@ -216,49 +216,6 @@ class OpenAIVecSeriesAccessor:
         # Forward any extra kwargs to the underlying Responses API.
         return pd.Series(client.parse(self._obj.tolist(), **api_kwargs), index=self._obj.index, name=self._obj.name)
 
-    def embeddings_with_cache(
-        self,
-        cache: BatchingMapProxy[str, np.ndarray],
-    ) -> pd.Series:
-        """Compute OpenAI embeddings for every Series element using a provided cache.
-
-        This method allows external control over caching behavior by accepting
-        a pre-configured BatchingMapProxy instance, enabling cache sharing
-        across multiple operations or custom batch size management.
-
-        Args:
-            cache (BatchingMapProxy[str, np.ndarray]): Pre-configured cache
-                instance for managing API call batching and deduplication.
-                Set cache.batch_size=None to enable automatic batch size optimization.
-
-        Returns:
-            pandas.Series: Series whose values are ``np.ndarray`` objects
-                (dtype ``float32``).
-
-        Example:
-            ```python
-            from openaivec._proxy import BatchingMapProxy
-            import numpy as np
-
-            # Create a shared cache with custom batch size
-            shared_cache = BatchingMapProxy[str, np.ndarray](batch_size=64)
-
-            animals = pd.Series(["cat", "dog", "elephant"])
-            embeddings = animals.ai.embeddings_with_cache(cache=shared_cache)
-            ```
-        """
-        client: BatchEmbeddings = BatchEmbeddings(
-            client=CONTAINER.resolve(OpenAI),
-            model_name=CONTAINER.resolve(EmbeddingsModelName).value,
-            cache=cache,
-        )
-
-        return pd.Series(
-            client.create(self._obj.tolist()),
-            index=self._obj.index,
-            name=self._obj.name,
-        )
-
     def responses(
         self,
         instructions: str,
@@ -307,6 +264,80 @@ class OpenAIVecSeriesAccessor:
             temperature=temperature,
             top_p=top_p,
             **api_kwargs,
+        )
+
+    def embeddings_with_cache(
+        self,
+        cache: BatchingMapProxy[str, np.ndarray],
+    ) -> pd.Series:
+        """Compute OpenAI embeddings for every Series element using a provided cache.
+
+        This method allows external control over caching behavior by accepting
+        a pre-configured BatchingMapProxy instance, enabling cache sharing
+        across multiple operations or custom batch size management.
+
+        Args:
+            cache (BatchingMapProxy[str, np.ndarray]): Pre-configured cache
+                instance for managing API call batching and deduplication.
+                Set cache.batch_size=None to enable automatic batch size optimization.
+
+        Returns:
+            pandas.Series: Series whose values are ``np.ndarray`` objects
+                (dtype ``float32``).
+
+        Example:
+            ```python
+            from openaivec._proxy import BatchingMapProxy
+            import numpy as np
+
+            # Create a shared cache with custom batch size
+            shared_cache = BatchingMapProxy[str, np.ndarray](batch_size=64)
+
+            animals = pd.Series(["cat", "dog", "elephant"])
+            embeddings = animals.ai.embeddings_with_cache(cache=shared_cache)
+            ```
+        """
+        client: BatchEmbeddings = BatchEmbeddings(
+            client=CONTAINER.resolve(OpenAI),
+            model_name=CONTAINER.resolve(EmbeddingsModelName).value,
+            cache=cache,
+        )
+
+        return pd.Series(
+            client.create(self._obj.tolist()),
+            index=self._obj.index,
+            name=self._obj.name,
+        )
+
+    def embeddings(self, batch_size: int | None = None, show_progress: bool = False) -> pd.Series:
+        """Compute OpenAI embeddings for every Series element.
+
+        Example:
+            ```python
+            animals = pd.Series(["cat", "dog", "elephant"])
+            # Basic usage
+            animals.ai.embeddings()
+
+            # With progress bar for large datasets
+            large_texts = pd.Series(["text"] * 5000)
+            embeddings = large_texts.ai.embeddings(
+                batch_size=100,
+                show_progress=True
+            )
+            ```
+
+        Args:
+            batch_size (int | None, optional): Number of inputs grouped into a
+                single request. Defaults to ``None`` (automatic batch size optimization
+                based on execution time). Set to a positive integer for fixed batch size.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
+
+        Returns:
+            pandas.Series: Series whose values are ``np.ndarray`` objects
+                (dtype ``float32``).
+        """
+        return self.embeddings_with_cache(
+            cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
         )
 
     def task_with_cache(
@@ -403,37 +434,6 @@ class OpenAIVecSeriesAccessor:
             **api_kwargs,
         )
 
-    def embeddings(self, batch_size: int | None = None, show_progress: bool = False) -> pd.Series:
-        """Compute OpenAI embeddings for every Series element.
-
-        Example:
-            ```python
-            animals = pd.Series(["cat", "dog", "elephant"])
-            # Basic usage
-            animals.ai.embeddings()
-
-            # With progress bar for large datasets
-            large_texts = pd.Series(["text"] * 5000)
-            embeddings = large_texts.ai.embeddings(
-                batch_size=100,
-                show_progress=True
-            )
-            ```
-
-        Args:
-            batch_size (int | None, optional): Number of inputs grouped into a
-                single request. Defaults to ``None`` (automatic batch size optimization
-                based on execution time). Set to a positive integer for fixed batch size.
-            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
-
-        Returns:
-            pandas.Series: Series whose values are ``np.ndarray`` objects
-                (dtype ``float32``).
-        """
-        return self.embeddings_with_cache(
-            cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
-        )
-
     def count_tokens(self) -> pd.Series:
         """Count `tiktoken` tokens per row.
 
@@ -487,38 +487,6 @@ class OpenAIVecDataFrameAccessor:
 
     def __init__(self, df_obj: pd.DataFrame):
         self._obj = df_obj
-
-    def extract(self, column: str) -> pd.DataFrame:
-        """Flatten one column of Pydantic models/dicts into top‑level columns.
-
-        Example:
-            ```python
-            df = pd.DataFrame([
-                {"animal": {"name": "cat", "legs": 4}},
-                {"animal": {"name": "dog", "legs": 4}},
-                {"animal": {"name": "elephant", "legs": 4}},
-            ])
-            df.ai.extract("animal")
-            ```
-            This method returns a DataFrame with the same index as the original,
-            where each column corresponds to a key in the dictionaries.
-            The source column is dropped.
-
-        Args:
-            column (str): Column to expand.
-
-        Returns:
-            pandas.DataFrame: Original DataFrame with the extracted columns; the source column is dropped.
-        """
-        if column not in self._obj.columns:
-            raise ValueError(f"Column '{column}' does not exist in the DataFrame.")
-
-        return (
-            self._obj.pipe(lambda df: df.reset_index(drop=True))
-            .pipe(lambda df: df.join(df[column].ai.extract()))
-            .pipe(lambda df: df.set_index(self._obj.index))
-            .pipe(lambda df: df.drop(columns=[column], axis=1))
-        )
 
     def responses_with_cache(
         self,
@@ -629,6 +597,31 @@ class OpenAIVecDataFrameAccessor:
             **api_kwargs,
         )
 
+    def task_with_cache(
+        self,
+        task: PreparedTask[ResponseFormat],
+        cache: BatchingMapProxy[str, ResponseFormat],
+        **api_kwargs,
+    ) -> pd.Series:
+        """Execute a prepared task on each DataFrame row after serializing it to JSON using a provided cache.
+
+        Args:
+            task (PreparedTask): Prepared task (instructions + response_format + sampling params).
+            cache (BatchingMapProxy[str, ResponseFormat]): Pre‑configured cache instance.
+
+        Additional Keyword Args:
+            Arbitrary OpenAI Responses API parameters (e.g. ``frequency_penalty``, ``presence_penalty``,
+            ``seed``) forwarded verbatim. Core routing keys are managed internally.
+
+        Returns:
+            pandas.Series: Task results aligned with the DataFrame's original index.
+        """
+        return _df_rows_to_json_series(self._obj).ai.task_with_cache(
+            task=task,
+            cache=cache,
+            **api_kwargs,
+        )
+
     def task(
         self,
         task: PreparedTask,
@@ -687,29 +680,36 @@ class OpenAIVecDataFrameAccessor:
             **api_kwargs,
         )
 
-    def task_with_cache(
-        self,
-        task: PreparedTask[ResponseFormat],
-        cache: BatchingMapProxy[str, ResponseFormat],
-        **api_kwargs,
-    ) -> pd.Series:
-        """Execute a prepared task on each DataFrame row after serializing it to JSON using a provided cache.
+    def extract(self, column: str) -> pd.DataFrame:
+        """Flatten one column of Pydantic models/dicts into top‑level columns.
+
+        Example:
+            ```python
+            df = pd.DataFrame([
+                {"animal": {"name": "cat", "legs": 4}},
+                {"animal": {"name": "dog", "legs": 4}},
+                {"animal": {"name": "elephant", "legs": 4}},
+            ])
+            df.ai.extract("animal")
+            ```
+            This method returns a DataFrame with the same index as the original,
+            where each column corresponds to a key in the dictionaries.
+            The source column is dropped.
 
         Args:
-            task (PreparedTask): Prepared task (instructions + response_format + sampling params).
-            cache (BatchingMapProxy[str, ResponseFormat]): Pre‑configured cache instance.
-
-        Additional Keyword Args:
-            Arbitrary OpenAI Responses API parameters (e.g. ``frequency_penalty``, ``presence_penalty``,
-            ``seed``) forwarded verbatim. Core routing keys are managed internally.
+            column (str): Column to expand.
 
         Returns:
-            pandas.Series: Task results aligned with the DataFrame's original index.
+            pandas.DataFrame: Original DataFrame with the extracted columns; the source column is dropped.
         """
-        return _df_rows_to_json_series(self._obj).ai.task_with_cache(
-            task=task,
-            cache=cache,
-            **api_kwargs,
+        if column not in self._obj.columns:
+            raise ValueError(f"Column '{column}' does not exist in the DataFrame.")
+
+        return (
+            self._obj.pipe(lambda df: df.reset_index(drop=True))
+            .pipe(lambda df: df.join(df[column].ai.extract()))
+            .pipe(lambda df: df.set_index(self._obj.index))
+            .pipe(lambda df: df.drop(columns=[column], axis=1))
         )
 
     def fillna(
@@ -887,6 +887,65 @@ class AsyncOpenAIVecSeriesAccessor:
         results = await client.parse(self._obj.tolist(), **api_kwargs)
         return pd.Series(results, index=self._obj.index, name=self._obj.name)
 
+    async def responses(
+        self,
+        instructions: str,
+        response_format: Type[ResponseFormat] = str,
+        batch_size: int | None = None,
+        temperature: float | None = 0.0,
+        top_p: float = 1.0,
+        max_concurrency: int = 8,
+        show_progress: bool = False,
+        **api_kwargs,
+    ) -> pd.Series:
+        """Call an LLM once for every Series element (asynchronously).
+
+        Example:
+            ```python
+            animals = pd.Series(["cat", "dog", "elephant"])
+            # Must be awaited
+            results = await animals.aio.responses("translate to French")
+
+            # With progress bar for large datasets
+            large_series = pd.Series(["data"] * 1000)
+            results = await large_series.aio.responses(
+                "analyze this data",
+                batch_size=32,
+                max_concurrency=4,
+                show_progress=True
+            )
+            ```
+
+        Args:
+            instructions (str): System prompt prepended to every user message.
+            response_format (Type[ResponseFormat], optional): Pydantic model or built‑in
+                type the assistant should return. Defaults to ``str``.
+            batch_size (int | None, optional): Number of prompts grouped into a single
+                request. Defaults to ``None`` (automatic batch size optimization
+                based on execution time). Set to a positive integer for fixed batch size.
+            temperature (float, optional): Sampling temperature. Defaults to ``0.0``.
+            top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
+            max_concurrency (int, optional): Maximum number of concurrent
+                requests. Defaults to ``8``.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
+
+        Returns:
+            pandas.Series: Series whose values are instances of ``response_format``.
+
+        Note:
+            This is an asynchronous method and must be awaited.
+        """
+        return await self.responses_with_cache(
+            instructions=instructions,
+            cache=AsyncBatchingMapProxy(
+                batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
+            ),
+            response_format=response_format,
+            temperature=temperature,
+            top_p=top_p,
+            **api_kwargs,
+        )
+
     async def embeddings_with_cache(
         self,
         cache: AsyncBatchingMapProxy[str, np.ndarray],
@@ -938,6 +997,47 @@ class AsyncOpenAIVecSeriesAccessor:
             results,
             index=self._obj.index,
             name=self._obj.name,
+        )
+
+    async def embeddings(
+        self, batch_size: int | None = None, max_concurrency: int = 8, show_progress: bool = False
+    ) -> pd.Series:
+        """Compute OpenAI embeddings for every Series element (asynchronously).
+
+        Example:
+            ```python
+            animals = pd.Series(["cat", "dog", "elephant"])
+            # Must be awaited
+            embeddings = await animals.aio.embeddings()
+
+            # With progress bar for large datasets
+            large_texts = pd.Series(["text"] * 5000)
+            embeddings = await large_texts.aio.embeddings(
+                batch_size=100,
+                max_concurrency=4,
+                show_progress=True
+            )
+            ```
+
+        Args:
+            batch_size (int | None, optional): Number of inputs grouped into a
+                single request. Defaults to ``None`` (automatic batch size optimization
+                based on execution time). Set to a positive integer for fixed batch size.
+            max_concurrency (int, optional): Maximum number of concurrent
+                requests. Defaults to ``8``.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
+
+        Returns:
+            pandas.Series: Series whose values are ``np.ndarray`` objects
+                (dtype ``float32``).
+
+        Note:
+            This is an asynchronous method and must be awaited.
+        """
+        return await self.embeddings_with_cache(
+            cache=AsyncBatchingMapProxy(
+                batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
+            ),
         )
 
     async def task_with_cache(
@@ -1002,106 +1102,6 @@ class AsyncOpenAIVecSeriesAccessor:
         results = await client.parse(self._obj.tolist(), **api_kwargs)
 
         return pd.Series(results, index=self._obj.index, name=self._obj.name)
-
-    async def responses(
-        self,
-        instructions: str,
-        response_format: Type[ResponseFormat] = str,
-        batch_size: int | None = None,
-        temperature: float | None = 0.0,
-        top_p: float = 1.0,
-        max_concurrency: int = 8,
-        show_progress: bool = False,
-        **api_kwargs,
-    ) -> pd.Series:
-        """Call an LLM once for every Series element (asynchronously).
-
-        Example:
-            ```python
-            animals = pd.Series(["cat", "dog", "elephant"])
-            # Must be awaited
-            results = await animals.aio.responses("translate to French")
-
-            # With progress bar for large datasets
-            large_series = pd.Series(["data"] * 1000)
-            results = await large_series.aio.responses(
-                "analyze this data",
-                batch_size=32,
-                max_concurrency=4,
-                show_progress=True
-            )
-            ```
-
-        Args:
-            instructions (str): System prompt prepended to every user message.
-            response_format (Type[ResponseFormat], optional): Pydantic model or built‑in
-                type the assistant should return. Defaults to ``str``.
-            batch_size (int | None, optional): Number of prompts grouped into a single
-                request. Defaults to ``None`` (automatic batch size optimization
-                based on execution time). Set to a positive integer for fixed batch size.
-            temperature (float, optional): Sampling temperature. Defaults to ``0.0``.
-            top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
-            max_concurrency (int, optional): Maximum number of concurrent
-                requests. Defaults to ``8``.
-            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
-
-        Returns:
-            pandas.Series: Series whose values are instances of ``response_format``.
-
-        Note:
-            This is an asynchronous method and must be awaited.
-        """
-        return await self.responses_with_cache(
-            instructions=instructions,
-            cache=AsyncBatchingMapProxy(
-                batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
-            ),
-            response_format=response_format,
-            temperature=temperature,
-            top_p=top_p,
-            **api_kwargs,
-        )
-
-    async def embeddings(
-        self, batch_size: int | None = None, max_concurrency: int = 8, show_progress: bool = False
-    ) -> pd.Series:
-        """Compute OpenAI embeddings for every Series element (asynchronously).
-
-        Example:
-            ```python
-            animals = pd.Series(["cat", "dog", "elephant"])
-            # Must be awaited
-            embeddings = await animals.aio.embeddings()
-
-            # With progress bar for large datasets
-            large_texts = pd.Series(["text"] * 5000)
-            embeddings = await large_texts.aio.embeddings(
-                batch_size=100,
-                max_concurrency=4,
-                show_progress=True
-            )
-            ```
-
-        Args:
-            batch_size (int | None, optional): Number of inputs grouped into a
-                single request. Defaults to ``None`` (automatic batch size optimization
-                based on execution time). Set to a positive integer for fixed batch size.
-            max_concurrency (int, optional): Maximum number of concurrent
-                requests. Defaults to ``8``.
-            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
-
-        Returns:
-            pandas.Series: Series whose values are ``np.ndarray`` objects
-                (dtype ``float32``).
-
-        Note:
-            This is an asynchronous method and must be awaited.
-        """
-        return await self.embeddings_with_cache(
-            cache=AsyncBatchingMapProxy(
-                batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
-            ),
-        )
 
     async def task(
         self,
@@ -1297,6 +1297,33 @@ class AsyncOpenAIVecDataFrameAccessor:
             **api_kwargs,
         )
 
+    async def task_with_cache(
+        self,
+        task: PreparedTask[ResponseFormat],
+        cache: AsyncBatchingMapProxy[str, ResponseFormat],
+        **api_kwargs,
+    ) -> pd.Series:
+        """Execute a prepared task on each DataFrame row after serializing it to JSON using a provided cache (async).
+
+        Args:
+            task (PreparedTask): Prepared task (instructions + response_format + sampling params).
+            cache (AsyncBatchingMapProxy[str, ResponseFormat]): Pre‑configured async cache instance.
+
+        Additional Keyword Args:
+            Arbitrary OpenAI Responses API parameters forwarded verbatim. Core routing keys are protected.
+
+        Returns:
+            pandas.Series: Task results aligned with the DataFrame's original index.
+
+        Note:
+            This is an asynchronous method and must be awaited.
+        """
+        return await _df_rows_to_json_series(self._obj).aio.task_with_cache(
+            task=task,
+            cache=cache,
+            **api_kwargs,
+        )
+
     async def task(
         self,
         task: PreparedTask,
@@ -1361,33 +1388,6 @@ class AsyncOpenAIVecDataFrameAccessor:
             batch_size=batch_size,
             max_concurrency=max_concurrency,
             show_progress=show_progress,
-            **api_kwargs,
-        )
-
-    async def task_with_cache(
-        self,
-        task: PreparedTask[ResponseFormat],
-        cache: AsyncBatchingMapProxy[str, ResponseFormat],
-        **api_kwargs,
-    ) -> pd.Series:
-        """Execute a prepared task on each DataFrame row after serializing it to JSON using a provided cache (async).
-
-        Args:
-            task (PreparedTask): Prepared task (instructions + response_format + sampling params).
-            cache (AsyncBatchingMapProxy[str, ResponseFormat]): Pre‑configured async cache instance.
-
-        Additional Keyword Args:
-            Arbitrary OpenAI Responses API parameters forwarded verbatim. Core routing keys are protected.
-
-        Returns:
-            pandas.Series: Task results aligned with the DataFrame's original index.
-
-        Note:
-            This is an asynchronous method and must be awaited.
-        """
-        return await _df_rows_to_json_series(self._obj).aio.task_with_cache(
-            task=task,
-            cache=cache,
             **api_kwargs,
         )
 
