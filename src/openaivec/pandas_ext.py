@@ -182,6 +182,27 @@ class OpenAIVecSeriesAccessor:
         top_p: float = 1.0,
         **api_kwargs,
     ) -> pd.Series:
+        """Call an LLM once for every Series element with explicit cache control.
+
+        This is a lower-level method that allows explicit cache management for advanced
+        use cases. Most users should use the standard ``responses`` method instead.
+
+        Args:
+            instructions (str): System prompt prepended to every user message.
+            cache (BatchingMapProxy[str, ResponseFormat]): Explicit cache instance for
+                batching and deduplication control.
+            response_format (Type[ResponseFormat], optional): Pydantic model or built-in
+                type the assistant should return. Defaults to ``str``.
+            temperature (float | None, optional): Sampling temperature. Defaults to ``0.0``.
+            top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
+
+        Additional Keyword Args:
+            Arbitrary OpenAI Responses API parameters (e.g. ``frequency_penalty``, ``presence_penalty``,
+            ``seed``, etc.) are forwarded verbatim to the underlying client.
+
+        Returns:
+            pandas.Series: Series whose values are instances of ``response_format``.
+        """
         client: BatchResponses = BatchResponses(
             client=CONTAINER.resolve(OpenAI),
             model_name=CONTAINER.resolve(ResponsesModelName).value,
