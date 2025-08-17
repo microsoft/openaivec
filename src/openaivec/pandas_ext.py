@@ -182,7 +182,7 @@ class OpenAIVecSeriesAccessor:
         top_p: float = 1.0,
         **api_kwargs,
     ) -> pd.Series:
-        """Call an LLM once for every Series element with explicit cache control.
+        """Call an LLM once for every Series element using a provided cache.
 
         This is a lower-level method that allows explicit cache management for advanced
         use cases. Most users should use the standard ``responses`` method instead.
@@ -797,15 +797,6 @@ class OpenAIVecDataFrameAccessor:
         two columns of the DataFrame. The vectors should be numpy arrays or
         array-like objects that support dot product operations.
 
-        Args:
-            col1 (str): Name of the first column containing embedding vectors.
-            col2 (str): Name of the second column containing embedding vectors.
-
-        Returns:
-            pandas.Series: Series containing cosine similarity scores between
-                corresponding vectors in col1 and col2, with values ranging
-                from -1 to 1, where 1 indicates identical direction.
-
         Example:
             ```python
             df = pd.DataFrame({
@@ -814,6 +805,15 @@ class OpenAIVecDataFrameAccessor:
             })
             similarities = df.ai.similarity('vec1', 'vec2')
             ```
+
+        Args:
+            col1 (str): Name of the first column containing embedding vectors.
+            col2 (str): Name of the second column containing embedding vectors.
+
+        Returns:
+            pandas.Series: Series containing cosine similarity scores between
+                corresponding vectors in col1 and col2, with values ranging
+                from -1 to 1, where 1 indicates identical direction.
         """
         return self._obj.apply(
             lambda row: np.dot(row[col1], row[col2]) / (np.linalg.norm(row[col1]) * np.linalg.norm(row[col2])),
@@ -1303,7 +1303,9 @@ class AsyncOpenAIVecDataFrameAccessor:
         cache: AsyncBatchingMapProxy[str, ResponseFormat],
         **api_kwargs,
     ) -> pd.Series:
-        """Execute a prepared task on each DataFrame row after serializing it to JSON using a provided cache (async).
+        """Execute a prepared task on each DataFrame row using a provided cache (asynchronously).
+
+        After serializing each row to JSON, this method executes the prepared task.
 
         Args:
             task (PreparedTask): Prepared task (instructions + response_format + sampling params).
@@ -1392,11 +1394,22 @@ class AsyncOpenAIVecDataFrameAccessor:
         )
 
     async def pipe(self, func: Callable[[pd.DataFrame], Awaitable[T] | T]) -> T:
-        """
-        Apply a function to the DataFrame, supporting both synchronous and asynchronous functions.
+        """Apply a function to the DataFrame, supporting both synchronous and asynchronous functions.
 
         This method allows chaining operations on the DataFrame, similar to pandas' `pipe` method,
         but with support for asynchronous functions.
+
+        Example:
+            ```python
+            async def process_data(df):
+                # Simulate an asynchronous computation
+                await asyncio.sleep(1)
+                return df.dropna()
+
+            df = pd.DataFrame({"col": [1, 2, None, 4]})
+            # Must be awaited
+            result = await df.aio.pipe(process_data)
+            ```
 
         Args:
             func (Callable[[pd.DataFrame], Awaitable[T] | T]): A function that takes a DataFrame
