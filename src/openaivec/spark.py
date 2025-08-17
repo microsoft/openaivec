@@ -611,7 +611,10 @@ def similarity_udf() -> UserDefinedFunction:
             Cosine similarity between the two vectors.
         """
         # Import pandas_ext to ensure .ai accessor is available in Spark workers
-        from openaivec import pandas_ext  # noqa: F401
+        from openaivec import pandas_ext
+
+        # Explicitly reference pandas_ext to satisfy linters
+        assert pandas_ext is not None
 
         return pd.DataFrame({"a": a, "b": b}).ai.similarity("a", "b")
 

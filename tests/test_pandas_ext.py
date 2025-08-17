@@ -569,19 +569,6 @@ class TestPandasExt(unittest.TestCase):
 
     def test_series_ai_task(self):
         """Test Series.ai.task method."""
-        from openaivec._model import PreparedTask
-        from pydantic import BaseModel
-
-        class SimpleResponse(BaseModel):
-            result: str
-
-        task = PreparedTask(
-            instructions="Return a simple result",
-            response_format=SimpleResponse,
-            temperature=0.0,
-            top_p=1.0,
-        )
-
         # Test basic task execution
         series = pd.Series(["test1", "test2", "test3"])
         # We can't test actual API calls without mocking, but we can test the method exists
@@ -591,19 +578,6 @@ class TestPandasExt(unittest.TestCase):
 
     def test_series_aio_task(self):
         """Test Series.aio.task method (async)."""
-        from openaivec._model import PreparedTask
-        from pydantic import BaseModel
-
-        class SimpleResponse(BaseModel):
-            result: str
-
-        task = PreparedTask(
-            instructions="Return a simple result",
-            response_format=SimpleResponse,
-            temperature=0.0,
-            top_p=1.0,
-        )
-
         # Test that async task method exists and is callable
         series = pd.Series(["test1", "test2", "test3"])
         self.assertTrue(hasattr(series.aio, "task"))
@@ -611,19 +585,6 @@ class TestPandasExt(unittest.TestCase):
 
     def test_dataframe_ai_task(self):
         """Test DataFrame.ai.task method."""
-        from openaivec._model import PreparedTask
-        from pydantic import BaseModel
-
-        class SimpleResponse(BaseModel):
-            result: str
-
-        task = PreparedTask(
-            instructions="Return a simple result",
-            response_format=SimpleResponse,
-            temperature=0.0,
-            top_p=1.0,
-        )
-
         # Test basic task execution
         df = pd.DataFrame({"col1": ["test1", "test2"], "col2": ["a", "b"]})
         # We can't test actual API calls without mocking, but we can test the method exists
@@ -633,19 +594,6 @@ class TestPandasExt(unittest.TestCase):
 
     def test_dataframe_aio_task(self):
         """Test DataFrame.aio.task method (async)."""
-        from openaivec._model import PreparedTask
-        from pydantic import BaseModel
-
-        class SimpleResponse(BaseModel):
-            result: str
-
-        task = PreparedTask(
-            instructions="Return a simple result",
-            response_format=SimpleResponse,
-            temperature=0.0,
-            top_p=1.0,
-        )
-
         # Test that async task method exists and is callable
         df = pd.DataFrame({"col1": ["test1", "test2"], "col2": ["a", "b"]})
         self.assertTrue(hasattr(df.aio, "task"))
@@ -653,6 +601,7 @@ class TestPandasExt(unittest.TestCase):
 
     def test_aio_fillna(self):
         """Test DataFrame.aio.fillna method (async)."""
+
         async def run_test():
             df_with_missing = pd.DataFrame(
                 {
@@ -727,7 +676,7 @@ class TestPandasExt(unittest.TestCase):
 
         # Common parameters should be in same order (excluding max_concurrency which is async-only)
         common_params = ["instructions", "response_format", "batch_size", "temperature", "top_p", "show_progress"]
-        
+
         # Check sync version has these in order
         sync_filtered = [p for p in responses_params if p in common_params]
         self.assertEqual(sync_filtered, common_params)

@@ -169,7 +169,7 @@ class InferredSchema(BaseModel):
         """Load an inferred schema from a JSON file.
 
         Args:
-            path: Path to a UTF‑8 JSON document previously produced via ``save``.
+            path (str): Path to a UTF‑8 JSON document previously produced via ``save``.
 
         Returns:
             InferredSchema: Reconstructed instance.
@@ -243,7 +243,7 @@ class InferredSchema(BaseModel):
         """Persist this inferred schema as pretty‑printed JSON.
 
         Args:
-            path: Destination filesystem path.
+            path (str): Destination filesystem path.
         """
         with open(path, "w", encoding="utf-8") as f:
             f.write(self.model_dump_json(indent=2))
@@ -342,10 +342,10 @@ class SchemaInferer:
             3. Retry (up to ``max_retries``) if validation fails.
 
         Args:
-            data: Representative examples + purpose.
+            data (SchemaInferenceInput): Representative examples + purpose.
             *args: Positional passthrough to ``client.responses.parse``.
-            max_retries: Attempts before surfacing the last validation error
-                (must be >= 1).
+            max_retries (int, optional): Attempts before surfacing the last validation error
+                (must be >= 1). Defaults to 3.
             **kwargs: Keyword passthrough to ``client.responses.parse``.
 
         Returns:
@@ -392,7 +392,7 @@ def _basic_field_list_validation(parsed: InferredSchema) -> None:
         * ``enum_values`` only on string fields and size within bounds (2–24).
 
     Args:
-        parsed: Candidate ``InferredSchema`` instance.
+        parsed (InferredSchema): Candidate ``InferredSchema`` instance.
 
     Raises:
         ValueError: Any invariant is violated.
