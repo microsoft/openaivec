@@ -13,6 +13,7 @@ from openaivec._model import (
     OpenAIAPIKey,
     ResponsesModelName,
 )
+from openaivec._schema import SchemaInferer
 from openaivec._util import TextChunker
 
 __all__ = []
@@ -142,6 +143,13 @@ CONTAINER.register(OpenAI, provide_openai_client)
 CONTAINER.register(AsyncOpenAI, provide_async_openai_client)
 CONTAINER.register(tiktoken.Encoding, lambda: tiktoken.get_encoding("o200k_base"))
 CONTAINER.register(TextChunker, lambda: TextChunker(CONTAINER.resolve(tiktoken.Encoding)))
+CONTAINER.register(
+    SchemaInferer,
+    lambda SchemaInferer: SchemaInferer(
+        client=CONTAINER.resolve(OpenAI),
+        model_name=CONTAINER.resolve(ResponsesModelName).value,
+    ),
+)
 
 
 def reset_environment_registrations():
@@ -160,3 +168,10 @@ def reset_environment_registrations():
     )
     CONTAINER.register(OpenAI, provide_openai_client)
     CONTAINER.register(AsyncOpenAI, provide_async_openai_client)
+    CONTAINER.register(
+        SchemaInferer,
+        lambda: SchemaInferer(
+            client=CONTAINER.resolve(OpenAI),
+            model_name=CONTAINER.resolve(ResponsesModelName).value,
+        ),
+    )
