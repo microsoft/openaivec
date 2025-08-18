@@ -468,12 +468,12 @@ class OpenAIVecSeriesAccessor:
                 "Terrible experience. Item broke after 2 days.",
                 "Average product. Price is fair but nothing special."
             ])
-            
+
             # Infer schema for sentiment analysis
             schema = reviews.ai.infer_schema(
                 purpose="Extract sentiment and product quality indicators"
             )
-            
+
             # Use the inferred schema for batch extraction
             extracted = reviews.ai.task(schema.task)
             ```
@@ -536,6 +536,82 @@ class OpenAIVecSeriesAccessor:
             # If the Series has a name and all elements are dict or BaseModel, use it as the prefix for the columns
             extracted.columns = [f"{self._obj.name}_{col}" for col in extracted.columns]
         return extracted
+
+    def auto_extract(
+        self, purpose: str, max_examples: int = 100, batch_size: int | None = None, show_progress: bool = False
+    ) -> pd.DataFrame:
+        """Automatically infer schema and extract structured data in one step.
+
+        This convenience method combines schema inference and data extraction into
+        a single operation. It first analyzes a sample of the Series to infer an
+        appropriate schema based on the stated purpose, then immediately applies
+        that schema to extract structured data from all values in the Series.
+
+        Args:
+            purpose (str): Plain language description of what information to extract
+                and how it will be used (e.g., "Extract product features for search",
+                "Parse customer feedback for sentiment analysis"). This guides both
+                schema inference and field selection.
+            max_examples (int): Maximum number of examples to use for schema inference.
+                A larger sample may produce more accurate schemas but increases
+                inference time. Defaults to 100.
+            batch_size (int | None): Number of requests to process in parallel during
+                extraction. Defaults to None (automatic optimization). Set to a specific
+                value to control API usage and performance.
+            show_progress (bool): Whether to display a progress bar during extraction.
+                Useful for large datasets. Defaults to False.
+
+        Returns:
+            pd.DataFrame: A DataFrame with extracted structured data. Each inferred
+                field becomes a column, with the same index as the original Series.
+                Column names and types are determined by the inferred schema.
+
+        Example:
+            ```python
+            # Extract structured data from product reviews
+            reviews = pd.Series([
+                "Great laptop! 16GB RAM, fast SSD, battery lasts 10 hours",
+                "Decent phone. 128GB storage, camera is okay, screen is bright",
+                "Gaming desktop with RTX 4090, 32GB RAM, runs everything smoothly"
+            ])
+
+            # One-step extraction
+            extracted = reviews.ai.auto_extract(
+                purpose="Extract product specifications and performance metrics",
+                show_progress=True
+            )
+            # Result: DataFrame with columns like 'ram', 'storage', 'battery_life', etc.
+
+            # Extract sentiment and issues from support tickets
+            tickets = pd.Series([
+                "Account locked, can't reset password, very frustrated",
+                "Billing error, charged twice for subscription",
+                "Great support! Issue resolved quickly"
+            ])
+
+            features = tickets.ai.auto_extract(
+                purpose="Extract issue type and customer sentiment for support analytics"
+            )
+            ```
+
+        Note:
+            This method is ideal for exploratory data analysis when you don't have
+            a predefined schema. For production use cases with stable schemas,
+            consider using `infer_schema()` once and reusing the schema with `task()`.
+            The inferred schema is not returned, so if you need to inspect or save it,
+            use `infer_schema()` and `task()` separately.
+        """
+        schema = self._obj.ai.infer_schema(purpose=purpose, max_examples=max_examples)
+
+        return pd.DataFrame(
+            {
+                "inferred": self._obj.ai.task(
+                    task=schema.task,
+                    batch_size=batch_size,
+                    show_progress=show_progress,
+                ),
+            }
+        ).ai.extract("inferred")
 
 
 @pd.api.extensions.register_dataframe_accessor("ai")
@@ -772,12 +848,12 @@ class OpenAIVecDataFrameAccessor:
                 ],
                 'timestamp': ['2024-01-01', '2024-01-02', '2024-01-03']
             })
-            
+
             # Infer schema for logistics tracking
             schema = df.ai.infer_schema(
                 purpose="Extract shipping status and location data for logistics tracking"
             )
-            
+
             # Apply the schema to extract structured data
             extracted_df = df.ai.task(schema.task)
             ```
