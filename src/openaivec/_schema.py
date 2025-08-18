@@ -87,7 +87,12 @@ class FieldSpec(BaseModel):
     name: str = Field(
         description=(
             "Lower snake_case identifier (regex: ^[a-z][a-z0-9_]*$). Must be unique across all fields and "
-            "express the semantic meaning succinctly (no adjectives like 'best', 'great')."
+            "express the semantic meaning succinctly (no adjectives like 'best', 'great'). For numeric (integer|float) "
+            "fields the name MUST include an explicit unit or measure suffix (e.g. _count, _total_count, "
+            "_duration_seconds, _ms, _price_usd, _ratio, _score) to eliminate ambiguity. Avoid bare numeric nouns like "
+            "'duration' or 'value' without unit/scale. Boolean field names MUST begin with 'is_' followed by a "
+            "descriptive predicate (e.g. is_active, is_delayed). Use positive forms (is_active) rather than "
+            "negated forms (is_not_active)."
         )
     )
     type: Literal["string", "integer", "float", "boolean"] = Field(
@@ -101,7 +106,10 @@ class FieldSpec(BaseModel):
     description: str = Field(
         description=(
             "Concise, objective definition plus extraction rule (what qualifies / what to ignore). Avoid subjective, "
-            "speculative, or promotional language. If ambiguity exists with another field, clarify the distinction."
+            "speculative, or promotional language. If ambiguity exists with another field, clarify the distinction. "
+            "Do NOT simply restate an original JSON/key name if the examples are already structured; only include a "
+            "raw key verbatim when it is already the minimal, irreducible analytic unit. For derived fields, clearly "
+            "state the transformation (e.g. sentiment of comment_text, normalized date, language code)."
         )
     )
     enum_values: Optional[List[str]] = Field(
@@ -312,11 +320,25 @@ Rules:
     * float = any decimals / ratios
     * boolean = explicit binary
     * else use string
+- Numeric (integer|float) field names MUST encode an explicit unit / scale / measure suffix
+    (e.g. *_count, *_seconds, *_ms, *_usd, *_ratio, *_score). Avoid ambiguous bare numeric names.
+- Boolean field names MUST start with 'is_' followed by a positive predicate (e.g. is_active,
+  is_delayed). Avoid negated forms.
 - No arrays, objects, composite encodings, or merged multi-concept fields.
 - Descriptions: concise, objective extraction rules (no marketing/emotion/speculation).
 - enum_values only for string fields with stable closed vocab; omit otherwise.
 - Exclude direct outcome labels (e.g. attrition_probability, will_buy, purchase_likelihood)
     in predictive / feature engineering contexts.
+- When examples already appear as serialized JSON / key-value records, DO NOT merely relist the
+    raw original keys unless each is already an atomic, irreducible analytic signal. Prefer high-signal
+    derived / normalized / aggregated features (e.g. sentiment, category, language_code, boolean flags,
+    normalized_date, count metrics).
+- Superficial renames (adding trivial prefixes/suffixes like _value, _field, new_) are forbidden; a new
+    field name must reflect a semantic transformation.
+- Keep field count focused (typically <= 12) prioritizing reusable analytical / ML features over low-signal
+    restatements.
+- If you retain an original raw key unchanged, its description must justify why it is minimal and cannot
+    be further decomposed without losing analytical value.
 
 Output contract:
 Return exactly an InferredSchema object with JSON keys:
