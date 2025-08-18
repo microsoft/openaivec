@@ -96,7 +96,7 @@ Example:
     ```
 """
 
-from typing import Dict, List, Literal
+from typing import Dict, Literal
 
 from pydantic import BaseModel, Field
 
@@ -115,7 +115,7 @@ class UrgencyAnalysis(BaseModel):
         "(immediate, within_1_hour, within_4_hours, within_24_hours)"
     )
     escalation_required: bool = Field(description="Whether this inquiry requires escalation to management")
-    urgency_indicators: List[str] = Field(description="Specific words or phrases that indicate urgency")
+    urgency_indicators: list[str] = Field(description="Specific words or phrases that indicate urgency")
     business_impact: Literal["none", "low", "medium", "high", "critical"] = Field(
         description="Potential business impact (none, low, medium, high, critical)"
     )
@@ -131,7 +131,7 @@ def urgency_analysis(
     response_times: Dict[str, str] | None = None,
     customer_tiers: Dict[str, str] | None = None,
     escalation_rules: Dict[str, str] | None = None,
-    urgency_keywords: Dict[str, List[str]] | None = None,
+    urgency_keywords: Dict[str, list[str]] | None = None,
     business_context: str = "general customer support",
     business_hours: str = "24/7 support",
     sla_rules: Dict[str, str] | None = None,
@@ -145,7 +145,7 @@ def urgency_analysis(
         response_times (Dict[str, str] | None): Dictionary mapping urgency levels to response times.
         customer_tiers (Dict[str, str] | None): Dictionary mapping tier names to descriptions.
         escalation_rules (Dict[str, str] | None): Dictionary mapping conditions to escalation actions.
-        urgency_keywords (Dict[str, List[str]] | None): Dictionary mapping urgency levels to indicator keywords.
+        urgency_keywords (Dict[str, list[str]] | None): Dictionary mapping urgency levels to indicator keywords.
         business_context (str): Description of the business context.
         business_hours (str): Description of business hours for response time calculation.
         sla_rules (Dict[str, str] | None): Dictionary mapping customer tiers to SLA requirements.

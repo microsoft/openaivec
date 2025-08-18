@@ -72,8 +72,7 @@ Note:
     - Other: Basque, Maltese
 """
 
-from openai import BaseModel
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from openaivec._model import PreparedTask
 

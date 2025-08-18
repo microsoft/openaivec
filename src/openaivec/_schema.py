@@ -52,7 +52,7 @@ authoritative contract is the ordered list of ``FieldSpec`` instances.
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Literal, Type
+from typing import Literal
 
 from openai import OpenAI
 from openai.types.responses import ParsedResponse
@@ -214,13 +214,13 @@ class InferredSchema(BaseModel):
             return cls.model_validate_json(f.read())
 
     @property
-    def model(self) -> Type[BaseModel]:
+    def model(self) -> type[BaseModel]:
         """Dynamically materialized Pydantic model for the inferred schema.
 
         Equivalent to calling :meth:`build_model` each access (not cached).
 
         Returns:
-            Type[BaseModel]: Fresh model type reflecting ``fields`` ordering.
+            type[BaseModel]: Fresh model type reflecting ``fields`` ordering.
         """
         return self.build_model()
 
@@ -235,7 +235,7 @@ class InferredSchema(BaseModel):
             instructions=self.inference_prompt, response_format=self.model, top_p=None, temperature=None
         )
 
-    def build_model(self) -> Type[BaseModel]:
+    def build_model(self) -> type[BaseModel]:
         """Create a new dynamic ``BaseModel`` class adhering to this schema.
 
         Implementation details:
@@ -246,7 +246,7 @@ class InferredSchema(BaseModel):
               introduced later by modifying this logic if needed.
 
         Returns:
-            Type[BaseModel]: New (not cached) model type; order matches ``fields``.
+            type[BaseModel]: New (not cached) model type; order matches ``fields``.
         """
         type_map: dict[str, type] = {
             "string": str,

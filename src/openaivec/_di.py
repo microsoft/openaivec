@@ -1,6 +1,7 @@
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from threading import RLock
-from typing import Any, Callable, Dict, Set, Type, TypeVar
+from typing import Any, TypeVar
 
 __all__ = []
 
@@ -119,12 +120,12 @@ class Container:
         ```
     """
 
-    _instances: Dict[Type[Any], Any] = field(default_factory=dict)
-    _providers: Dict[Type[Any], Provider[Any]] = field(default_factory=dict)
+    _instances: dict[type[Any], Any] = field(default_factory=dict)
+    _providers: dict[type[Any], Provider[Any]] = field(default_factory=dict)
     _lock: RLock = field(default_factory=RLock)
-    _resolving: Set[Type[Any]] = field(default_factory=set)
+    _resolving: set[type[Any]] = field(default_factory=set)
 
-    def register(self, cls: Type[T], provider: Provider[T]) -> None:
+    def register(self, cls: type[T], provider: Provider[T]) -> None:
         """Register a provider function for a service type.
 
         The provider function will be called once to create the singleton instance
@@ -150,7 +151,7 @@ class Container:
 
             self._providers[cls] = provider
 
-    def register_instance(self, cls: Type[T], instance: T) -> None:
+    def register_instance(self, cls: type[T], instance: T) -> None:
         """Register a pre-created instance for a service type.
 
         The provided instance will be stored directly in the container and returned
@@ -178,7 +179,7 @@ class Container:
             self._instances[cls] = instance
             self._providers[cls] = lambda: instance
 
-    def resolve(self, cls: Type[T]) -> T:
+    def resolve(self, cls: type[T]) -> T:
         """Resolve a service instance, creating it if necessary.
 
         Returns the singleton instance for the requested service type. If this is
@@ -232,7 +233,7 @@ class Container:
             finally:
                 self._resolving.discard(cls)
 
-    def is_registered(self, cls: Type[Any]) -> bool:
+    def is_registered(self, cls: type[Any]) -> bool:
         """Check if a service type is registered in the container.
 
         Args:
@@ -252,7 +253,7 @@ class Container:
         with self._lock:
             return cls in self._providers
 
-    def unregister(self, cls: Type[Any]) -> None:
+    def unregister(self, cls: type[Any]) -> None:
         """Unregister a service type from the container.
 
         Removes the provider function and any cached singleton instance for

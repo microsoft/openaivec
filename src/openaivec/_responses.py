@@ -1,7 +1,7 @@
 import warnings
 from dataclasses import dataclass, field
 from logging import Logger, getLogger
-from typing import Any, Generic, List, Type, cast
+from typing import Any, Generic, cast
 
 from openai import AsyncOpenAI, BadRequestError, InternalServerError, OpenAI, RateLimitError
 from openai.types.responses import ParsedResponse
@@ -120,11 +120,11 @@ class Message(BaseModel, Generic[ResponseFormat]):
 
 
 class Request(BaseModel):
-    user_messages: List[Message[str]]
+    user_messages: list[Message[str]]
 
 
 class Response(BaseModel, Generic[ResponseFormat]):
-    assistant_messages: List[Message[ResponseFormat]]
+    assistant_messages: list[Message[ResponseFormat]]
 
 
 @dataclass(frozen=True)
@@ -150,7 +150,7 @@ class BatchResponses(Generic[ResponseFormat]):
         system_message (str): System prompt prepended to every request.
         temperature (float): Sampling temperature.
         top_p (float): Nucleus‑sampling parameter.
-        response_format (Type[ResponseFormat]): Expected Pydantic model class or ``str`` for each assistant message.
+        response_format (type[ResponseFormat]): Expected Pydantic model class or ``str`` for each assistant message.
         cache (BatchingMapProxy[str, ResponseFormat]): Order‑preserving batching proxy with de‑duplication and caching.
 
     Notes:
@@ -165,7 +165,7 @@ class BatchResponses(Generic[ResponseFormat]):
     system_message: str
     temperature: float | None = None
     top_p: float = 1.0
-    response_format: Type[ResponseFormat] = str  # type: ignore[assignment]
+    response_format: type[ResponseFormat] = str  # type: ignore[assignment]
     cache: BatchingMapProxy[str, ResponseFormat] = field(default_factory=lambda: BatchingMapProxy(batch_size=None))
     _vectorized_system_message: str = field(init=False)
     _model_json_schema: dict = field(init=False)
@@ -178,7 +178,7 @@ class BatchResponses(Generic[ResponseFormat]):
         system_message: str,
         temperature: float | None = 0.0,
         top_p: float = 1.0,
-        response_format: Type[ResponseFormat] = str,
+        response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
     ) -> "BatchResponses":
         """Factory constructor.
@@ -189,7 +189,7 @@ class BatchResponses(Generic[ResponseFormat]):
             system_message (str): System prompt for the model.
             temperature (float, optional): Sampling temperature. Defaults to 0.0.
             top_p (float, optional): Nucleus sampling parameter. Defaults to 1.0.
-            response_format (Type[ResponseFormat], optional): Expected output type. Defaults to ``str``.
+            response_format (type[ResponseFormat], optional): Expected output type. Defaults to ``str``.
             batch_size (int | None, optional): Max unique prompts per API call. Defaults to None
                 (automatic batch size optimization). Set to a positive integer for fixed batch size.
 
@@ -242,12 +242,12 @@ class BatchResponses(Generic[ResponseFormat]):
     @observe(_LOGGER)
     @backoff(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
     def _request_llm(
-        self, user_messages: List[Message[str]], **extra_api_params: Any
+        self, user_messages: list[Message[str]], **extra_api_params: Any
     ) -> ParsedResponse[Response[ResponseFormat]]:
         """Make a single call to the OpenAI JSON‑mode endpoint.
 
         Args:
-            user_messages (List[Message[str]]): Sequence of ``Message[str]`` representing the
+            user_messages (list[Message[str]]): Sequence of ``Message[str]`` representing the
                 prompts for this minibatch.  Each message carries a unique `id`
                 so we can restore ordering later.
 
@@ -265,7 +265,7 @@ class BatchResponses(Generic[ResponseFormat]):
             body: response_format  # type: ignore
 
         class ResponseT(BaseModel):
-            assistant_messages: List[MessageT]
+            assistant_messages: list[MessageT]
 
         # Build base API parameters (cannot be overridden by caller)
         api_params: dict[str, Any] = {
@@ -300,7 +300,7 @@ class BatchResponses(Generic[ResponseFormat]):
         return cast(ParsedResponse[Response[ResponseFormat]], completion)
 
     @observe(_LOGGER)
-    def _predict_chunk(self, user_messages: List[str], **api_kwargs: Any) -> List[ResponseFormat | None]:
+    def _predict_chunk(self, user_messages: list[str], **api_kwargs: Any) -> list[ResponseFormat | None]:
         """Helper executed for every unique minibatch.
 
             This method:
@@ -316,11 +316,11 @@ class BatchResponses(Generic[ResponseFormat]):
         if not responses.output_parsed:
             return [None] * len(messages)
         response_dict = {message.id: message.body for message in responses.output_parsed.assistant_messages}
-        sorted_responses: List[ResponseFormat | None] = [response_dict.get(m.id, None) for m in messages]
+        sorted_responses: list[ResponseFormat | None] = [response_dict.get(m.id, None) for m in messages]
         return sorted_responses
 
     @observe(_LOGGER)
-    def parse(self, inputs: List[str], **api_kwargs: Any) -> List[ResponseFormat | None]:
+    def parse(self, inputs: list[str], **api_kwargs: Any) -> list[ResponseFormat | None]:
         """Batched predict.
 
         Accepts arbitrary keyword arguments that are forwarded to the underlying
@@ -329,16 +329,16 @@ class BatchResponses(Generic[ResponseFormat]):
         configured values but can be overridden explicitly.
 
         Args:
-            inputs (List[str]): Prompts that require responses. Duplicates are de‑duplicated.
+            inputs (list[str]): Prompts that require responses. Duplicates are de‑duplicated.
             **api_kwargs: Extra keyword args forwarded to the OpenAI Responses API.
 
         Returns:
-            List[ResponseFormat | None]: Assistant responses aligned to ``inputs``.
+            list[ResponseFormat | None]: Assistant responses aligned to ``inputs``.
         """
         if not api_kwargs:
             return self.cache.map(inputs, self._predict_chunk)  # type: ignore[return-value]
 
-        def _predict_with(xs: List[str]) -> List[ResponseFormat | None]:
+        def _predict_with(xs: list[str]) -> list[ResponseFormat | None]:
             return self._predict_chunk(xs, **api_kwargs)
 
         return self.cache.map(inputs, _predict_with)  # type: ignore[return-value]
@@ -385,7 +385,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         system_message (str): System prompt prepended to every request.
         temperature (float): Sampling temperature.
         top_p (float): Nucleus‑sampling parameter.
-        response_format (Type[ResponseFormat]): Expected Pydantic model class or ``str`` for each assistant message.
+        response_format (type[ResponseFormat]): Expected Pydantic model class or ``str`` for each assistant message.
         cache (AsyncBatchingMapProxy[str, ResponseFormat]): Async batching proxy with de‑duplication
             and concurrency control.
     """
@@ -395,7 +395,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
     system_message: str
     temperature: float | None = 0.0
     top_p: float = 1.0
-    response_format: Type[ResponseFormat] = str  # type: ignore[assignment]
+    response_format: type[ResponseFormat] = str  # type: ignore[assignment]
     cache: AsyncBatchingMapProxy[str, ResponseFormat] = field(
         default_factory=lambda: AsyncBatchingMapProxy(batch_size=None, max_concurrency=8)
     )
@@ -410,7 +410,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         system_message: str,
         temperature: float | None = None,
         top_p: float = 1.0,
-        response_format: Type[ResponseFormat] = str,
+        response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
         max_concurrency: int = 8,
     ) -> "AsyncBatchResponses":
@@ -422,7 +422,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             system_message (str): System prompt.
             temperature (float, optional): Sampling temperature. Defaults to 0.0.
             top_p (float, optional): Nucleus sampling parameter. Defaults to 1.0.
-            response_format (Type[ResponseFormat], optional): Expected output type. Defaults to ``str``.
+            response_format (type[ResponseFormat], optional): Expected output type. Defaults to ``str``.
             batch_size (int | None, optional): Max unique prompts per API call. Defaults to None
                 (automatic batch size optimization). Set to a positive integer for fixed batch size.
             max_concurrency (int, optional): Max concurrent API calls. Defaults to 8.
@@ -482,12 +482,12 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
     @backoff_async(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
     @observe(_LOGGER)
     async def _request_llm(
-        self, user_messages: List[Message[str]], **extra_api_params: Any
+        self, user_messages: list[Message[str]], **extra_api_params: Any
     ) -> ParsedResponse[Response[ResponseFormat]]:
         """Make a single async call to the OpenAI JSON‑mode endpoint.
 
         Args:
-            user_messages (List[Message[str]]): Sequence of ``Message[str]`` representing the minibatch prompts.
+            user_messages (list[Message[str]]): Sequence of ``Message[str]`` representing the minibatch prompts.
 
         Returns:
             ParsedResponse[Response[ResponseFormat]]: Parsed response with assistant messages (arbitrary order).
@@ -502,7 +502,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             body: response_format  # type: ignore
 
         class ResponseT(BaseModel):
-            assistant_messages: List[MessageT]
+            assistant_messages: list[MessageT]
 
         # Build base API parameters (cannot be overridden by caller)
         api_params: dict[str, Any] = {
@@ -537,7 +537,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         return cast(ParsedResponse[Response[ResponseFormat]], completion)
 
     @observe(_LOGGER)
-    async def _predict_chunk(self, user_messages: List[str], **api_kwargs: Any) -> List[ResponseFormat | None]:
+    async def _predict_chunk(self, user_messages: list[str], **api_kwargs: Any) -> list[ResponseFormat | None]:
         """Async helper executed for every unique minibatch.
 
             This method:
@@ -553,11 +553,11 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             return [None] * len(messages)
         response_dict = {message.id: message.body for message in responses.output_parsed.assistant_messages}
         # Ensure proper handling for missing IDs - this shouldn't happen in normal operation
-        sorted_responses: List[ResponseFormat | None] = [response_dict.get(m.id, None) for m in messages]
+        sorted_responses: list[ResponseFormat | None] = [response_dict.get(m.id, None) for m in messages]
         return sorted_responses
 
     @observe(_LOGGER)
-    async def parse(self, inputs: List[str], **api_kwargs: Any) -> List[ResponseFormat | None]:
+    async def parse(self, inputs: list[str], **api_kwargs: Any) -> list[ResponseFormat | None]:
         """Batched predict (async).
 
         Accepts arbitrary keyword arguments forwarded to ``AsyncOpenAI.responses.parse``.
@@ -566,16 +566,16 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         changing the public surface again.
 
         Args:
-            inputs (List[str]): Prompts that require responses. Duplicates are de‑duplicated.
+            inputs (list[str]): Prompts that require responses. Duplicates are de‑duplicated.
             **api_kwargs: Extra keyword args for the OpenAI Responses API.
 
         Returns:
-            List[ResponseFormat | None]: Assistant responses aligned to ``inputs``.
+            list[ResponseFormat | None]: Assistant responses aligned to ``inputs``.
         """
         if not api_kwargs:
             return await self.cache.map(inputs, self._predict_chunk)  # type: ignore[return-value]
 
-        async def _predict_with(xs: List[str]) -> List[ResponseFormat | None]:
+        async def _predict_with(xs: list[str]) -> list[ResponseFormat | None]:
             return await self._predict_chunk(xs, **api_kwargs)
 
         return await self.cache.map(inputs, _predict_with)  # type: ignore[return-value]

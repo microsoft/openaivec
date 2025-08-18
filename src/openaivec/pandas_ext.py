@@ -42,7 +42,8 @@ to easily interact with OpenAI APIs for tasks like generating responses or embed
 import inspect
 import json
 import logging
-from typing import Awaitable, Callable, List, Type, TypeVar
+from collections.abc import Awaitable, Callable
+from typing import TypeVar
 
 import numpy as np
 import pandas as pd
@@ -179,7 +180,7 @@ class OpenAIVecSeriesAccessor:
         self,
         instructions: str,
         cache: BatchingMapProxy[str, ResponseFormat],
-        response_format: Type[ResponseFormat] = str,
+        response_format: type[ResponseFormat] = str,
         temperature: float | None = 0.0,
         top_p: float = 1.0,
         **api_kwargs,
@@ -193,7 +194,7 @@ class OpenAIVecSeriesAccessor:
             instructions (str): System prompt prepended to every user message.
             cache (BatchingMapProxy[str, ResponseFormat]): Explicit cache instance for
                 batching and deduplication control.
-            response_format (Type[ResponseFormat], optional): Pydantic model or built-in
+            response_format (type[ResponseFormat], optional): Pydantic model or built-in
                 type the assistant should return. Defaults to ``str``.
             temperature (float | None, optional): Sampling temperature. Defaults to ``0.0``.
             top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
@@ -221,7 +222,7 @@ class OpenAIVecSeriesAccessor:
     def responses(
         self,
         instructions: str,
-        response_format: Type[ResponseFormat] = str,
+        response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
         temperature: float | None = 0.0,
         top_p: float = 1.0,
@@ -247,7 +248,7 @@ class OpenAIVecSeriesAccessor:
 
         Args:
             instructions (str): System prompt prepended to every user message.
-            response_format (Type[ResponseFormat], optional): Pydantic model or built‑in
+            response_format (type[ResponseFormat], optional): Pydantic model or built‑in
                 type the assistant should return. Defaults to ``str``.
             batch_size (int | None, optional): Number of prompts grouped into a single
                 request. Defaults to ``None`` (automatic batch size optimization
@@ -633,7 +634,7 @@ class OpenAIVecDataFrameAccessor:
         self,
         instructions: str,
         cache: BatchingMapProxy[str, ResponseFormat],
-        response_format: Type[ResponseFormat] = str,
+        response_format: type[ResponseFormat] = str,
         temperature: float | None = 0.0,
         top_p: float = 1.0,
         **api_kwargs,
@@ -667,7 +668,7 @@ class OpenAIVecDataFrameAccessor:
             cache (BatchingMapProxy[str, ResponseFormat]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
-            response_format (Type[ResponseFormat], optional): Desired Python type of the
+            response_format (type[ResponseFormat], optional): Desired Python type of the
                 responses. Defaults to ``str``.
             temperature (float | None, optional): Sampling temperature. Defaults to ``0.0``.
             top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
@@ -687,7 +688,7 @@ class OpenAIVecDataFrameAccessor:
     def responses(
         self,
         instructions: str,
-        response_format: Type[ResponseFormat] = str,
+        response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
         temperature: float | None = 0.0,
         top_p: float = 1.0,
@@ -717,7 +718,7 @@ class OpenAIVecDataFrameAccessor:
 
         Args:
             instructions (str): System prompt for the assistant.
-            response_format (Type[ResponseFormat], optional): Desired Python type of the
+            response_format (type[ResponseFormat], optional): Desired Python type of the
                 responses. Defaults to ``str``.
             batch_size (int | None, optional): Number of requests sent in one batch.
                 Defaults to ``None`` (automatic batch size optimization
@@ -969,7 +970,7 @@ class OpenAIVecDataFrameAccessor:
         if missing_rows.empty:
             return self._obj
 
-        filled_values: List[FillNaResponse] = missing_rows.ai.task(
+        filled_values: list[FillNaResponse] = missing_rows.ai.task(
             task=task, batch_size=batch_size, show_progress=show_progress, **api_kwargs
         )
 
@@ -1123,7 +1124,7 @@ class AsyncOpenAIVecSeriesAccessor:
         self,
         instructions: str,
         cache: AsyncBatchingMapProxy[str, ResponseFormat],
-        response_format: Type[ResponseFormat] = str,
+        response_format: type[ResponseFormat] = str,
         temperature: float | None = 0.0,
         top_p: float = 1.0,
         **api_kwargs,
@@ -1150,7 +1151,7 @@ class AsyncOpenAIVecSeriesAccessor:
             cache (AsyncBatchingMapProxy[str, ResponseFormat]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
-            response_format (Type[ResponseFormat], optional): Pydantic model or built‑in
+            response_format (type[ResponseFormat], optional): Pydantic model or built‑in
                 type the assistant should return. Defaults to ``str``.
             temperature (float | None, optional): Sampling temperature. ``None`` omits the
                 parameter (recommended for reasoning models). Defaults to ``0.0``.
@@ -1181,7 +1182,7 @@ class AsyncOpenAIVecSeriesAccessor:
     async def responses(
         self,
         instructions: str,
-        response_format: Type[ResponseFormat] = str,
+        response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
         temperature: float | None = 0.0,
         top_p: float = 1.0,
@@ -1209,7 +1210,7 @@ class AsyncOpenAIVecSeriesAccessor:
 
         Args:
             instructions (str): System prompt prepended to every user message.
-            response_format (Type[ResponseFormat], optional): Pydantic model or built‑in
+            response_format (type[ResponseFormat], optional): Pydantic model or built‑in
                 type the assistant should return. Defaults to ``str``.
             batch_size (int | None, optional): Number of prompts grouped into a single
                 request. Defaults to ``None`` (automatic batch size optimization
@@ -1558,7 +1559,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         self,
         instructions: str,
         cache: AsyncBatchingMapProxy[str, ResponseFormat],
-        response_format: Type[ResponseFormat] = str,
+        response_format: type[ResponseFormat] = str,
         temperature: float | None = 0.0,
         top_p: float = 1.0,
         **api_kwargs,
@@ -1594,7 +1595,7 @@ class AsyncOpenAIVecDataFrameAccessor:
             cache (AsyncBatchingMapProxy[str, ResponseFormat]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
-            response_format (Type[ResponseFormat], optional): Desired Python type of the
+            response_format (type[ResponseFormat], optional): Desired Python type of the
                 responses. Defaults to ``str``.
             temperature (float | None, optional): Sampling temperature. Defaults to ``0.0``.
             top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
@@ -1618,7 +1619,7 @@ class AsyncOpenAIVecDataFrameAccessor:
     async def responses(
         self,
         instructions: str,
-        response_format: Type[ResponseFormat] = str,
+        response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
         temperature: float | None = 0.0,
         top_p: float = 1.0,
@@ -1650,7 +1651,7 @@ class AsyncOpenAIVecDataFrameAccessor:
 
         Args:
             instructions (str): System prompt for the assistant.
-            response_format (Type[ResponseFormat], optional): Desired Python type of the
+            response_format (type[ResponseFormat], optional): Desired Python type of the
                 responses. Defaults to ``str``.
             batch_size (int | None, optional): Number of requests sent in one batch.
                 Defaults to ``None`` (automatic batch size optimization
@@ -1936,7 +1937,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         if missing_rows.empty:
             return self._obj
 
-        filled_values: List[FillNaResponse] = await missing_rows.aio.task(
+        filled_values: list[FillNaResponse] = await missing_rows.aio.task(
             task=task, batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress, **api_kwargs
         )
 

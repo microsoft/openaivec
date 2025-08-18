@@ -2,8 +2,9 @@ import asyncio
 import functools
 import re
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Awaitable, Callable, List, Type, TypeVar
+from typing import TypeVar
 
 import numpy as np
 import tiktoken
@@ -36,14 +37,14 @@ def get_exponential_with_cutoff(scale: float) -> float:
 
 
 def backoff(
-    exceptions: List[Type[Exception]],
+    exceptions: list[type[Exception]],
     scale: int | None = None,
     max_retries: int | None = None,
 ) -> Callable[..., V]:
     """Decorator implementing exponential back‑off retry logic.
 
     Args:
-        exceptions (List[Type[Exception]]): List of exception types that trigger a retry.
+        exceptions (list[type[Exception]]): List of exception types that trigger a retry.
         scale (int | None): Initial scale parameter for the exponential jitter.
             This scale is used as the mean for the first delay's exponential
             distribution and doubles with each subsequent retry. If ``None``,
@@ -88,14 +89,14 @@ def backoff(
 
 
 def backoff_async(
-    exceptions: List[Type[Exception]],
+    exceptions: list[type[Exception]],
     scale: int | None = None,
     max_retries: int | None = None,
 ) -> Callable[..., Awaitable[V]]:
     """Asynchronous version of the backoff decorator.
 
     Args:
-        exceptions (List[Type[Exception]]): List of exception types that trigger a retry.
+        exceptions (list[type[Exception]]): List of exception types that trigger a retry.
         scale (int | None): Initial scale parameter for the exponential jitter.
             This scale is used as the mean for the first delay's exponential
             distribution and doubles with each subsequent retry. If ``None``,
@@ -145,7 +146,7 @@ class TextChunker:
 
     enc: tiktoken.Encoding
 
-    def split(self, original: str, max_tokens: int, sep: List[str]) -> List[str]:
+    def split(self, original: str, max_tokens: int, sep: list[str]) -> list[str]:
         """Token‑aware sentence segmentation.
 
         The text is first split by the given separators, then greedily packed
@@ -154,11 +155,11 @@ class TextChunker:
         Args:
             original (str): Original text to split.
             max_tokens (int): Maximum number of tokens allowed per chunk.
-            sep (List[str]): List of separator patterns used by
+            sep (list[str]): List of separator patterns used by
                 :pyfunc:`re.split`.
 
         Returns:
-            List[str]: List of text chunks respecting the ``max_tokens`` limit.
+            list[str]: List of text chunks respecting the ``max_tokens`` limit.
         """
         sentences = re.split(f"({'|'.join(sep)})", original)
         sentences = [s.strip() for s in sentences if s.strip()]

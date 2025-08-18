@@ -48,7 +48,7 @@ Attributes:
         top_p=1.0 for deterministic output.
 """
 
-from typing import List, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -62,10 +62,10 @@ class SentimentAnalysis(BaseModel):
         description="Overall sentiment (positive, negative, neutral)"
     )
     confidence: float = Field(description="Confidence score for sentiment (0.0-1.0)")
-    emotions: List[Literal["joy", "sadness", "anger", "fear", "surprise", "disgust"]] = Field(
+    emotions: list[Literal["joy", "sadness", "anger", "fear", "surprise", "disgust"]] = Field(
         description="Detected emotions (joy, sadness, anger, fear, surprise, disgust)"
     )
-    emotion_scores: List[float] = Field(description="Confidence scores for each emotion (0.0-1.0)")
+    emotion_scores: list[float] = Field(description="Confidence scores for each emotion (0.0-1.0)")
     polarity: float = Field(description="Polarity score from -1.0 (negative) to 1.0 (positive)")
     subjectivity: float = Field(description="Subjectivity score from 0.0 (objective) to 1.0 (subjective)")
 

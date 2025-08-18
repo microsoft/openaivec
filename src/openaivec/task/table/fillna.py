@@ -65,7 +65,6 @@ Example:
 """
 
 import json
-from typing import Dict, List
 
 import pandas as pd
 from pydantic import BaseModel, Field
@@ -76,8 +75,8 @@ from openaivec._prompt import FewShotPromptBuilder
 __all__ = ["fillna", "FillNaResponse"]
 
 
-def get_examples(df: pd.DataFrame, target_column_name: str, max_examples: int) -> List[Dict]:
-    examples: List[Dict] = []
+def get_examples(df: pd.DataFrame, target_column_name: str, max_examples: int) -> list[dict]:
+    examples: list[dict] = []
 
     samples: pd.DataFrame = df.sample(frac=1).reset_index(drop=True).drop_duplicates()
     samples = samples.dropna(subset=[target_column_name])

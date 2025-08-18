@@ -61,7 +61,7 @@ Attributes:
         top_p=1.0 for deterministic output.
 """
 
-from typing import List, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -86,7 +86,7 @@ class CustomerSentiment(BaseModel):
     )
     sentiment_intensity: float = Field(description="Intensity of sentiment from 0.0 (mild) to 1.0 (extreme)")
     polarity_score: float = Field(description="Polarity score from -1.0 (very negative) to 1.0 (very positive)")
-    tone_indicators: List[str] = Field(description="Specific words or phrases indicating tone")
+    tone_indicators: list[str] = Field(description="Specific words or phrases indicating tone")
     relationship_status: Literal["new", "loyal", "at_risk", "detractor", "advocate"] = Field(
         description="Customer relationship status (new, loyal, at_risk, detractor, advocate)"
     )

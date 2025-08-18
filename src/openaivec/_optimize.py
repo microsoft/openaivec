@@ -3,7 +3,6 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import List
 
 __all__ = []
 
@@ -24,7 +23,7 @@ class BatchSizeSuggester:
     max_duration: float = 60.0
     step_ratio: float = 0.2
     sample_size: int = 4
-    _history: List[PerformanceMetric] = field(default_factory=list)
+    _history: list[PerformanceMetric] = field(default_factory=list)
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
     _batch_size_changed_at: datetime | None = field(default=None, init=False)
 
@@ -65,9 +64,9 @@ class BatchSizeSuggester:
                 )
 
     @property
-    def samples(self) -> List[PerformanceMetric]:
+    def samples(self) -> list[PerformanceMetric]:
         with self._lock:
-            selected: List[PerformanceMetric] = []
+            selected: list[PerformanceMetric] = []
             for metric in reversed(self._history):
                 if metric.exception is not None:
                     continue

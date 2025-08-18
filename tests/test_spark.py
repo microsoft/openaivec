@@ -1,4 +1,3 @@
-from typing import List
 from unittest import TestCase
 
 from pydantic import BaseModel
@@ -244,7 +243,7 @@ class TestSchemaMapping(TestCase):
         class OuterModel(BaseModel):
             id: int
             name: str
-            values: List[float]
+            values: list[float]
             inner: InnerModel
 
         schema = _pydantic_to_spark_schema(OuterModel)

@@ -48,8 +48,6 @@ Attributes:
         top_p=1.0 for deterministic output.
 """
 
-from typing import List
-
 from pydantic import BaseModel, Field
 
 from openaivec._model import PreparedTask
@@ -66,8 +64,8 @@ class DependencyRelation(BaseModel):
 
 
 class DependencyParsing(BaseModel):
-    tokens: List[str] = Field(description="List of tokens in the sentence")
-    dependencies: List[DependencyRelation] = Field(description="Dependency relations between tokens")
+    tokens: list[str] = Field(description="List of tokens in the sentence")
+    dependencies: list[DependencyRelation] = Field(description="Dependency relations between tokens")
     root_word: str = Field(description="Root word of the sentence")
     syntactic_structure: str = Field(description="Tree representation of the syntactic structure")
 

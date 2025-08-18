@@ -2,8 +2,8 @@ import functools
 import json
 import time
 import uuid
+from collections.abc import Callable
 from logging import Logger
-from typing import Callable
 
 __all__ = []
 

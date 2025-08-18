@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Generic, Type, TypeVar
+from typing import Generic, TypeVar
 
 __all__ = [
     "PreparedTask",
@@ -20,7 +20,7 @@ class PreparedTask(Generic[ResponseFormat]):
     Attributes:
         instructions (str): The prompt or instructions to send to the OpenAI model.
             This should contain clear, specific directions for the task.
-        response_format (Type[ResponseFormat]): A Pydantic model class or str type that defines the expected
+        response_format (type[ResponseFormat]): A Pydantic model class or str type that defines the expected
             structure of the response. Can be either a BaseModel subclass or str.
         temperature (float): Controls randomness in the model's output.
             Range: 0.0 to 1.0. Lower values make output more deterministic.
@@ -54,7 +54,7 @@ class PreparedTask(Generic[ResponseFormat]):
     """
 
     instructions: str
-    response_format: Type[ResponseFormat]
+    response_format: type[ResponseFormat]
     temperature: float = 0.0
     top_p: float = 1.0
 
