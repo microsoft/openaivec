@@ -352,6 +352,8 @@ Rules:
 - No nested objects or mixed-type arrays. Homogeneous primitive arrays are allowed ONLY if each element is an atomic
     scalar signal (use *_array types: string_array, integer_array, float_array, boolean_array). The array is expected to
     contain 0..N such elements per record.
+- Array field names MUST end with '_array' (e.g. keywords_array, tag_ids_array). Do not use plural-only forms
+    (e.g. keywords) for arrays; the suffix makes container semantics explicit.
 - Descriptions: concise, objective extraction rules (no marketing/emotion/speculation).
 - enum_values only for string fields with stable closed vocab; omit otherwise.
 - Exclude direct outcome labels (e.g. attrition_probability, will_buy, purchase_likelihood)
