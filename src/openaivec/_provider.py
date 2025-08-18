@@ -145,7 +145,7 @@ CONTAINER.register(tiktoken.Encoding, lambda: tiktoken.get_encoding("o200k_base"
 CONTAINER.register(TextChunker, lambda: TextChunker(CONTAINER.resolve(tiktoken.Encoding)))
 CONTAINER.register(
     SchemaInferer,
-    lambda SchemaInferer: SchemaInferer(
+    lambda: SchemaInferer(
         client=CONTAINER.resolve(OpenAI),
         model_name=CONTAINER.resolve(ResponsesModelName).value,
     ),
