@@ -538,7 +538,12 @@ class OpenAIVecSeriesAccessor:
         return extracted
 
     def auto_extract(
-        self, purpose: str, max_examples: int = 100, batch_size: int | None = None, show_progress: bool = False
+        self,
+        purpose: str,
+        max_examples: int = 100,
+        batch_size: int | None = None,
+        show_progress: bool = False,
+        **api_kwargs,
     ) -> pd.DataFrame:
         """Automatically infer schema and extract structured data in one step.
 
@@ -560,6 +565,8 @@ class OpenAIVecSeriesAccessor:
                 value to control API usage and performance.
             show_progress (bool): Whether to display a progress bar during extraction.
                 Useful for large datasets. Defaults to False.
+            **api_kwargs: Additional OpenAI API parameters (e.g., `temperature`, `top_p`,
+                `frequency_penalty`, `presence_penalty`, `seed`) forwarded to the task execution.
 
         Returns:
             pd.DataFrame: A DataFrame with extracted structured data. Each inferred
@@ -609,6 +616,7 @@ class OpenAIVecSeriesAccessor:
                     task=schema.task,
                     batch_size=batch_size,
                     show_progress=show_progress,
+                    **api_kwargs,
                 ),
             }
         ).ai.extract("inferred")
@@ -980,7 +988,12 @@ class OpenAIVecDataFrameAccessor:
         return df
 
     def auto_extract(
-        self, purpose: str, max_examples: int = 100, batch_size: int | None = None, show_progress: bool = False
+        self,
+        purpose: str,
+        max_examples: int = 100,
+        batch_size: int | None = None,
+        show_progress: bool = False,
+        **api_kwargs,
     ) -> pd.DataFrame:
         """Automatically infer schema and add extracted fields to the DataFrame.
 
@@ -1003,6 +1016,8 @@ class OpenAIVecDataFrameAccessor:
                 value to control API usage and performance.
             show_progress (bool): Whether to display a progress bar during extraction.
                 Useful for large datasets. Defaults to False.
+            **api_kwargs: Additional OpenAI API parameters (e.g., `temperature`, `top_p`,
+                `frequency_penalty`, `presence_penalty`, `seed`) forwarded to the task execution.
 
         Returns:
             pd.DataFrame: The original DataFrame with new columns added from the
@@ -1059,6 +1074,7 @@ class OpenAIVecDataFrameAccessor:
             task=schema.task,
             batch_size=batch_size,
             show_progress=show_progress,
+            **api_kwargs,
         )
 
         return self._obj.assign(
@@ -1447,6 +1463,7 @@ class AsyncOpenAIVecSeriesAccessor:
         batch_size: int | None = None,
         max_concurrency: int = 8,
         show_progress: bool = False,
+        **api_kwargs,
     ) -> pd.DataFrame:
         """Automatically infer schema and extract structured data in one step (asynchronously).
 
@@ -1470,6 +1487,8 @@ class AsyncOpenAIVecSeriesAccessor:
                 extraction. Defaults to 8.
             show_progress (bool): Whether to display a progress bar during extraction.
                 Useful for large datasets. Defaults to False.
+            **api_kwargs: Additional OpenAI API parameters (e.g., `temperature`, `top_p`,
+                `frequency_penalty`, `presence_penalty`, `seed`) forwarded to the task execution.
 
         Returns:
             pd.DataFrame: A DataFrame with extracted structured data. Each inferred
@@ -1522,6 +1541,7 @@ class AsyncOpenAIVecSeriesAccessor:
             batch_size=batch_size,
             max_concurrency=max_concurrency,
             show_progress=show_progress,
+            **api_kwargs,
         )
 
         return pd.DataFrame({"inferred": inferred_series}).ai.extract("inferred")
@@ -1941,6 +1961,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         batch_size: int | None = None,
         max_concurrency: int = 8,
         show_progress: bool = False,
+        **api_kwargs,
     ) -> pd.DataFrame:
         """Automatically infer schema and add extracted fields to the DataFrame (asynchronously).
 
@@ -1965,6 +1986,8 @@ class AsyncOpenAIVecDataFrameAccessor:
                 extraction. Defaults to 8.
             show_progress (bool): Whether to display a progress bar during extraction.
                 Useful for large datasets. Defaults to False.
+            **api_kwargs: Additional OpenAI API parameters (e.g., `temperature`, `top_p`,
+                `frequency_penalty`, `presence_penalty`, `seed`) forwarded to the task execution.
 
         Returns:
             pd.DataFrame: The original DataFrame with new columns added from the
@@ -2024,6 +2047,7 @@ class AsyncOpenAIVecDataFrameAccessor:
             batch_size=batch_size,
             max_concurrency=max_concurrency,
             show_progress=show_progress,
+            **api_kwargs,
         )
 
         return self._obj.assign(
