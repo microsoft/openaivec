@@ -460,7 +460,20 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         self.__process_owned(owned, map_func)
         self.__wait_for(wait_for, map_func)
 
-        return self.__values(items)
+        # Fetch results before purging None entries
+        results = self.__values(items)
+
+        # Remove None values from cache so they are recomputed on future calls
+        with self._lock:
+            if self._cache:  # micro-optimization
+                for k in set(items):
+                    try:
+                        if self._cache.get(k, object()) is None:
+                            del self._cache[k]
+                    except KeyError:
+                        pass
+
+        return results
 
 
 @dataclass
@@ -745,4 +758,13 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         await self.__process_owned(owned, map_func)
         await self.__wait_for(wait_for, map_func)
 
-        return await self.__values(items)
+        results = await self.__values(items)
+
+        # Remove None values from cache after retrieval to avoid persisting incomplete results
+        async with self._lock:
+            if self._cache:
+                for k in set(items):
+                    if self._cache.get(k, object()) is None:
+                        self._cache.pop(k, None)
+
+        return results

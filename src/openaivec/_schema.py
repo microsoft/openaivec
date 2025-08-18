@@ -128,6 +128,12 @@ class InferredSchema(BaseModel):
             redundancy removed).
         examples_summary: Neutral description of structural / semantic patterns
             observed in the examples (domain, recurring signals, constraints).
+        examples_purpose_alignment: Analytical explanation of how the concrete
+            recurring patterns in the provided examples *justify*, *constrain*,
+            or *refine* the stated purpose. Should map purpose facets to
+            observed evidence (or explicitly note gaps) to discourage
+            hallucinated fields and anchor extraction scope. This is an
+            internal quality aid – downstream consumers typically ignore it.
         fields: Ordered list of ``FieldSpec`` objects comprising the schema's
             sole authoritative contract.
         inference_prompt: Self-contained extraction instructions enforcing an
@@ -145,6 +151,13 @@ class InferredSchema(BaseModel):
         description=(
             "Objective characterization of the provided examples: content domain, structure, recurring "
             "patterns, and notable constraints."
+        )
+    )
+    examples_purpose_alignment: str = Field(
+        description=(
+            "Explanation of how observable recurring patterns in the examples substantiate and bound the stated "
+            "purpose. Should reference purpose facets and cite supporting example evidence (or note any gaps) to "
+            "reduce hallucinated fields. Internal diagnostic / quality aid; not required for downstream extraction."
         )
     )
     fields: List[FieldSpec] = Field(
@@ -234,7 +247,7 @@ class InferredSchema(BaseModel):
                 py_type = enum_cls
             else:
                 py_type = type_map[spec.type]
-            fields[spec.name] = (py_type, ...)
+            fields[spec.name] = (py_type, Field(description=spec.description))
 
         model = create_model("InferredSchema", **fields)  # type: ignore[call-arg]
         return model
@@ -281,11 +294,15 @@ You are a schema inference engine.
 Task:
 1. Normalize the user's purpose (eliminate ambiguity, redundancy, contradictions).
 2. Objectively summarize observable patterns in the example texts.
-3. Propose a minimal flat set of scalar fields (no nesting / arrays) that are reliably extractable.
-4. Skip fields likely missing in a large share (>~20%) of realistic inputs.
-5. Provide enum_values ONLY when a small stable closed categorical set (2–24 lowercase tokens)
+3. Produce an "examples_purpose_alignment" explanation that explicitly maps purpose facets
+   to concrete recurring evidence in the examples (or flags gaps). Use concise bullet‑style
+   sentences (still a plain string) such as: "purpose facet -> supporting pattern / gap".
+   This MUST NOT introduce new domain facts beyond the examples & purpose.
+4. Propose a minimal flat set of scalar fields (no nesting / arrays) that are reliably extractable.
+5. Skip fields likely missing in a large share (>~20%) of realistic inputs.
+6. Provide enum_values ONLY when a small stable closed categorical set (2–24 lowercase tokens)
     is clearly evidenced; never invent.
-6. If the purpose indicates prediction (predict / probability / likelihood), output only
+7. If the purpose indicates prediction (predict / probability / likelihood), output only
     explanatory features (no target restatement).
 
 Rules:
@@ -305,6 +322,7 @@ Output contract:
 Return exactly an InferredSchema object with JSON keys:
     - purpose (string)
     - examples_summary (string)
+    - examples_purpose_alignment (string)
     - fields (array of FieldSpec objects: name, type, description, enum_values?)
     - inference_prompt (string)
 """.strip()
@@ -359,10 +377,31 @@ class SchemaInferer:
             raise ValueError("max_retries must be >= 1")
 
         last_err: Exception | None = None
+        previous_errors: list[str] = []
         for attempt in range(max_retries):
+            if attempt == 0:
+                instructions = _INFER_INSTRUCTIONS
+            else:
+                # Provide structured feedback for correction. Keep concise and prohibit speculative expansion.
+                feedback_lines = [
+                    "--- PRIOR VALIDATION FEEDBACK ---",
+                ]
+                for i, err in enumerate(previous_errors[-5:], 1):  # include last up to 5 errors
+                    feedback_lines.append(f"{i}. {err}")
+                feedback_lines.extend(
+                    [
+                        "Adjust ONLY listed issues; avoid adding brand-new fields unless essential.",
+                        "Don't hallucinate or broaden enum_values unless enum rule caused failure.",
+                        "Duplicate names: minimally rename; keep semantics.",
+                        "Unsupported type: change to string|integer|float|boolean (no new facts).",
+                        "Bad enum length: drop enum or constrain to 2–24 evidenced tokens.",
+                    ]
+                )
+                instructions = _INFER_INSTRUCTIONS + "\n\n" + "\n".join(feedback_lines)
+
             response: ParsedResponse[InferredSchema] = self.client.responses.parse(
                 model=self.model_name,
-                instructions=_INFER_INSTRUCTIONS,
+                instructions=instructions,
                 input=data.model_dump_json(),
                 text_format=InferredSchema,
                 *args,
@@ -371,8 +410,10 @@ class SchemaInferer:
             parsed = response.output_parsed
             try:
                 _basic_field_list_validation(parsed)
+                parsed.build_model()  # ensure dynamic model creation succeeds
             except ValueError as e:
                 last_err = e
+                previous_errors.append(str(e))
                 if attempt == max_retries - 1:
                     raise
                 continue
