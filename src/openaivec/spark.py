@@ -164,7 +164,7 @@ def _python_type_to_spark(python_type):
         inner_type = get_args(python_type)[0]
         return ArrayType(_python_type_to_spark(inner_type))
 
-    # For Optional types (Union[..., None])
+    # For Optional types (T | None via Union internally)
     elif origin is Union:
         non_none_args = [arg for arg in get_args(python_type) if arg is not type(None)]
         if len(non_none_args) == 1:

@@ -186,7 +186,6 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     performance (targeting 30-60 seconds per batch).
 
     Example:
-        >>> from typing import List
         >>> p = BatchingMapProxy[int, str](batch_size=3)
         >>> def f(xs: list[int]) -> list[str]:
         ...     return [f"v:{x}" for x in xs]
