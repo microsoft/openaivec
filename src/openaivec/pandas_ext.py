@@ -979,6 +979,94 @@ class OpenAIVecDataFrameAccessor:
 
         return df
 
+    def auto_extract(
+        self, purpose: str, max_examples: int = 100, batch_size: int | None = None, show_progress: bool = False
+    ) -> pd.DataFrame:
+        """Automatically infer schema and add extracted fields to the DataFrame.
+
+        This convenience method combines schema inference and data extraction to
+        automatically add new columns to the existing DataFrame. It analyzes a
+        sample of the DataFrame rows to infer an appropriate schema based on the
+        stated purpose, then extracts structured data and joins it with the
+        original DataFrame.
+
+        Args:
+            purpose (str): Plain language description of what information to extract
+                and how it will be used (e.g., "Extract customer sentiment metrics",
+                "Parse product attributes for analytics"). This guides both schema
+                inference and field selection.
+            max_examples (int): Maximum number of rows to use for schema inference.
+                A larger sample may produce more accurate schemas but increases
+                inference time. Defaults to 100.
+            batch_size (int | None): Number of requests to process in parallel during
+                extraction. Defaults to None (automatic optimization). Set to a specific
+                value to control API usage and performance.
+            show_progress (bool): Whether to display a progress bar during extraction.
+                Useful for large datasets. Defaults to False.
+
+        Returns:
+            pd.DataFrame: The original DataFrame with new columns added from the
+                inferred structured data. Each inferred field becomes a new column.
+                The original columns and index are preserved.
+
+        Example:
+            ```python
+            # Add sentiment and issue type to support tickets
+            df = pd.DataFrame({
+                'ticket_id': [1, 2, 3],
+                'description': [
+                    "Can't login, password reset not working",
+                    "Billing error, charged twice last month",
+                    "Great service, issue resolved quickly!"
+                ],
+                'date': ['2024-01-01', '2024-01-02', '2024-01-03']
+            })
+
+            # Add inferred fields to existing DataFrame
+            enriched_df = df.ai.auto_extract(
+                purpose="Extract issue type and sentiment for support dashboard",
+                show_progress=True
+            )
+            # Result: Original df with new columns like 'issue_type', 'sentiment', etc.
+
+            # Add product specifications to inventory data
+            inventory = pd.DataFrame({
+                'sku': ['A001', 'B002', 'C003'],
+                'description': [
+                    "Laptop 16GB RAM, 512GB SSD, Intel i7",
+                    "Phone 128GB, 5G, dual camera",
+                    "Tablet 10-inch, WiFi only, 64GB"
+                ]
+            })
+
+            enriched_inventory = inventory.ai.auto_extract(
+                purpose="Extract technical specifications for inventory system"
+            )
+            ```
+
+        Note:
+            This method is ideal for enriching existing DataFrames with additional
+            structured fields extracted from text columns. The schema is inferred
+            from the entire DataFrame content (converted to JSON format). For
+            production use cases with stable schemas, consider using `infer_schema()`
+            once and reusing the schema with `task()`.
+        """
+        # Infer schema from DataFrame rows
+        schema = self._obj.ai.infer_schema(purpose=purpose, max_examples=max_examples)
+
+        # Extract structured data using the inferred schema
+        inferred_series = self._obj.ai.task(
+            task=schema.task,
+            batch_size=batch_size,
+            show_progress=show_progress,
+        )
+
+        # Convert inferred data to DataFrame and join with original
+        inferred_df = pd.DataFrame({"_inferred": inferred_series}).ai.extract("_inferred")
+
+        # Join the inferred columns with the original DataFrame
+        return self._obj.join(inferred_df)
+
     def similarity(self, col1: str, col2: str) -> pd.Series:
         """Compute cosine similarity between two columns containing embedding vectors.
 
@@ -1847,3 +1935,101 @@ class AsyncOpenAIVecDataFrameAccessor:
                 df.at[actual_index, target_column_name] = result.output
 
         return df
+
+    async def auto_extract(
+        self,
+        purpose: str,
+        max_examples: int = 100,
+        batch_size: int | None = None,
+        max_concurrency: int = 8,
+        show_progress: bool = False,
+    ) -> pd.DataFrame:
+        """Automatically infer schema and add extracted fields to the DataFrame (asynchronously).
+
+        This convenience method combines schema inference and data extraction to
+        automatically add new columns to the existing DataFrame. It analyzes a
+        sample of the DataFrame rows to infer an appropriate schema based on the
+        stated purpose, then extracts structured data and joins it with the
+        original DataFrame.
+
+        Args:
+            purpose (str): Plain language description of what information to extract
+                and how it will be used (e.g., "Extract customer sentiment metrics",
+                "Parse product attributes for analytics"). This guides both schema
+                inference and field selection.
+            max_examples (int): Maximum number of rows to use for schema inference.
+                A larger sample may produce more accurate schemas but increases
+                inference time. Defaults to 100.
+            batch_size (int | None): Number of requests to process in parallel during
+                extraction. Defaults to None (automatic optimization). Set to a specific
+                value to control API usage and performance.
+            max_concurrency (int): Maximum number of concurrent requests during
+                extraction. Defaults to 8.
+            show_progress (bool): Whether to display a progress bar during extraction.
+                Useful for large datasets. Defaults to False.
+
+        Returns:
+            pd.DataFrame: The original DataFrame with new columns added from the
+                inferred structured data. Each inferred field becomes a new column.
+                The original columns and index are preserved.
+
+        Example:
+            ```python
+            # Add sentiment and issue type to support tickets
+            df = pd.DataFrame({
+                'ticket_id': [1, 2, 3],
+                'description': [
+                    "Can't login, password reset not working",
+                    "Billing error, charged twice last month",
+                    "Great service, issue resolved quickly!"
+                ],
+                'date': ['2024-01-01', '2024-01-02', '2024-01-03']
+            })
+
+            # Add inferred fields to existing DataFrame (must be awaited)
+            enriched_df = await df.aio.auto_extract(
+                purpose="Extract issue type and sentiment for support dashboard",
+                max_concurrency=4,
+                show_progress=True
+            )
+            # Result: Original df with new columns like 'issue_type', 'sentiment', etc.
+
+            # Add product specifications to inventory data
+            inventory = pd.DataFrame({
+                'sku': ['A001', 'B002', 'C003'],
+                'description': [
+                    "Laptop 16GB RAM, 512GB SSD, Intel i7",
+                    "Phone 128GB, 5G, dual camera",
+                    "Tablet 10-inch, WiFi only, 64GB"
+                ]
+            })
+
+            enriched_inventory = await inventory.aio.auto_extract(
+                purpose="Extract technical specifications for inventory system",
+                batch_size=32
+            )
+            ```
+
+        Note:
+            This is an asynchronous method and must be awaited. This method is ideal
+            for enriching existing DataFrames with additional structured fields
+            extracted from text columns. The schema is inferred synchronously from
+            the DataFrame content. For production use cases with stable schemas,
+            consider using `infer_schema()` once and reusing the schema with `task()`.
+        """
+        # Infer schema from DataFrame rows (synchronous)
+        schema = self._obj.ai.infer_schema(purpose=purpose, max_examples=max_examples)
+
+        # Extract structured data using the inferred schema (asynchronous)
+        inferred_series = await self._obj.aio.task(
+            task=schema.task,
+            batch_size=batch_size,
+            max_concurrency=max_concurrency,
+            show_progress=show_progress,
+        )
+
+        # Convert inferred data to DataFrame and join with original
+        inferred_df = pd.DataFrame({"_inferred": inferred_series}).ai.extract("_inferred")
+
+        # Join the inferred columns with the original DataFrame
+        return self._obj.join(inferred_df)
