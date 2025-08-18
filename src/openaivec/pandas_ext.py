@@ -1061,11 +1061,9 @@ class OpenAIVecDataFrameAccessor:
             show_progress=show_progress,
         )
 
-        # Convert inferred data to DataFrame and join with original
-        inferred_df = pd.DataFrame({"_inferred": inferred_series}).ai.extract("_inferred")
-
-        # Join the inferred columns with the original DataFrame
-        return self._obj.join(inferred_df)
+        return self._obj.assign(
+            inferred=inferred_series,
+        ).ai.extract("inferred")
 
     def similarity(self, col1: str, col2: str) -> pd.Series:
         """Compute cosine similarity between two columns containing embedding vectors.
@@ -2028,8 +2026,6 @@ class AsyncOpenAIVecDataFrameAccessor:
             show_progress=show_progress,
         )
 
-        # Convert inferred data to DataFrame and join with original
-        inferred_df = pd.DataFrame({"_inferred": inferred_series}).ai.extract("_inferred")
-
-        # Join the inferred columns with the original DataFrame
-        return self._obj.join(inferred_df)
+        return self._obj.assign(
+            inferred=inferred_series,
+        ).ai.extract("inferred")
