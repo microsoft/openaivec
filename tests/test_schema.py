@@ -1,6 +1,7 @@
 import os
 import unittest
 from enum import Enum
+from typing import get_args, get_origin
 from unittest.mock import patch
 
 from openai import OpenAI
@@ -365,6 +366,45 @@ class TestInferredSchemaBuildModel(unittest.TestCase):
         # But should have the same structure
         self.assertEqual(model_cls1.model_fields.keys(), model_cls2.model_fields.keys())
         self.assertEqual(model_cls1.model_json_schema()["properties"], model_cls2.model_json_schema()["properties"])
+
+    def test_build_model_array_types(self):
+        """Test that *_array types map to list element annotations and proper JSON Schema arrays."""
+        schema = InferredSchema(
+            purpose="Test array types",
+            examples_summary="Array type examples",
+            examples_purpose_alignment="Examples justify homogeneous primitive arrays",
+            fields=[
+                FieldSpec(name="tags_array", type="string_array", description="List of tag strings"),
+                FieldSpec(name="ids_array", type="integer_array", description="List of integer ids"),
+                FieldSpec(name="scores_array", type="float_array", description="List of float scores"),
+                FieldSpec(name="is_flags_array", type="boolean_array", description="List of boolean flags"),
+            ],
+            inference_prompt="Test prompt",
+        )
+
+        model_cls = schema.build_model()
+        # Python annotations check (allow typing.List vs builtin list syntax)
+        for field_name, inner in [
+            ("tags_array", str),
+            ("ids_array", int),
+            ("scores_array", float),
+            ("is_flags_array", bool),
+        ]:
+            ann = model_cls.model_fields[field_name].annotation
+            self.assertEqual(get_origin(ann), list, f"Origin for {field_name} should be list")
+            self.assertEqual(get_args(ann), (inner,), f"Inner type for {field_name} mismatch")
+
+        js = model_cls.model_json_schema()
+        props = js["properties"]
+        self.assertEqual(props["tags_array"]["type"], "array")
+        self.assertEqual(props["tags_array"]["items"]["type"], "string")
+        self.assertEqual(props["ids_array"]["items"]["type"], "integer")
+        # Pydantic uses "number" for float
+        self.assertEqual(props["scores_array"]["items"]["type"], "number")
+        self.assertEqual(props["is_flags_array"]["items"]["type"], "boolean")
+        # All required
+        for name in ["tags_array", "ids_array", "scores_array", "is_flags_array"]:
+            self.assertIn(name, js["required"])
 
 
 if __name__ == "__main__":  # pragma: no cover

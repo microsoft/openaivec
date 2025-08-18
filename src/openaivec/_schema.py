@@ -52,7 +52,7 @@ authoritative contract is the ordered list of ``FieldSpec`` instances.
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Literal, Optional, Type
+from typing import Literal, Type
 
 from openai import OpenAI
 from openai.types.responses import ParsedResponse
@@ -127,7 +127,7 @@ class FieldSpec(BaseModel):
             "state the transformation (e.g. sentiment of comment_text, normalized date, language code)."
         )
     )
-    enum_values: Optional[List[str]] = Field(
+    enum_values: list[str] | None = Field(
         default=None,
         description=(
             "Optional finite categorical label set (classification) for a string field. Provide ONLY when a closed, "
@@ -183,7 +183,7 @@ class InferredSchema(BaseModel):
             "reduce hallucinated fields. Internal diagnostic / quality aid; not required for downstream extraction."
         )
     )
-    fields: List[FieldSpec] = Field(
+    fields: list[FieldSpec] = Field(
         description=(
             "Ordered list of proposed fields derived strictly from observable, repeatable signals in the "
             "examples and aligned with the purpose."
@@ -248,19 +248,19 @@ class InferredSchema(BaseModel):
         Returns:
             Type[BaseModel]: New (not cached) model type; order matches ``fields``.
         """
-        type_map: Dict[str, type] = {
+        type_map: dict[str, type] = {
             "string": str,
             "integer": int,
             "float": float,
             "boolean": bool,
         }
-        fields: Dict[str, tuple[type, object]] = {}
+        fields: dict[str, tuple[type, object]] = {}
 
         for spec in self.fields:
             py_type: type
             if spec.enum_values:
                 enum_class_name = "Enum_" + "".join(part.capitalize() for part in spec.name.split("_"))
-                members: Dict[str, str] = {}
+                members: dict[str, str] = {}
                 for raw in spec.enum_values:
                     sanitized = raw.upper().replace("-", "_").replace(" ", "_")
                     if not sanitized or sanitized[0].isdigit():
@@ -274,10 +274,9 @@ class InferredSchema(BaseModel):
                 enum_cls = Enum(enum_class_name, members)  # type: ignore[arg-type]
                 py_type = enum_cls
             else:
-                # Handle primitive list variants
                 if spec.type.endswith("_array"):
                     base = spec.type.rsplit("_", 1)[0]
-                    py_type = List[type_map[base]]  # type: ignore[index]
+                    py_type = list[type_map[base]]  # type: ignore[index]
                 else:
                     py_type = type_map[spec.type]
             fields[spec.name] = (py_type, Field(description=spec.description))
@@ -307,7 +306,7 @@ class SchemaInferenceInput(BaseModel):
             relevance & exclusion of outcome labels.
     """
 
-    examples: List[str] = Field(
+    examples: list[str] = Field(
         description=(
             "Representative sample texts (strings). Provide only data the schema should generalize over; "
             "exclude outliers not in scope."
