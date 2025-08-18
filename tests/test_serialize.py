@@ -63,7 +63,7 @@ class NestedLiteralModel(BaseModel):
     """Model with nested structures containing Literal types."""
 
     config: TaskStatus
-    settings: List[Literal["debug", "info", "warning", "error"]]
+    settings: list[Literal["debug", "info", "warning", "error"]]
     metadata: dict = Field(default_factory=dict)
 
 
