@@ -1354,6 +1354,92 @@ class AsyncOpenAIVecSeriesAccessor:
             **api_kwargs,
         )
 
+    async def auto_extract(
+        self,
+        purpose: str,
+        max_examples: int = 100,
+        batch_size: int | None = None,
+        max_concurrency: int = 8,
+        show_progress: bool = False,
+    ) -> pd.DataFrame:
+        """Automatically infer schema and extract structured data in one step (asynchronously).
+
+        This convenience method combines schema inference and data extraction into
+        a single operation. It first analyzes a sample of the Series to infer an
+        appropriate schema based on the stated purpose, then immediately applies
+        that schema to extract structured data from all values in the Series.
+
+        Args:
+            purpose (str): Plain language description of what information to extract
+                and how it will be used (e.g., "Extract product features for search",
+                "Parse customer feedback for sentiment analysis"). This guides both
+                schema inference and field selection.
+            max_examples (int): Maximum number of examples to use for schema inference.
+                A larger sample may produce more accurate schemas but increases
+                inference time. Defaults to 100.
+            batch_size (int | None): Number of requests to process in parallel during
+                extraction. Defaults to None (automatic optimization). Set to a specific
+                value to control API usage and performance.
+            max_concurrency (int): Maximum number of concurrent requests during
+                extraction. Defaults to 8.
+            show_progress (bool): Whether to display a progress bar during extraction.
+                Useful for large datasets. Defaults to False.
+
+        Returns:
+            pd.DataFrame: A DataFrame with extracted structured data. Each inferred
+                field becomes a column, with the same index as the original Series.
+                Column names and types are determined by the inferred schema.
+
+        Example:
+            ```python
+            # Extract structured data from product reviews
+            reviews = pd.Series([
+                "Great laptop! 16GB RAM, fast SSD, battery lasts 10 hours",
+                "Decent phone. 128GB storage, camera is okay, screen is bright",
+                "Gaming desktop with RTX 4090, 32GB RAM, runs everything smoothly"
+            ])
+
+            # One-step extraction (must be awaited)
+            extracted = await reviews.aio.auto_extract(
+                purpose="Extract product specifications and performance metrics",
+                max_concurrency=4,
+                show_progress=True
+            )
+            # Result: DataFrame with columns like 'ram', 'storage', 'battery_life', etc.
+
+            # Extract sentiment and issues from support tickets
+            tickets = pd.Series([
+                "Account locked, can't reset password, very frustrated",
+                "Billing error, charged twice for subscription",
+                "Great support! Issue resolved quickly"
+            ])
+
+            features = await tickets.aio.auto_extract(
+                purpose="Extract issue type and customer sentiment for support analytics",
+                batch_size=32
+            )
+            ```
+
+        Note:
+            This is an asynchronous method and must be awaited. This method is ideal
+            for exploratory data analysis when you don't have a predefined schema.
+            For production use cases with stable schemas, consider using the synchronous
+            `infer_schema()` once and reusing the schema with `task()`. The inferred
+            schema is not returned, so if you need to inspect or save it, use
+            `infer_schema()` and `task()` separately.
+        """
+        # Use synchronous infer_schema since it's not async
+        schema = self._obj.ai.infer_schema(purpose=purpose, max_examples=max_examples)
+
+        inferred_series = await self._obj.aio.task(
+            task=schema.task,
+            batch_size=batch_size,
+            max_concurrency=max_concurrency,
+            show_progress=show_progress,
+        )
+
+        return pd.DataFrame({"inferred": inferred_series}).ai.extract("inferred")
+
 
 @pd.api.extensions.register_dataframe_accessor("aio")
 class AsyncOpenAIVecDataFrameAccessor:
