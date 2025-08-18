@@ -49,6 +49,8 @@ import pandas as pd
 import tiktoken
 from openai import AsyncOpenAI, OpenAI
 
+from openaivec._schema import InferredSchema, SchemaInferenceInput, SchemaInferer
+
 __all__ = [
     "embeddings_model",
     "responses_model",
@@ -434,6 +436,61 @@ class OpenAIVecSeriesAccessor:
             **api_kwargs,
         )
 
+    def infer_schema(self, purpose: str, max_examples: int = 100) -> InferredSchema:
+        """Infer a structured data schema from Series content using AI.
+
+        This method analyzes a sample of the Series values to automatically infer
+        a structured schema that can be used for consistent data extraction.
+        The inferred schema includes field names, types, descriptions, and
+        potential enum values based on patterns found in the data.
+
+        Args:
+            purpose (str): Plain language description of how the extracted
+                structured data will be used (e.g., "Extract customer sentiment
+                signals for analytics", "Parse product features for search").
+                This guides field relevance and helps exclude irrelevant information.
+            max_examples (int): Maximum number of examples to analyze from the
+                Series. The method will sample randomly from the Series up to this
+                limit. Defaults to 100.
+
+        Returns:
+            InferredSchema: An object containing:
+                - purpose: Normalized statement of the extraction objective
+                - fields: List of field specifications with names, types, and descriptions
+                - inference_prompt: Reusable prompt for future extractions
+                - model: Dynamically generated Pydantic model for parsing
+                - task: PreparedTask for batch extraction operations
+
+        Example:
+            ```python
+            reviews = pd.Series([
+                "Great product! Fast shipping and excellent quality.",
+                "Terrible experience. Item broke after 2 days.",
+                "Average product. Price is fair but nothing special."
+            ])
+            
+            # Infer schema for sentiment analysis
+            schema = reviews.ai.infer_schema(
+                purpose="Extract sentiment and product quality indicators"
+            )
+            
+            # Use the inferred schema for batch extraction
+            extracted = reviews.ai.task(schema.task)
+            ```
+
+        Note:
+            The schema inference uses AI to analyze patterns in the data and may
+            require multiple attempts to produce a valid schema. Fields are limited
+            to primitive types (string, integer, float, boolean) with optional
+            enum values for categorical fields.
+        """
+        inferer = CONTAINER.resolve(SchemaInferer)
+
+        input: SchemaInferenceInput = SchemaInferenceInput(
+            examples=self._obj.sample(n=min(max_examples, len(self._obj))).tolist(), purpose=purpose
+        )
+        return inferer.infer_schema(input)
+
     def count_tokens(self) -> pd.Series:
         """Count `tiktoken` tokens per row.
 
@@ -678,6 +735,62 @@ class OpenAIVecDataFrameAccessor:
             batch_size=batch_size,
             show_progress=show_progress,
             **api_kwargs,
+        )
+
+    def infer_schema(self, purpose: str, max_examples: int = 100) -> InferredSchema:
+        """Infer a structured data schema from DataFrame rows using AI.
+
+        This method analyzes a sample of DataFrame rows to automatically infer
+        a structured schema that can be used for consistent data extraction.
+        Each row is converted to JSON format and analyzed to identify patterns,
+        field types, and potential categorical values.
+
+        Args:
+            purpose (str): Plain language description of how the extracted
+                structured data will be used (e.g., "Extract operational metrics
+                for dashboard", "Parse customer attributes for segmentation").
+                This guides field relevance and helps exclude irrelevant information.
+            max_examples (int): Maximum number of rows to analyze from the
+                DataFrame. The method will sample randomly up to this limit.
+                Defaults to 100.
+
+        Returns:
+            InferredSchema: An object containing:
+                - purpose: Normalized statement of the extraction objective
+                - fields: List of field specifications with names, types, and descriptions
+                - inference_prompt: Reusable prompt for future extractions
+                - model: Dynamically generated Pydantic model for parsing
+                - task: PreparedTask for batch extraction operations
+
+        Example:
+            ```python
+            df = pd.DataFrame({
+                'text': [
+                    "Order #123: Shipped to NYC, arriving Tuesday",
+                    "Order #456: Delayed due to weather, new ETA Friday",
+                    "Order #789: Delivered to customer in LA"
+                ],
+                'timestamp': ['2024-01-01', '2024-01-02', '2024-01-03']
+            })
+            
+            # Infer schema for logistics tracking
+            schema = df.ai.infer_schema(
+                purpose="Extract shipping status and location data for logistics tracking"
+            )
+            
+            # Apply the schema to extract structured data
+            extracted_df = df.ai.task(schema.task)
+            ```
+
+        Note:
+            The DataFrame rows are internally converted to JSON format before
+            analysis. The inferred schema is flat (no nested structures) and
+            uses only primitive types to ensure compatibility with pandas and
+            Spark operations.
+        """
+        return _df_rows_to_json_series(self._obj).ai.infer_schema(
+            purpose=purpose,
+            max_examples=max_examples,
         )
 
     def extract(self, column: str) -> pd.DataFrame:
