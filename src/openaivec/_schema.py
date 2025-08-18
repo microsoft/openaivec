@@ -25,8 +25,11 @@ This module is intentionally **internal** (``__all__ = []``). Public users
 should interact through higher‑level batch APIs once a schema has been inferred.
 
 Design constraints:
-* Flat schema only (no nesting / arrays) to simplify Spark & pandas alignment.
-* Primitive types limited to {string, integer, float, boolean}.
+* Flat schema only (no nested objects). Top-level arrays permitted ONLY as homogeneous arrays of primitives
+    (e.g. array of strings) – represented via specialized primitive array type names
+    (string_array, integer_array, float_array, boolean_array).
+* Primitive scalar types limited to {string, integer, float, boolean}; optional array variants
+    {string_array, integer_array, float_array, boolean_array}.
 * Optional enumerations for *closed*, *observed* categorical sets only.
 * Validation retries ensure a structurally coherent suggestion before returning.
 
@@ -49,7 +52,7 @@ authoritative contract is the ordered list of ``FieldSpec`` instances.
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Literal, Optional, Type
+from typing import Dict, List, Literal, Optional, Type
 
 from openai import OpenAI
 from openai.types.responses import ParsedResponse
@@ -95,12 +98,24 @@ class FieldSpec(BaseModel):
             "negated forms (is_not_active)."
         )
     )
-    type: Literal["string", "integer", "float", "boolean"] = Field(
+    type: Literal[
+        "string",
+        "integer",
+        "float",
+        "boolean",
+        "string_array",
+        "integer_array",
+        "float_array",
+        "boolean_array",
+    ] = Field(
         description=(
             "Primitive type. Use 'integer' only if all observed numeric values are whole numbers. "
             "Use 'float' if any value can contain a decimal or represents a ratio/score. Use 'boolean' only for "
             "explicit binary states (yes/no, true/false, present/absent) consistently encoded. Use 'string' otherwise. "
-            "Never output arrays, objects, or composite encodings; flatten to the most specific scalar value."
+            "Array variants (string_array, integer_array, float_array, boolean_array) are ONLY allowed when the value "
+            "is a repeatable homogeneous collection whose individual elements would otherwise stand as valid scalar "
+            "extractions (e.g. keywords, error_codes, tag_ids). Do not encode objects or mixed-type arrays; flatten or "
+            "choose the most informative level."
         )
     )
     description: str = Field(
@@ -233,14 +248,19 @@ class InferredSchema(BaseModel):
         Returns:
             Type[BaseModel]: New (not cached) model type; order matches ``fields``.
         """
-        type_map: dict[str, type] = {"string": str, "integer": int, "float": float, "boolean": bool}
-        fields: dict[str, tuple[type, object]] = {}
+        type_map: Dict[str, type] = {
+            "string": str,
+            "integer": int,
+            "float": float,
+            "boolean": bool,
+        }
+        fields: Dict[str, tuple[type, object]] = {}
 
         for spec in self.fields:
             py_type: type
             if spec.enum_values:
                 enum_class_name = "Enum_" + "".join(part.capitalize() for part in spec.name.split("_"))
-                members: dict[str, str] = {}
+                members: Dict[str, str] = {}
                 for raw in spec.enum_values:
                     sanitized = raw.upper().replace("-", "_").replace(" ", "_")
                     if not sanitized or sanitized[0].isdigit():
@@ -254,7 +274,12 @@ class InferredSchema(BaseModel):
                 enum_cls = Enum(enum_class_name, members)  # type: ignore[arg-type]
                 py_type = enum_cls
             else:
-                py_type = type_map[spec.type]
+                # Handle primitive list variants
+                if spec.type.endswith("_array"):
+                    base = spec.type.rsplit("_", 1)[0]
+                    py_type = List[type_map[base]]  # type: ignore[index]
+                else:
+                    py_type = type_map[spec.type]
             fields[spec.name] = (py_type, Field(description=spec.description))
 
         model = create_model("InferredSchema", **fields)  # type: ignore[call-arg]
@@ -306,7 +331,8 @@ Task:
    to concrete recurring evidence in the examples (or flags gaps). Use concise bullet‑style
    sentences (still a plain string) such as: "purpose facet -> supporting pattern / gap".
    This MUST NOT introduce new domain facts beyond the examples & purpose.
-4. Propose a minimal flat set of scalar fields (no nesting / arrays) that are reliably extractable.
+4. Propose a minimal flat set of scalar fields (and ONLY when justified,
+   homogeneous primitive arrays) that are reliably extractable.
 5. Skip fields likely missing in a large share (>~20%) of realistic inputs.
 6. Provide enum_values ONLY when a small stable closed categorical set (2–24 lowercase tokens)
     is clearly evidenced; never invent.
@@ -324,7 +350,9 @@ Rules:
     (e.g. *_count, *_seconds, *_ms, *_usd, *_ratio, *_score). Avoid ambiguous bare numeric names.
 - Boolean field names MUST start with 'is_' followed by a positive predicate (e.g. is_active,
   is_delayed). Avoid negated forms.
-- No arrays, objects, composite encodings, or merged multi-concept fields.
+- No nested objects or mixed-type arrays. Homogeneous primitive arrays are allowed ONLY if each element is an atomic
+    scalar signal (use *_array types: string_array, integer_array, float_array, boolean_array). The array is expected to
+    contain 0..N such elements per record.
 - Descriptions: concise, objective extraction rules (no marketing/emotion/speculation).
 - enum_values only for string fields with stable closed vocab; omit otherwise.
 - Exclude direct outcome labels (e.g. attrition_probability, will_buy, purchase_likelihood)
@@ -465,12 +493,21 @@ def _basic_field_list_validation(parsed: InferredSchema) -> None:
         raise ValueError("no fields suggested")
     if len(names) != len(set(names)):
         raise ValueError("duplicate field names detected")
-    allowed = {"string", "integer", "float", "boolean"}
+    allowed = {
+        "string",
+        "integer",
+        "float",
+        "boolean",
+        "string_array",
+        "integer_array",
+        "float_array",
+        "boolean_array",
+    }
     for f in parsed.fields:
         if f.type not in allowed:
             raise ValueError(f"unsupported field type: {f.type}")
         if f.enum_values is not None:
             if f.type != "string":
-                raise ValueError(f"enum_values only allowed for string field: {f.name}")
+                raise ValueError(f"enum_values only allowed for plain string field: {f.name}")
             if not (2 <= len(f.enum_values) <= 24):
                 raise ValueError(f"enum_values length out of bounds for field {f.name}")
