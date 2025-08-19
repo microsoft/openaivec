@@ -44,7 +44,6 @@ this will produce an XML string that looks like this:
 
 import difflib
 import logging
-from typing import List
 from xml.etree import ElementTree
 
 from openai import OpenAI
@@ -90,8 +89,8 @@ class FewShotPrompt(BaseModel):
     """
 
     purpose: str
-    cautions: List[str]
-    examples: List[Example]
+    cautions: list[str]
+    examples: list[Example]
 
 
 class Step(BaseModel):
@@ -116,7 +115,7 @@ class Request(BaseModel):
 
 
 class Response(BaseModel):
-    iterations: List[Step]
+    iterations: list[Step]
 
 
 _PROMPT: str = """
@@ -358,7 +357,7 @@ class FewShotPromptBuilder:
     """
 
     _prompt: FewShotPrompt
-    _steps: List[Step]
+    _steps: list[Step]
 
     def __init__(self):
         """Initialize an empty FewShotPromptBuilder.

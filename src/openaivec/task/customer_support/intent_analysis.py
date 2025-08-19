@@ -57,7 +57,7 @@ Attributes:
         top_p=1.0 for deterministic output.
 """
 
-from typing import List, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -80,7 +80,7 @@ class IntentAnalysis(BaseModel):
         description="Primary customer intent (get_help, make_purchase, cancel_service, "
         "get_refund, report_issue, seek_information, request_feature, provide_feedback)"
     )
-    secondary_intents: List[str] = Field(description="Additional intents if multiple goals are present")
+    secondary_intents: list[str] = Field(description="Additional intents if multiple goals are present")
     action_required: Literal[
         "provide_information", "troubleshoot", "process_request", "escalate", "redirect", "schedule_callback"
     ] = Field(
@@ -92,9 +92,9 @@ class IntentAnalysis(BaseModel):
         description="Likelihood of successful resolution (very_high, high, medium, low, very_low)"
     )
     customer_goal: str = Field(description="What the customer ultimately wants to achieve")
-    implicit_needs: List[str] = Field(description="Unstated needs or concerns that may need addressing")
-    blocking_factors: List[str] = Field(description="Potential obstacles to achieving customer goal")
-    next_steps: List[str] = Field(description="Recommended next steps to address customer intent")
+    implicit_needs: list[str] = Field(description="Unstated needs or concerns that may need addressing")
+    blocking_factors: list[str] = Field(description="Potential obstacles to achieving customer goal")
+    next_steps: list[str] = Field(description="Recommended next steps to address customer intent")
     resolution_complexity: Literal["simple", "moderate", "complex", "very_complex"] = Field(
         description="Complexity of resolution (simple, moderate, complex, very_complex)"
     )

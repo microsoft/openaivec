@@ -49,8 +49,6 @@ Attributes:
         top_p=1.0 for deterministic output.
 """
 
-from typing import List
-
 from pydantic import BaseModel, Field
 
 from openaivec._model import PreparedTask
@@ -59,10 +57,10 @@ __all__ = ["MORPHOLOGICAL_ANALYSIS"]
 
 
 class MorphologicalAnalysis(BaseModel):
-    tokens: List[str] = Field(description="List of tokens in the text")
-    pos_tags: List[str] = Field(description="Part-of-speech tags for each token")
-    lemmas: List[str] = Field(description="Lemmatized form of each token")
-    morphological_features: List[str] = Field(
+    tokens: list[str] = Field(description="List of tokens in the text")
+    pos_tags: list[str] = Field(description="Part-of-speech tags for each token")
+    lemmas: list[str] = Field(description="Lemmatized form of each token")
+    morphological_features: list[str] = Field(
         description="Morphological features for each token (e.g., tense, number, case)"
     )
 

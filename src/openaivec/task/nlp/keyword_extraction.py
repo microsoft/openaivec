@@ -50,8 +50,6 @@ Attributes:
         top_p=1.0 for deterministic output.
 """
 
-from typing import List
-
 from pydantic import BaseModel, Field
 
 from openaivec._model import PreparedTask
@@ -67,9 +65,9 @@ class Keyword(BaseModel):
 
 
 class KeywordExtraction(BaseModel):
-    keywords: List[Keyword] = Field(description="Extracted keywords ranked by importance")
-    keyphrases: List[Keyword] = Field(description="Extracted multi-word phrases ranked by importance")
-    topics: List[str] = Field(description="Identified main topics in the text")
+    keywords: list[Keyword] = Field(description="Extracted keywords ranked by importance")
+    keyphrases: list[Keyword] = Field(description="Extracted multi-word phrases ranked by importance")
+    topics: list[str] = Field(description="Identified main topics in the text")
     summary: str = Field(description="Brief summary of the text content")
 
 

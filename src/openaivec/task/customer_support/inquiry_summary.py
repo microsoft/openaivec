@@ -59,7 +59,7 @@ Attributes:
         top_p=1.0 for deterministic output.
 """
 
-from typing import List, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -71,15 +71,15 @@ __all__ = ["inquiry_summary"]
 class InquirySummary(BaseModel):
     summary: str = Field(description="Concise summary of the customer inquiry (2-3 sentences)")
     main_issue: str = Field(description="Primary problem or request being addressed")
-    secondary_issues: List[str] = Field(description="Additional issues mentioned in the inquiry")
+    secondary_issues: list[str] = Field(description="Additional issues mentioned in the inquiry")
     customer_background: str = Field(description="Relevant customer context or history mentioned")
-    actions_taken: List[str] = Field(description="Steps the customer has already attempted")
+    actions_taken: list[str] = Field(description="Steps the customer has already attempted")
     timeline: str = Field(description="Timeline of events or when the issue started")
     impact_description: str = Field(description="How the issue affects the customer")
     resolution_status: Literal["not_started", "in_progress", "needs_escalation", "resolved"] = Field(
         description="Current status (not_started, in_progress, needs_escalation, resolved)"
     )
-    key_details: List[str] = Field(description="Important technical details, error messages, or specifics")
+    key_details: list[str] = Field(description="Important technical details, error messages, or specifics")
     follow_up_needed: bool = Field(description="Whether follow-up communication is required")
     summary_confidence: float = Field(description="Confidence in summary accuracy (0.0-1.0)")
 

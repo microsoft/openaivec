@@ -1,5 +1,4 @@
 from threading import Thread
-from typing import List
 
 import pytest
 
@@ -162,7 +161,7 @@ class TestContainer:
         container = Container()
         container.register(ServiceC, lambda: ServiceC())
 
-        results: List[ServiceC] = []
+        results: list[ServiceC] = []
 
         def resolve_and_increment():
             service = container.resolve(ServiceC)
@@ -298,7 +297,7 @@ class TestContainer:
 
         container.register_instance(ServiceC, service_instance)
 
-        results: List[ServiceC] = []
+        results: list[ServiceC] = []
 
         def resolve_and_increment():
             service = container.resolve(ServiceC)

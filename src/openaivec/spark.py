@@ -123,8 +123,9 @@ Note: This module provides asynchronous support through the pandas extensions.
 
 import asyncio
 import logging
+from collections.abc import Iterator
 from enum import Enum
-from typing import Dict, Iterator, List, Type, Union, get_args, get_origin
+from typing import Union, get_args, get_origin
 
 import numpy as np
 import pandas as pd
@@ -157,13 +158,13 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 def _python_type_to_spark(python_type):
     origin = get_origin(python_type)
 
-    # For list types (e.g., List[int])
-    if origin is list or origin is List:
+    # For list types (e.g., list[int])
+    if origin is list:
         # Retrieve the inner type and recursively convert it
         inner_type = get_args(python_type)[0]
         return ArrayType(_python_type_to_spark(inner_type))
 
-    # For Optional types (Union[..., None])
+    # For Optional types (T | None via Union internally)
     elif origin is Union:
         non_none_args = [arg for arg in get_args(python_type) if arg is not type(None)]
         if len(non_none_args) == 1:
@@ -196,7 +197,7 @@ def _python_type_to_spark(python_type):
         raise ValueError(f"Unsupported type: {python_type}")
 
 
-def _pydantic_to_spark_schema(model: Type[BaseModel]) -> StructType:
+def _pydantic_to_spark_schema(model: type[BaseModel]) -> StructType:
     fields = []
     for field_name, field in model.model_fields.items():
         field_type = field.annotation
@@ -218,7 +219,7 @@ def _safe_cast_str(x: str | None) -> str | None:
         return None
 
 
-def _safe_dump(x: BaseModel | None) -> Dict:
+def _safe_dump(x: BaseModel | None) -> dict:
     try:
         if x is None:
             return {}
@@ -231,7 +232,7 @@ def _safe_dump(x: BaseModel | None) -> Dict:
 
 def responses_udf(
     instructions: str,
-    response_format: Type[ResponseFormat] = str,
+    response_format: type[ResponseFormat] = str,
     model_name: str = "gpt-4.1-mini",
     batch_size: int | None = None,
     temperature: float | None = 0.0,
@@ -261,7 +262,7 @@ def responses_udf(
 
     Args:
         instructions (str): The system prompt or instructions for the model.
-        response_format (Type[ResponseFormat]): The desired output format. Either `str` for plain text
+        response_format (type[ResponseFormat]): The desired output format. Either `str` for plain text
             or a Pydantic `BaseModel` for structured JSON output. Defaults to `str`.
         model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
             For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to "gpt-4.1-mini".
@@ -555,12 +556,12 @@ def embeddings_udf(
     return _embeddings_udf  # type: ignore[return-value]
 
 
-def split_to_chunks_udf(max_tokens: int, sep: List[str]) -> UserDefinedFunction:
+def split_to_chunks_udf(max_tokens: int, sep: list[str]) -> UserDefinedFunction:
     """Create a pandas‑UDF that splits text into token‑bounded chunks.
 
     Args:
         max_tokens (int): Maximum tokens allowed per chunk.
-        sep (List[str]): Ordered list of separator strings used by ``TextChunker``.
+        sep (list[str]): Ordered list of separator strings used by ``TextChunker``.
 
     Returns:
         A pandas UDF producing an ``ArrayType(StringType())`` column whose

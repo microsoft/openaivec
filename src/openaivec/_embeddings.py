@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field
 from logging import Logger, getLogger
-from typing import List
 
 import numpy as np
 from numpy.typing import NDArray
@@ -50,7 +49,7 @@ class BatchEmbeddings:
 
     @observe(_LOGGER)
     @backoff(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
-    def _embed_chunk(self, inputs: List[str]) -> List[NDArray[np.float32]]:
+    def _embed_chunk(self, inputs: list[str]) -> list[NDArray[np.float32]]:
         """Embed one minibatch of strings.
 
         This private helper is the unit of work used by the map/parallel
@@ -58,23 +57,23 @@ class BatchEmbeddings:
         ``openai.RateLimitError`` is raised.
 
         Args:
-            inputs (List[str]): Input strings to be embedded. Duplicates allowed.
+            inputs (list[str]): Input strings to be embedded. Duplicates allowed.
 
         Returns:
-            List[NDArray[np.float32]]: Embedding vectors aligned to ``inputs``.
+            list[NDArray[np.float32]]: Embedding vectors aligned to ``inputs``.
         """
         responses = self.client.embeddings.create(input=inputs, model=self.model_name)
         return [np.array(d.embedding, dtype=np.float32) for d in responses.data]
 
     @observe(_LOGGER)
-    def create(self, inputs: List[str]) -> List[NDArray[np.float32]]:
+    def create(self, inputs: list[str]) -> list[NDArray[np.float32]]:
         """Generate embeddings for inputs using cached, ordered batching.
 
         Args:
-            inputs (List[str]): Input strings. Duplicates allowed.
+            inputs (list[str]): Input strings. Duplicates allowed.
 
         Returns:
-            List[NDArray[np.float32]]: Embedding vectors aligned to ``inputs``.
+            list[NDArray[np.float32]]: Embedding vectors aligned to ``inputs``.
         """
         return self.cache.map(inputs, self._embed_chunk)
 
@@ -159,7 +158,7 @@ class AsyncBatchEmbeddings:
 
     @backoff_async(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
     @observe(_LOGGER)
-    async def _embed_chunk(self, inputs: List[str]) -> List[NDArray[np.float32]]:
+    async def _embed_chunk(self, inputs: list[str]) -> list[NDArray[np.float32]]:
         """Embed one minibatch of strings asynchronously.
 
         This private helper handles the actual API call for a batch of inputs.
@@ -167,10 +166,10 @@ class AsyncBatchEmbeddings:
         is raised.
 
         Args:
-            inputs (List[str]): Input strings to be embedded. Duplicates allowed.
+            inputs (list[str]): Input strings to be embedded. Duplicates allowed.
 
         Returns:
-            List[NDArray[np.float32]]: Embedding vectors aligned to ``inputs``.
+            list[NDArray[np.float32]]: Embedding vectors aligned to ``inputs``.
 
         Raises:
             RateLimitError: Propagated if retries are exhausted.
@@ -179,13 +178,13 @@ class AsyncBatchEmbeddings:
         return [np.array(d.embedding, dtype=np.float32) for d in responses.data]
 
     @observe(_LOGGER)
-    async def create(self, inputs: List[str]) -> List[NDArray[np.float32]]:
+    async def create(self, inputs: list[str]) -> list[NDArray[np.float32]]:
         """Generate embeddings for inputs using proxy batching (async).
 
         Args:
-            inputs (List[str]): Input strings. Duplicates allowed.
+            inputs (list[str]): Input strings. Duplicates allowed.
 
         Returns:
-            List[NDArray[np.float32]]: Embedding vectors aligned to ``inputs``.
+            list[NDArray[np.float32]]: Embedding vectors aligned to ``inputs``.
         """
         return await self.cache.map(inputs, self._embed_chunk)  # type: ignore[arg-type]

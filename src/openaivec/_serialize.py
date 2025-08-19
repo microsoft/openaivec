@@ -4,19 +4,19 @@ This module provides utilities for converting Pydantic BaseModel classes
 to and from JSON schema representations with simplified, maintainable code.
 """
 
-from typing import Any, Dict, List, Literal, Tuple, Type, Union
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, create_model
 
 __all__ = []
 
 
-def serialize_base_model(obj: Type[BaseModel]) -> Dict[str, Any]:
+def serialize_base_model(obj: type[BaseModel]) -> dict[str, Any]:
     """Serialize a Pydantic BaseModel to JSON schema."""
     return obj.model_json_schema()
 
 
-def dereference_json_schema(json_schema: Dict[str, Any]) -> Dict[str, Any]:
+def dereference_json_schema(json_schema: dict[str, Any]) -> dict[str, Any]:
     """Dereference JSON schema by resolving $ref pointers with circular reference protection."""
     model_map = json_schema.get("$defs", {})
 
@@ -61,7 +61,7 @@ def dereference_json_schema(json_schema: Dict[str, Any]) -> Dict[str, Any]:
 # ============================================================================
 
 
-def _resolve_union_type(union_options: List[Dict[str, Any]]) -> Type:
+def _resolve_union_type(union_options: list[dict[str, Any]]) -> type:
     """Resolve anyOf/oneOf to Union type."""
     union_types = []
     for option in union_options:
@@ -75,12 +75,14 @@ def _resolve_union_type(union_options: List[Dict[str, Any]]) -> Type:
     elif len(union_types) == 2 and type(None) in union_types:
         # Optional type: T | None
         non_none_type = next(t for t in union_types if t is not type(None))
-        return Union[non_none_type, type(None)]  # type: ignore[return-value]
+        return non_none_type | None  # type: ignore[return-value]
     else:
+        from typing import Union
+
         return Union[tuple(union_types)]  # type: ignore[return-value]
 
 
-def _resolve_basic_type(type_name: str, field_def: Dict[str, Any]) -> Type:
+def _resolve_basic_type(type_name: str, field_def: dict[str, Any]) -> type:
     """Resolve basic JSON schema types to Python types."""
     type_mapping = {
         "string": str,
@@ -101,14 +103,14 @@ def _resolve_basic_type(type_name: str, field_def: Dict[str, Any]) -> Type:
     elif type_name == "array":
         if "items" in field_def:
             inner_type = parse_field(field_def["items"])
-            return List[inner_type]
+            return list[inner_type]
         else:
-            return List[Any]
+            return list[Any]
     else:
         raise ValueError(f"Unsupported type: {type_name}")
 
 
-def parse_field(field_def: Dict[str, Any]) -> Type:
+def parse_field(field_def: dict[str, Any]) -> type:
     """Parse a JSON schema field definition to a Python type.
 
     Simplified version with clear separation of concerns.
@@ -141,17 +143,19 @@ def _create_field_info(description: str | None, default_value: Any, is_required:
         return Field(default=default_value, description=description) if description else Field(default=default_value)
 
 
-def _make_optional_if_needed(field_type: Type, is_required: bool, has_default: bool) -> Type:
+def _make_optional_if_needed(field_type: type, is_required: bool, has_default: bool) -> type:
     """Make field type optional if needed."""
     if is_required or has_default:
         return field_type
 
     # Check if already nullable
+    from typing import Union
+
     if hasattr(field_type, "__origin__") and field_type.__origin__ is Union and type(None) in field_type.__args__:
         return field_type
 
     # Make optional
-    return Union[field_type, type(None)]  # type: ignore[return-value]
+    return field_type | None  # type: ignore[return-value]
 
 
 # ============================================================================
@@ -159,7 +163,7 @@ def _make_optional_if_needed(field_type: Type, is_required: bool, has_default: b
 # ============================================================================
 
 
-def _process_enum_field(field_name: str, field_def: Dict[str, Any], is_required: bool) -> Tuple[Type, Field]:  # type: ignore[type-arg]
+def _process_enum_field(field_name: str, field_def: dict[str, Any], is_required: bool) -> tuple[type, Field]:  # type: ignore[type-arg]
     """Process enum field with Literal type."""
     enum_values = field_def["enum"]
 
@@ -175,14 +179,14 @@ def _process_enum_field(field_name: str, field_def: Dict[str, Any], is_required:
     has_default = default_value is not None
 
     if not is_required and not has_default:
-        literal_type = Union[literal_type, type(None)]  # type: ignore[assignment]
+        literal_type = literal_type | None  # type: ignore[assignment]
         default_value = None
 
     field_info = _create_field_info(description, default_value, is_required)
     return literal_type, field_info  # type: ignore[return-value]
 
 
-def _process_regular_field(field_name: str, field_def: Dict[str, Any], is_required: bool) -> Tuple[Type, Field]:  # type: ignore[type-arg]
+def _process_regular_field(field_name: str, field_def: dict[str, Any], is_required: bool) -> tuple[type, Field]:  # type: ignore[type-arg]
     """Process regular (non-enum) field."""
     field_type = parse_field(field_def)
     description = field_def.get("description")
@@ -204,7 +208,7 @@ def _process_regular_field(field_name: str, field_def: Dict[str, Any], is_requir
 # ============================================================================
 
 
-def deserialize_base_model(json_schema: Dict[str, Any]) -> Type[BaseModel]:
+def deserialize_base_model(json_schema: dict[str, Any]) -> type[BaseModel]:
     """Deserialize a JSON schema to a Pydantic BaseModel class.
 
     Refactored version with clear separation of concerns and simplified logic.

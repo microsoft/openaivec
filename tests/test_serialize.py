@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Literal
+from typing import Literal
 from unittest import TestCase
 
 from pydantic import BaseModel, Field
@@ -20,12 +20,12 @@ class Person(BaseModel):
 
 class Team(BaseModel):
     name: str
-    members: List[Person]
-    rules: List[str]
+    members: list[Person]
+    rules: list[str]
 
 
 class Matrix(BaseModel):
-    data: List[List[float]]
+    data: list[list[float]]
 
 
 class ModelWithDescriptions(BaseModel):
@@ -63,7 +63,7 @@ class NestedLiteralModel(BaseModel):
     """Model with nested structures containing Literal types."""
 
     config: TaskStatus
-    settings: List[Literal["debug", "info", "warning", "error"]]
+    settings: list[Literal["debug", "info", "warning", "error"]]
     metadata: dict = Field(default_factory=dict)
 
 

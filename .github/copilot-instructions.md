@@ -146,7 +146,11 @@ Public exports (`__init__.py`): `BatchResponses`, `AsyncBatchResponses`, `BatchE
 
 - Python ≥ 3.10; Ruff for lint/format (`line-length=120`).
 - Absolute imports (except re-export patterns in `__init__.py`) – enforced by Ruff rule TID252.
-- Modern typing (`|` unions, builtins generics); prefer `str | None` over `Optional[str]`, `list[str]` over `List[str]`.
+- Modern typing syntax (Python 3.9+):
+  - **Built-in generic types**: Use `list[T]`, `dict[K, V]`, `set[T]`, `tuple[T, ...]`, `type[T]` instead of `typing` equivalents
+  - **Union types**: Use `|` syntax (`int | str | None`) instead of `Union[...]`
+  - **Optional types**: Use `S | None` instead of `Optional[S]`
+  - **Collections.abc**: Use `collections.abc.Callable`, `collections.abc.Awaitable`, `collections.abc.Iterator` instead of `typing` equivalents
 - Prefer `@dataclass` for simple immutable-ish contracts; use Pydantic only for validation-boundaries.
 - Raise narrow exceptions (`ValueError`, `TypeError`) on contract violations—avoid broad except.
 - Public APIs: Google-style docstrings with return/raises sections.

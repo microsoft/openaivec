@@ -92,7 +92,7 @@ Example:
     ```
 """
 
-from typing import Dict, List, Literal
+from typing import Dict, Literal
 
 from pydantic import BaseModel, Field
 
@@ -106,7 +106,7 @@ class InquiryClassification(BaseModel):
     subcategory: str = Field(description="Specific subcategory within the primary category")
     confidence: float = Field(description="Confidence score for classification (0.0-1.0)")
     routing: str = Field(description="Recommended routing destination")
-    keywords: List[str] = Field(description="Key terms that influenced the classification")
+    keywords: list[str] = Field(description="Key terms that influenced the classification")
     priority: Literal["low", "medium", "high", "urgent"] = Field(
         description="Suggested priority level (low, medium, high, urgent)"
     )
@@ -114,25 +114,25 @@ class InquiryClassification(BaseModel):
 
 
 def inquiry_classification(
-    categories: Dict[str, List[str]] | None = None,
+    categories: Dict[str, list[str]] | None = None,
     routing_rules: Dict[str, str] | None = None,
     priority_rules: Dict[str, str] | None = None,
     business_context: str = "general customer support",
-    custom_keywords: Dict[str, List[str]] | None = None,
+    custom_keywords: Dict[str, list[str]] | None = None,
     temperature: float = 0.0,
     top_p: float = 1.0,
 ) -> PreparedTask:
     """Create a configurable inquiry classification task.
 
     Args:
-        categories (Dict[str, List[str]] | None): Dictionary mapping category names to lists of subcategories.
+        categories (dict[str, list[str]] | None): Dictionary mapping category names to lists of subcategories.
             Default provides standard support categories.
-        routing_rules (Dict[str, str] | None): Dictionary mapping categories to routing destinations.
+        routing_rules (dict[str, str] | None): Dictionary mapping categories to routing destinations.
             Default provides standard routing options.
-        priority_rules (Dict[str, str] | None): Dictionary mapping keywords/patterns to priority levels.
+        priority_rules (dict[str, str] | None): Dictionary mapping keywords/patterns to priority levels.
             Default uses standard priority indicators.
         business_context (str): Description of the business context to help with classification.
-        custom_keywords (Dict[str, List[str]] | None): Dictionary mapping categories to relevant keywords.
+        custom_keywords (dict[str, list[str]] | None): Dictionary mapping categories to relevant keywords.
         temperature (float): Sampling temperature (0.0-1.0).
         top_p (float): Nucleus sampling parameter (0.0-1.0).
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import List
 
 import pytest
 
@@ -10,9 +9,9 @@ from openaivec._proxy import AsyncBatchingMapProxy, BatchingMapProxy
 
 
 def test_batching_map_proxy_batches_calls_by_batch_size():
-    calls: List[List[int]] = []
+    calls: list[list[int]] = []
 
-    def mf(xs: List[int]) -> List[int]:
+    def mf(xs: list[int]) -> list[int]:
         calls.append(xs[:])
         # echo back values
         return xs
@@ -31,9 +30,9 @@ def test_batching_map_proxy_batches_calls_by_batch_size():
 
 
 def test_batching_map_proxy_cache_skips_already_processed_items():
-    calls: List[List[int]] = []
+    calls: list[list[int]] = []
 
-    def mf(xs: List[int]) -> List[int]:
+    def mf(xs: list[int]) -> list[int]:
         calls.append(xs[:])
         return xs
 
@@ -51,9 +50,9 @@ def test_batching_map_proxy_cache_skips_already_processed_items():
 
 
 def test_batching_map_proxy_default_process_all_at_once_when_no_batch_size():
-    calls: List[List[int]] = []
+    calls: list[list[int]] = []
 
-    def mf(xs: List[int]) -> List[int]:
+    def mf(xs: list[int]) -> list[int]:
         calls.append(xs[:])
         return xs
 
@@ -67,9 +66,9 @@ def test_batching_map_proxy_default_process_all_at_once_when_no_batch_size():
 
 
 def test_batching_map_proxy_deduplicates_requests_and_batches():
-    calls: List[List[int]] = []
+    calls: list[list[int]] = []
 
-    def mf(xs: List[int]) -> List[int]:
+    def mf(xs: list[int]) -> list[int]:
         calls.append(xs[:])
         return xs
 
@@ -93,9 +92,9 @@ def test_batching_map_proxy_deduplicates_requests_and_batches():
 
 
 def test_batching_map_proxy_rechecks_cache_within_batch_iteration():
-    calls: List[List[int]] = []
+    calls: list[list[int]] = []
 
-    def mf(xs: List[int]) -> List[int]:
+    def mf(xs: list[int]) -> list[int]:
         # simulate an external side-effect that might populate cache between calls
         # (here we just record calls; LocalProxy itself will handle the cache)
         calls.append(xs[:])

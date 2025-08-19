@@ -48,8 +48,6 @@ Attributes:
         top_p=1.0 for deterministic output.
 """
 
-from typing import List
-
 from pydantic import BaseModel, Field
 
 from openaivec._model import PreparedTask
@@ -66,13 +64,13 @@ class NamedEntity(BaseModel):
 
 
 class NamedEntityRecognition(BaseModel):
-    persons: List[NamedEntity] = Field(description="Person entities")
-    organizations: List[NamedEntity] = Field(description="Organization entities")
-    locations: List[NamedEntity] = Field(description="Location entities")
-    dates: List[NamedEntity] = Field(description="Date and time entities")
-    money: List[NamedEntity] = Field(description="Money and currency entities")
-    percentages: List[NamedEntity] = Field(description="Percentage entities")
-    miscellaneous: List[NamedEntity] = Field(description="Other named entities")
+    persons: list[NamedEntity] = Field(description="Person entities")
+    organizations: list[NamedEntity] = Field(description="Organization entities")
+    locations: list[NamedEntity] = Field(description="Location entities")
+    dates: list[NamedEntity] = Field(description="Date and time entities")
+    money: list[NamedEntity] = Field(description="Money and currency entities")
+    percentages: list[NamedEntity] = Field(description="Percentage entities")
+    miscellaneous: list[NamedEntity] = Field(description="Other named entities")
 
 
 NAMED_ENTITY_RECOGNITION = PreparedTask(

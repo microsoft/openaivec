@@ -1,8 +1,8 @@
 import asyncio
 import threading
-from collections.abc import Hashable
+from collections.abc import Awaitable, Callable, Hashable
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Dict, Generic, List, TypeVar
+from typing import Any, Generic, TypeVar
 
 from openaivec._optimize import BatchSizeSuggester
 
@@ -130,7 +130,7 @@ class ProxyBase(Generic[S, T]):
             progress_bar.close()
 
     @staticmethod
-    def _unique_in_order(seq: List[S]) -> List[S]:
+    def _unique_in_order(seq: list[S]) -> list[S]:
         """Return unique items preserving their first-occurrence order.
 
         Args:
@@ -141,7 +141,7 @@ class ProxyBase(Generic[S, T]):
             once, in the order of their first occurrence.
         """
         seen: set[S] = set()
-        out: List[S] = []
+        out: list[S] = []
         for x in seq:
             if x not in seen:
                 seen.add(x)
@@ -186,9 +186,8 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     performance (targeting 30-60 seconds per batch).
 
     Example:
-        >>> from typing import List
         >>> p = BatchingMapProxy[int, str](batch_size=3)
-        >>> def f(xs: List[int]) -> List[str]:
+        >>> def f(xs: list[int]) -> list[str]:
         ...     return [f"v:{x}" for x in xs]
         >>> p.map([1, 2, 2, 3, 4], f)
         ['v:1', 'v:2', 'v:2', 'v:3', 'v:4']
@@ -204,11 +203,11 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     suggester: BatchSizeSuggester = field(default_factory=BatchSizeSuggester, repr=False)
 
     # internals
-    _cache: Dict[S, T] = field(default_factory=dict)
+    _cache: dict[S, T] = field(default_factory=dict)
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
-    _inflight: Dict[S, threading.Event] = field(default_factory=dict, repr=False)
+    _inflight: dict[S, threading.Event] = field(default_factory=dict, repr=False)
 
-    def __all_cached(self, items: List[S]) -> bool:
+    def __all_cached(self, items: list[S]) -> bool:
         """Check whether all items are present in the cache.
 
         This method acquires the internal lock to perform a consistent check.
@@ -222,7 +221,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         with self._lock:
             return all(x in self._cache for x in items)
 
-    def __values(self, items: List[S]) -> List[T]:
+    def __values(self, items: list[S]) -> list[T]:
         """Fetch cached values for ``items`` preserving the given order.
 
         This method acquires the internal lock while reading the cache.
@@ -237,7 +236,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         with self._lock:
             return [self._cache[x] for x in items]
 
-    def __acquire_ownership(self, items: List[S]) -> tuple[List[S], List[S]]:
+    def __acquire_ownership(self, items: list[S]) -> tuple[list[S], list[S]]:
         """Acquire ownership for missing items and identify keys to wait for.
 
         For each unique item, if it's already cached, it is ignored. If it's
@@ -253,8 +252,8 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             - ``owned`` are items this thread is responsible for computing.
             - ``wait_for`` are items that another thread is already computing.
         """
-        owned: List[S] = []
-        wait_for: List[S] = []
+        owned: list[S] = []
+        wait_for: list[S] = []
         with self._lock:
             for x in items:
                 if x in self._cache:
@@ -266,7 +265,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                     owned.append(x)
         return owned, wait_for
 
-    def __finalize_success(self, to_call: List[S], results: List[T]) -> None:
+    def __finalize_success(self, to_call: list[S], results: list[T]) -> None:
         """Populate cache with results and signal completion events.
 
         Args:
@@ -285,7 +284,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                 if ev:
                     ev.set()
 
-    def __finalize_failure(self, to_call: List[S]) -> None:
+    def __finalize_failure(self, to_call: list[S]) -> None:
         """Release in-flight events on failure to avoid deadlocks.
 
         Args:
@@ -316,7 +315,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         """Alias for clear()."""
         self.clear()
 
-    def __process_owned(self, owned: List[S], map_func: Callable[[List[S]], List[T]]) -> None:
+    def __process_owned(self, owned: list[S], map_func: Callable[[list[S]], list[T]]) -> None:
         """Process owned items in mini-batches and fill the cache.
 
         Before calling ``map_func`` for each batch, the cache is re-checked
@@ -339,7 +338,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         progress_bar = self._create_progress_bar(len(owned))
 
         # Accumulate uncached items to maximize batch size utilization
-        pending_to_call: List[S] = []
+        pending_to_call: list[S] = []
 
         i = 0
         while i < len(owned):
@@ -395,7 +394,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         # Close progress bar
         self._close_progress_bar(progress_bar)
 
-    def __wait_for(self, keys: List[S], map_func: Callable[[List[S]], List[T]]) -> None:
+    def __wait_for(self, keys: list[S], map_func: Callable[[list[S]], list[T]]) -> None:
         """Wait for other threads to complete computations for the given keys.
 
         If a key is neither cached nor in-flight, this method now claims ownership
@@ -407,7 +406,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         Args:
             keys (list[S]): Items whose computations are owned by other threads.
         """
-        rescued: List[S] = []  # keys we claim to batch-process
+        rescued: list[S] = []  # keys we claim to batch-process
         for x in keys:
             while True:
                 with self._lock:
@@ -431,7 +430,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                 raise
 
     # ---- public API ------------------------------------------------------
-    def map(self, items: List[S], map_func: Callable[[List[S]], List[T]]) -> List[T]:
+    def map(self, items: list[S], map_func: Callable[[list[S]], list[T]]) -> list[T]:
         """Map ``items`` to values using caching and optional mini-batching.
 
         This method is thread-safe. It deduplicates inputs while preserving order,
@@ -494,7 +493,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         >>> import asyncio
         >>> from typing import List
         >>> p = AsyncBatchingMapProxy[int, str](batch_size=2)
-        >>> async def af(xs: List[int]) -> List[str]:
+        >>> async def af(xs: list[int]) -> list[str]:
         ...     await asyncio.sleep(0)
         ...     return [f"v:{x}" for x in xs]
         >>> async def run():
@@ -514,9 +513,9 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     suggester: BatchSizeSuggester = field(default_factory=BatchSizeSuggester, repr=False)
 
     # internals
-    _cache: Dict[S, T] = field(default_factory=dict, repr=False)
+    _cache: dict[S, T] = field(default_factory=dict, repr=False)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
-    _inflight: Dict[S, asyncio.Event] = field(default_factory=dict, repr=False)
+    _inflight: dict[S, asyncio.Event] = field(default_factory=dict, repr=False)
     __sema: asyncio.Semaphore | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -537,7 +536,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         else:
             self.__sema = None
 
-    async def __all_cached(self, items: List[S]) -> bool:
+    async def __all_cached(self, items: list[S]) -> bool:
         """Check whether all items are present in the cache.
 
         This method acquires the internal asyncio lock for a consistent view
@@ -552,7 +551,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         async with self._lock:
             return all(x in self._cache for x in items)
 
-    async def __values(self, items: List[S]) -> List[T]:
+    async def __values(self, items: list[S]) -> list[T]:
         """Get cached values for ``items`` preserving their given order.
 
         The internal asyncio lock is held while reading the cache to preserve
@@ -567,7 +566,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         async with self._lock:
             return [self._cache[x] for x in items]
 
-    async def __acquire_ownership(self, items: List[S]) -> tuple[List[S], List[S]]:
+    async def __acquire_ownership(self, items: list[S]) -> tuple[list[S], list[S]]:
         """Acquire ownership for missing keys and identify keys to wait for.
 
         Args:
@@ -578,8 +577,8 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             keys this coroutine should compute, and wait_for are keys currently
             being computed elsewhere.
         """
-        owned: List[S] = []
-        wait_for: List[S] = []
+        owned: list[S] = []
+        wait_for: list[S] = []
         async with self._lock:
             for x in items:
                 if x in self._cache:
@@ -591,7 +590,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                     owned.append(x)
         return owned, wait_for
 
-    async def __finalize_success(self, to_call: List[S], results: List[T]) -> None:
+    async def __finalize_success(self, to_call: list[S], results: list[T]) -> None:
         """Populate cache and signal completion for successfully computed keys.
 
         Args:
@@ -609,7 +608,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                 if ev:
                     ev.set()
 
-    async def __finalize_failure(self, to_call: List[S]) -> None:
+    async def __finalize_failure(self, to_call: list[S]) -> None:
         """Release in-flight events on failure to avoid deadlocks.
 
         Args:
@@ -640,7 +639,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         """Alias for clear()."""
         await self.clear()
 
-    async def __process_owned(self, owned: List[S], map_func: Callable[[List[S]], Awaitable[List[T]]]) -> None:
+    async def __process_owned(self, owned: list[S], map_func: Callable[[list[S]], Awaitable[list[T]]]) -> None:
         """Process owned keys using Producer-Consumer pattern with dynamic batch sizing.
 
         Args:
@@ -681,7 +680,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         self._close_progress_bar(progress_bar)
 
     async def __process_single_batch(
-        self, to_call: List[S], map_func: Callable[[List[S]], Awaitable[List[T]]], progress_bar
+        self, to_call: list[S], map_func: Callable[[list[S]], Awaitable[list[T]]], progress_bar
     ) -> None:
         """Process a single batch with semaphore control."""
         acquired = False
@@ -703,7 +702,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         # Update progress bar
         self._update_progress_bar(progress_bar, len(to_call))
 
-    async def __wait_for(self, keys: List[S], map_func: Callable[[List[S]], Awaitable[List[T]]]) -> None:
+    async def __wait_for(self, keys: list[S], map_func: Callable[[list[S]], Awaitable[list[T]]]) -> None:
         """Wait for computations owned by other coroutines to complete.
 
         If a key is neither cached nor in-flight, this method now claims ownership
@@ -715,7 +714,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         Args:
             keys (list[S]): Items whose computations are owned by other coroutines.
         """
-        rescued: List[S] = []  # keys we claim to batch-process
+        rescued: list[S] = []  # keys we claim to batch-process
         for x in keys:
             while True:
                 async with self._lock:
@@ -738,7 +737,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                 raise
 
     # ---- public API ------------------------------------------------------
-    async def map(self, items: List[S], map_func: Callable[[List[S]], Awaitable[List[T]]]) -> List[T]:
+    async def map(self, items: list[S], map_func: Callable[[list[S]], Awaitable[list[T]]]) -> list[T]:
         """Async map with caching, de-duplication, and optional mini-batching.
 
         Args:

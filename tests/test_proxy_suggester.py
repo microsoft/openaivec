@@ -1,7 +1,6 @@
 """Test cases for BatchSizeSuggester integration with proxies."""
 
 import asyncio
-from typing import List
 
 import pytest
 
@@ -18,7 +17,7 @@ def test_sync_proxy_uses_suggester_when_batch_size_none():
     call_count = 0
     batch_sizes_used = []
 
-    def map_func(items: List[int]) -> List[str]:
+    def map_func(items: list[int]) -> list[str]:
         nonlocal call_count
         call_count += 1
         batch_sizes_used.append(len(items))
@@ -47,7 +46,7 @@ def test_sync_proxy_suggester_adapts_batch_size():
 
     import time
 
-    def fast_map_func(items: List[int]) -> List[str]:
+    def fast_map_func(items: list[int]) -> list[str]:
         # Simulate very fast processing (should increase batch size)
         time.sleep(0.0001)  # 0.1ms
         return [str(x) for x in items]
@@ -79,7 +78,7 @@ def test_sync_proxy_respects_total_when_suggested_exceeds():
     call_count = 0
     batch_sizes_used = []
 
-    def map_func(items: List[int]) -> List[str]:
+    def map_func(items: list[int]) -> list[str]:
         nonlocal call_count
         call_count += 1
         batch_sizes_used.append(len(items))
@@ -105,7 +104,7 @@ async def test_async_proxy_uses_suggester_when_batch_size_none():
     call_count = 0
     batch_sizes_used = []
 
-    async def map_func(items: List[int]) -> List[str]:
+    async def map_func(items: list[int]) -> list[str]:
         nonlocal call_count
         call_count += 1
         batch_sizes_used.append(len(items))
@@ -131,7 +130,7 @@ async def test_async_proxy_suggester_with_concurrency():
 
     processing_times = []
 
-    async def map_func(items: List[int]) -> List[str]:
+    async def map_func(items: list[int]) -> list[str]:
         start = asyncio.get_event_loop().time()
         await asyncio.sleep(0.01)  # 10ms per batch
         processing_times.append((start, asyncio.get_event_loop().time()))
@@ -166,7 +165,7 @@ def test_sync_proxy_batch_size_overrides_suggester():
 
     batch_sizes_used = []
 
-    def map_func(items: List[int]) -> List[str]:
+    def map_func(items: list[int]) -> list[str]:
         batch_sizes_used.append(len(items))
         return [str(x) for x in items]
 
@@ -188,7 +187,7 @@ def test_sync_proxy_zero_batch_size_processes_all():
 
     call_count = 0
 
-    def map_func(items: List[int]) -> List[str]:
+    def map_func(items: list[int]) -> list[str]:
         nonlocal call_count
         call_count += 1
         return [str(x) for x in items]

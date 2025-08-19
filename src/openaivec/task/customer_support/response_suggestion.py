@@ -57,7 +57,7 @@ Attributes:
         top_p=1.0 for deterministic output.
 """
 
-from typing import List, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -77,14 +77,14 @@ class ResponseSuggestion(BaseModel):
     response_type: Literal["acknowledgment", "solution", "escalation", "information_request", "closure"] = Field(
         description="Type of response (acknowledgment, solution, escalation, information_request, closure)"
     )
-    key_points: List[str] = Field(description="Main points that must be addressed in the response")
+    key_points: list[str] = Field(description="Main points that must be addressed in the response")
     follow_up_required: bool = Field(description="Whether follow-up communication is needed")
     escalation_suggested: bool = Field(description="Whether escalation to management is recommended")
-    resources_needed: List[str] = Field(description="Additional resources or information required")
+    resources_needed: list[str] = Field(description="Additional resources or information required")
     estimated_resolution_time: Literal["immediate", "hours", "days", "weeks"] = Field(
         description="Estimated time to resolution (immediate, hours, days, weeks)"
     )
-    alternative_responses: List[str] = Field(description="Alternative response options for different scenarios")
+    alternative_responses: list[str] = Field(description="Alternative response options for different scenarios")
     personalization_notes: str = Field(description="Suggestions for personalizing the response")
 
 
