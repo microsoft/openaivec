@@ -1,8 +1,8 @@
 import asyncio
 import threading
-from collections.abc import Hashable
+from collections.abc import Awaitable, Callable, Hashable
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 from openaivec._optimize import BatchSizeSuggester
 
