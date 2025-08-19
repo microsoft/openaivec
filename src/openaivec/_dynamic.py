@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from enum import Enum
 from typing import Literal
 
@@ -33,6 +34,7 @@ class ObjectSpec(BaseModel):
 
 
 def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
+    lower_sname_pattern = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
     type_map: dict[str, type] = {
         "string": str,
         "integer": int,
@@ -45,7 +47,18 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
     }
     output_fields: dict[str, tuple[type, object]] = {}
 
+    field_names: list[str] = [field.name for field in object_spec.fields]
+
+    # Assert that names of fields are not duplicated
+    if len(field_names) != len(set(field_names)):
+        raise ValueError("Field names must be unique within the object spec.")
+
     for field in object_spec.fields:
+        # Assert that field names are lower_snake_case
+        if not lower_sname_pattern.match(field.name):
+            raise ValueError(f"Field name '{field.name}' must be in lower_snake_case format (e.g., 'my_field_name').")
+
+        # Convert field name to UpperCamelCase for class attribute names
         upper_camel_field_name: str = "".join([w.capitalize() for w in field.name.split("_")])
         match field:
             case FieldSpec(

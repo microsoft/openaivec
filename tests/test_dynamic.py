@@ -108,56 +108,109 @@ def test_build_model_nested_object_and_object_array():
     assert inner_type.__name__ == "Address"
 
 
-# ----------------------------- Error Cases (MECE) -----------------------------
+# ----------------------------- Error Cases (MECE, unified) -----------------------------
 
 
 @pytest.mark.parametrize(
-    "field_spec,expected_substring",
+    "fields,expected_substring,case_label",
     [
-        # 1. enum missing enum_values
-        (FieldSpec(name="a", type="enum", description="", enum_values=None), "enum type requires"),
-        # 2. enum with object_spec
+        # enum missing enum_values
         (
-            FieldSpec(
-                name="a", type="enum", description="", enum_values=["x"], object_spec=ObjectSpec(name="o", fields=[])
-            ),
+            [FieldSpec(name="a", type="enum", description="", enum_values=None)],
+            "enum type requires",
+            "enum_missing_values",
+        ),
+        # enum with object_spec
+        (
+            [
+                FieldSpec(
+                    name="a",
+                    type="enum",
+                    description="",
+                    enum_values=["x"],
+                    object_spec=ObjectSpec(name="o", fields=[]),
+                )
+            ],
             "must not provide object_spec",
+            "enum_with_object_spec",
         ),
-        # 3. enum_array missing enum_values
-        (FieldSpec(name="a", type="enum_array", description="", enum_values=None), "enum_array type requires"),
-        # 4. enum_array with object_spec
+        # enum_array missing enum_values
         (
-            FieldSpec(
-                name="a",
-                type="enum_array",
-                description="",
-                enum_values=["x"],
-                object_spec=ObjectSpec(name="o", fields=[]),
-            ),
+            [FieldSpec(name="a", type="enum_array", description="", enum_values=None)],
+            "enum_array type requires",
+            "enum_array_missing_values",
+        ),
+        # enum_array with object_spec
+        (
+            [
+                FieldSpec(
+                    name="a",
+                    type="enum_array",
+                    description="",
+                    enum_values=["x"],
+                    object_spec=ObjectSpec(name="o", fields=[]),
+                )
+            ],
             "enum_array type must not provide object_spec",
+            "enum_array_with_object_spec",
         ),
-        # 5. object missing object_spec
-        (FieldSpec(name="a", type="object", description=""), "object type requires object_spec"),
-        # 6. object_array missing object_spec
-        (FieldSpec(name="a", type="object_array", description=""), "object_array type requires object_spec"),
-        # 7. object with enum_values (invalid)
+        # object missing object_spec
         (
-            FieldSpec(
-                name="a", type="object", description="", enum_values=["x"], object_spec=ObjectSpec(name="o", fields=[])
-            ),
+            [FieldSpec(name="a", type="object", description="")],
+            "object type requires object_spec",
+            "object_missing_spec",
+        ),
+        # object_array missing object_spec
+        (
+            [FieldSpec(name="a", type="object_array", description="")],
+            "object_array type requires object_spec",
+            "object_array_missing_spec",
+        ),
+        # object with enum_values
+        (
+            [
+                FieldSpec(
+                    name="a",
+                    type="object",
+                    description="",
+                    enum_values=["x"],
+                    object_spec=ObjectSpec(name="o", fields=[]),
+                )
+            ],
             "must not define enum_values",
+            "object_with_enum_values",
         ),
-        # 8. primitive with enum_values
-        (FieldSpec(name="a", type="string", description="", enum_values=["x"]), "must not define enum_values"),
-        # 9. primitive with object_spec
+        # primitive with enum_values
         (
-            FieldSpec(name="a", type="integer", description="", object_spec=ObjectSpec(name="o", fields=[])),
-            "must not define object_spec",
+            [FieldSpec(name="a", type="string", description="", enum_values=["x"])],
+            "must not define enum_values",
+            "primitive_with_enum_values",
         ),
+        # primitive with object_spec
+        (
+            [FieldSpec(name="a", type="integer", description="", object_spec=ObjectSpec(name="o", fields=[]))],
+            "must not define object_spec",
+            "primitive_with_object_spec",
+        ),
+        # duplicate field names
+        (
+            [
+                FieldSpec(name="dup", type="string", description=""),
+                FieldSpec(name="dup", type="integer", description=""),
+            ],
+            "unique",
+            "duplicate_names",
+        ),
+        # empty field name
+        ([FieldSpec(name="", type="string", description="")], "lower_snake_case", "empty_name"),
+        # invalid snake case (uppercase)
+        ([FieldSpec(name="BadName", type="string", description="")], "lower_snake_case", "uppercase_name"),
     ],
 )
-def test_build_model_error_cases(field_spec: FieldSpec, expected_substring: str):
-    spec = ObjectSpec(name="bad", fields=[field_spec])
+def test_build_model_error_cases(fields: list[FieldSpec], expected_substring: str, case_label: str):  # noqa: D401
+    """All invalid field configurations should raise ValueError with indicative message."""
+    spec = ObjectSpec(name="bad", fields=fields)
     with pytest.raises(ValueError) as ei:
         _build_model(spec)
-    assert expected_substring in str(ei.value)
+    msg = str(ei.value)
+    assert expected_substring in msg, f"case={case_label}, got={msg}"
