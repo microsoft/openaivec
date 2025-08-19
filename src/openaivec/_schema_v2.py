@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from enum import Enum
 from typing import Literal
 
@@ -22,10 +24,11 @@ class FieldSpec(BaseModel):
     ]
     description: str
     enum_values: list[str] | None = None
-    object_spec: "ObjectSpec" | None = None
+    object_spec: ObjectSpec | None = None  # type: ignore[name-defined]
 
 
 class ObjectSpec(BaseModel):
+    name: str
     fields: list[FieldSpec]
 
 
@@ -40,10 +43,10 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
         "float_array": list[float],
         "boolean_array": list[bool],
     }
-
     output_fields: dict[str, tuple[type, object]] = {}
 
     for field in object_spec.fields:
+        upper_camel_field_name: str = "".join([w.capitalize() for w in field.name.split("_")])
         match field:
             case FieldSpec(
                 name=name,
@@ -65,13 +68,17 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
             case FieldSpec(
                 name=name, type="enum", description=description, enum_values=enum_values, object_spec=None
             ) if enum_values:
-                enum_type = Enum(name, set(enum_values))
+                unique_members: list[str] = [v.upper() for v in set(enum_values)]
+
+                enum_type = Enum(upper_camel_field_name, unique_members)
                 output_fields[name] = (enum_type, Field(description=description))
 
             case FieldSpec(
                 name=name, type="enum_array", description=description, enum_values=enum_values, object_spec=None
             ) if enum_values:
-                enum_type = Enum(name, set(enum_values))
+                unique_members: list[str] = [v.upper() for v in set(enum_values)]
+
+                enum_type = Enum(upper_camel_field_name, unique_members)
                 output_fields[name] = (list[enum_type], Field(description=description))
 
             case FieldSpec(
@@ -203,4 +210,5 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
                     )
                 )
 
-    return create_model("InferredObject", **output_fields)
+    upper_camel_object_name: str = "".join([w.capitalize() for w in object_spec.name.split("_")])
+    return create_model(upper_camel_object_name, **output_fields)
