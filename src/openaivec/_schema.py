@@ -3,165 +3,89 @@
 This (non-public) module converts a small *representative* sample of free‑text
 examples plus a *purpose* statement into:
 
-1. A vetted, flat list of scalar field specifications (``FieldSpec``) that can
-    be *reliably* extracted across similar future inputs.
+1. A vetted hierarchical object specification (``ObjectSpec``) whose recursively
+     defined ``fields`` (``FieldSpec``) capture reliably extractable signals.
 2. A reusable, self‑contained extraction prompt (``inference_prompt``) that
-    freezes the agreed schema contract (no additions / renames / omissions).
-3. A dynamically generated Pydantic model whose fields mirror the inferred
-    schema, enabling immediate typed parsing with the OpenAI Responses API.
+     freezes the agreed schema contract (no additions / renames / omissions).
+3. A dynamically generated Pydantic model mirroring the hierarchical schema,
+     enabling immediate typed parsing with the OpenAI Responses API.
 4. A ``PreparedTask`` wrapper (``InferredSchema.task``) for downstream batched
-    responses/structured extraction flows in pandas or Spark.
+     responses / structured extraction flows in pandas or Spark.
 
 Core goals:
 * Minimize manual, subjective schema design iterations.
 * Enforce objective naming / typing / enum rules early (guard rails rather than
-  after‑the‑fact cleaning).
-* Provide deterministic reusability: the same prompt + model yield stable
-  column ordering & types for analytics or feature engineering.
+    after‑the‑fact cleaning).
+* Provide deterministic reusability: the same prompt + model yield stable field
+    ordering & types for analytics or feature engineering.
 * Avoid outcome / target label leakage in predictive (feature engineering)
-  contexts by explicitly excluding direct target restatements.
+    contexts by explicitly excluding direct target restatements.
 
 This module is intentionally **internal** (``__all__ = []``). Public users
 should interact through higher‑level batch APIs once a schema has been inferred.
 
-Design constraints:
-* Flat schema only (no nested objects). Top-level arrays permitted ONLY as homogeneous arrays of primitives
-    (e.g. array of strings) – represented via specialized primitive array type names
-    (string_array, integer_array, float_array, boolean_array).
-* Primitive scalar types limited to {string, integer, float, boolean}; optional array variants
-    {string_array, integer_array, float_array, boolean_array}.
-* Optional enumerations for *closed*, *observed* categorical sets only.
+Design constraints (updated):
+* Root: single ``ObjectSpec`` (UpperCamelCase name) containing one or more fields.
+* Field types: string | integer | float | boolean | enum | object |
+    string_array | integer_array | float_array | boolean_array | enum_array | object_array
+* Arrays are homogeneous lists of their base type.
+* Nested objects / arrays of objects are allowed when semantically cohesive; keep
+    depth shallow and avoid gratuitous nesting.
+* Enumerations use ``enum_spec`` with explicit ``name`` (UpperCamelCase) and 1–24
+    raw label values (project constant). Values collapse by uppercasing; order not guaranteed.
+* Field names: lower_snake_case; unique per containing object.
+* Boolean names: affirmative 'is_' prefix.
+* Numeric (integer/float) names encode unit / measure suffix (e.g. *_count, *_ratio, *_ms).
 * Validation retries ensure a structurally coherent suggestion before returning.
 
 Example (conceptual):
-     from openai import OpenAI
-     client = OpenAI()
-     inferer = SchemaInferer(client=client, model_name="gpt-4.1-mini")
-     schema = inferer.infer_schema(
-          SchemaInferenceInput(
-                examples=["Order #123 delayed due to weather", "Order #456 delivered"],
-                purpose="Extract operational status signals for logistics analytics",
-          )
-     )
-     Model = schema.model  # dynamic Pydantic model
-     task = schema.task    # PreparedTask for batch extraction
+        from openai import OpenAI
+        client = OpenAI()
+        inferer = SchemaInferer(client=client, model_name="gpt-4.1-mini")
+        schema = inferer.infer_schema(
+                SchemaInferenceInput(
+                        examples=["Order #123 delayed due to weather", "Order #456 delivered"],
+                        purpose="Extract operational status signals for logistics analytics",
+                )
+        )
+        Model = schema.model  # dynamic Pydantic model
+        task = schema.task    # PreparedTask for batch extraction
 
 The implementation purposefully does *not* emit or depend on JSON Schema; the
-authoritative contract is the ordered list of ``FieldSpec`` instances.
+authoritative contract is the recursive ``ObjectSpec`` tree.
 """
 
 from dataclasses import dataclass
-from enum import Enum
-from typing import Literal
 
 from openai import OpenAI
 from openai.types.responses import ParsedResponse
-from pydantic import BaseModel, Field, create_model
+from pydantic import BaseModel, Field
 
+from openaivec._dynamic import ObjectSpec, _build_model
 from openaivec._model import PreparedTask
 
 # Internal module: explicitly not part of public API
 __all__: list[str] = []
 
 
-class FieldSpec(BaseModel):
-    """Specification for a single candidate output field.
-
-    Each ``FieldSpec`` encodes a *flat*, scalar, semantically atomic unit the
-    model should extract. These become columns in downstream DataFrames.
-
-    Validation focuses on: objective naming, primitive typing, and *optional*
-    closed categorical vocabularies. Enumerations are intentionally conservative
-    (must derive from clear evidence) to reduce over‑fitted schemas.
-
-    Attributes:
-        name: Lower snake_case unique identifier (regex ^[a-z][a-z0-9_]*$). Avoid
-            subjective modifiers ("best", "great", "high_quality").
-        type: One of ``string|integer|float|boolean``. ``integer`` only if all
-            observed numeric values are whole numbers; ``float`` if any decimal
-            or ratio appears. ``boolean`` strictly for explicit binary forms.
-        description: Concise, objective extraction rule (what qualifies / what
-            to ignore). Disambiguate from overlapping fields if needed.
-        enum_values: Optional stable closed set of lowercase string labels
-            (2–24). Only for *string* type when the vocabulary is clearly
-            evidenced; never hallucinate or extrapolate.
-    """
-
-    name: str = Field(
-        description=(
-            "Lower snake_case identifier (regex: ^[a-z][a-z0-9_]*$). Must be unique across all fields and "
-            "express the semantic meaning succinctly (no adjectives like 'best', 'great'). For numeric (integer|float) "
-            "fields the name MUST include an explicit unit or measure suffix (e.g. _count, _total_count, "
-            "_duration_seconds, _ms, _price_usd, _ratio, _score) to eliminate ambiguity. Avoid bare numeric nouns like "
-            "'duration' or 'value' without unit/scale. Boolean field names MUST begin with 'is_' followed by a "
-            "descriptive predicate (e.g. is_active, is_delayed). Use positive forms (is_active) rather than "
-            "negated forms (is_not_active)."
-        )
-    )
-    type: Literal[
-        "string",
-        "integer",
-        "float",
-        "boolean",
-        "string_array",
-        "integer_array",
-        "float_array",
-        "boolean_array",
-    ] = Field(
-        description=(
-            "Primitive type. Use 'integer' only if all observed numeric values are whole numbers. "
-            "Use 'float' if any value can contain a decimal or represents a ratio/score. Use 'boolean' only for "
-            "explicit binary states (yes/no, true/false, present/absent) consistently encoded. Use 'string' otherwise. "
-            "Array variants (string_array, integer_array, float_array, boolean_array) are ONLY allowed when the value "
-            "is a repeatable homogeneous collection whose individual elements would otherwise stand as valid scalar "
-            "extractions (e.g. keywords, error_codes, tag_ids). Do not encode objects or mixed-type arrays; flatten or "
-            "choose the most informative level."
-        )
-    )
-    description: str = Field(
-        description=(
-            "Concise, objective definition plus extraction rule (what qualifies / what to ignore). Avoid subjective, "
-            "speculative, or promotional language. If ambiguity exists with another field, clarify the distinction. "
-            "Do NOT simply restate an original JSON/key name if the examples are already structured; only include a "
-            "raw key verbatim when it is already the minimal, irreducible analytic unit. For derived fields, clearly "
-            "state the transformation (e.g. sentiment of comment_text, normalized date, language code)."
-        )
-    )
-    enum_values: list[str] | None = Field(
-        default=None,
-        description=(
-            "Optional finite categorical label set (classification) for a string field. Provide ONLY when a closed, "
-            "stable vocabulary (2–24 lowercase tokens) is clearly evidenced or strongly implied by examples. "
-            "Do NOT invent labels. Omit if open-ended or ambiguous. Order must be stable and semantically natural."
-        ),
-    )
-
-
 class InferredSchema(BaseModel):
     """Result of a schema inference round.
 
-    Contains the normalized *purpose*, an objective *examples_summary*, the
-    ordered ``fields`` contract, and the canonical reusable ``inference_prompt``.
-
-    The prompt is constrained to be fully derivable from the other components;
-    adding novel unstated facts is disallowed to preserve traceability.
+    Contains the normalized *purpose*, objective *examples_summary*, the root
+    hierarchical ``object_spec`` contract, and the canonical reusable
+    ``inference_prompt``. The prompt MUST be fully derivable from the other
+    components (no new unstated facts) to preserve traceability.
 
     Attributes:
-        purpose: Unambiguous restatement of the user's objective (noise &
-            redundancy removed).
+        purpose: Unambiguous restatement of the user's objective.
         examples_summary: Neutral description of structural / semantic patterns
-            observed in the examples (domain, recurring signals, constraints).
-        examples_purpose_alignment: Analytical explanation of how the concrete
-            recurring patterns in the provided examples *justify*, *constrain*,
-            or *refine* the stated purpose. Should map purpose facets to
-            observed evidence (or explicitly note gaps) to discourage
-            hallucinated fields and anchor extraction scope. This is an
-            internal quality aid – downstream consumers typically ignore it.
-        fields: Ordered list of ``FieldSpec`` objects comprising the schema's
-            sole authoritative contract.
-        inference_prompt: Self-contained extraction instructions enforcing an
-            exact field set (names, order, primitive types) with prohibition on
-            alterations or subjective flourishes.
+            observed in the examples.
+        examples_purpose_alignment: Mapping from purpose facets to concrete
+            recurring evidence (or explicit gaps) anchoring extraction scope.
+        object_spec: Root ``ObjectSpec`` (UpperCamelCase name) whose ``fields``
+            recursively define the extraction schema.
+        inference_prompt: Canonical instructions enforcing exact field names,
+            hierarchy, and types (no additions/removals/renames).
     """
 
     purpose: str = Field(
@@ -183,20 +107,17 @@ class InferredSchema(BaseModel):
             "reduce hallucinated fields. Internal diagnostic / quality aid; not required for downstream extraction."
         )
     )
-    fields: list[FieldSpec] = Field(
+    object_spec: ObjectSpec = Field(
         description=(
-            "Ordered list of proposed fields derived strictly from observable, repeatable signals in the "
-            "examples and aligned with the purpose."
+            "Root ObjectSpec (recursive). Each contained object's field list is unique-name ordered and derived "
+            "strictly from observable, repeatable signals aligned with the purpose."
         )
     )
     inference_prompt: str = Field(
         description=(
-            "Canonical, reusable extraction prompt for structuring future inputs with this schema. "
-            "Must be fully derivable from 'purpose', 'examples_summary', and 'fields' (no new unstated facts or "
-            "speculation). It MUST: (1) instruct the model to output only the listed fields with the exact names "
-            "and primitive types; (2) forbid adding, removing, or renaming fields; (3) avoid subjective or "
-            "marketing language; (4) be self-contained (no TODOs, no external references, no unresolved "
-            "placeholders). Intended for direct reuse as the prompt for deterministic alignment with 'fields'."
+            "Canonical, reusable extraction prompt. Must be derivable from purpose + summaries + object_spec. Enforces "
+            "exact hierarchical field set (names, order per object, types) forbidding additions, removals, renames, or "
+            "subjective language. Self-contained (no TODOs, external refs, or placeholders)."
         )
     )
 
@@ -236,53 +157,7 @@ class InferredSchema(BaseModel):
         )
 
     def build_model(self) -> type[BaseModel]:
-        """Create a new dynamic ``BaseModel`` class adhering to this schema.
-
-        Implementation details:
-            * Maps primitive types: string→``str``, integer→``int``, float→``float``, boolean→``bool``.
-            * For enumerated string fields, constructs an ad‑hoc ``Enum`` subclass with
-              stable member names (collision‑safe, normalized to ``UPPER_SNAKE``).
-            * All fields are required (ellipsis ``...``). Optionality can be
-              introduced later by modifying this logic if needed.
-
-        Returns:
-            type[BaseModel]: New (not cached) model type; order matches ``fields``.
-        """
-        type_map: dict[str, type] = {
-            "string": str,
-            "integer": int,
-            "float": float,
-            "boolean": bool,
-        }
-        fields: dict[str, tuple[type, object]] = {}
-
-        for spec in self.fields:
-            py_type: type
-            if spec.enum_values:
-                enum_class_name = "Enum_" + "".join(part.capitalize() for part in spec.name.split("_"))
-                members: dict[str, str] = {}
-                for raw in spec.enum_values:
-                    sanitized = raw.upper().replace("-", "_").replace(" ", "_")
-                    if not sanitized or sanitized[0].isdigit():
-                        sanitized = f"V_{sanitized}"
-                    base = sanitized
-                    i = 2
-                    while sanitized in members:
-                        sanitized = f"{base}_{i}"
-                        i += 1
-                    members[sanitized] = raw
-                enum_cls = Enum(enum_class_name, members)  # type: ignore[arg-type]
-                py_type = enum_cls
-            else:
-                if spec.type.endswith("_array"):
-                    base = spec.type.rsplit("_", 1)[0]
-                    py_type = list[type_map[base]]  # type: ignore[index]
-                else:
-                    py_type = type_map[spec.type]
-            fields[spec.name] = (py_type, Field(description=spec.description))
-
-        model = create_model("InferredSchema", **fields)  # type: ignore[call-arg]
-        return model
+        return _build_model(self.object_spec)
 
     def save(self, path: str) -> None:
         """Persist this inferred schema as pretty‑printed JSON.
@@ -326,56 +201,41 @@ You are a schema inference engine.
 Task:
 1. Normalize the user's purpose (eliminate ambiguity, redundancy, contradictions).
 2. Objectively summarize observable patterns in the example texts.
-3. Produce an "examples_purpose_alignment" explanation that explicitly maps purpose facets
-   to concrete recurring evidence in the examples (or flags gaps). Use concise bullet‑style
-   sentences (still a plain string) such as: "purpose facet -> supporting pattern / gap".
-   This MUST NOT introduce new domain facts beyond the examples & purpose.
-4. Propose a minimal flat set of scalar fields (and ONLY when justified,
-   homogeneous primitive arrays) that are reliably extractable.
+3. Produce an "examples_purpose_alignment" explanation mapping purpose facets to concrete recurring evidence (or gaps).
+4. Propose a minimal hierarchical schema (root ObjectSpec) comprised of reliably extractable fields. Use nesting ONLY
+     when a group of fields forms a cohesive sub-entity repeated in the data; otherwise keep flat.
 5. Skip fields likely missing in a large share (>~20%) of realistic inputs.
-6. Provide enum_values ONLY when a small stable closed categorical set (2–24 lowercase tokens)
-    is clearly evidenced; never invent.
-7. If the purpose indicates prediction (predict / probability / likelihood), output only
-    explanatory features (no target restatement).
+6. Provide enum_spec ONLY when a small stable closed categorical set (1–{_MAX_ENUM_VALUES} raw tokens) is clearly
+     evidenced; never invent unseen categories.
+7. If the purpose indicates prediction (predict / probability / likelihood),
+   output only explanatory features (no target restatement).
 
 Rules:
-- Names: lower snake_case, unique, regex ^[a-z][a-z0-9_]*$, no subjective adjectives.
-- Types: string | integer | float | boolean
-    * integer = all whole numbers
-    * float = any decimals / ratios
-    * boolean = explicit binary
-    * else use string
-- Numeric (integer|float) field names MUST encode an explicit unit / scale / measure suffix
-    (e.g. *_count, *_seconds, *_ms, *_usd, *_ratio, *_score). Avoid ambiguous bare numeric names.
-- Boolean field names MUST start with 'is_' followed by a positive predicate (e.g. is_active,
-  is_delayed). Avoid negated forms.
-- No nested objects or mixed-type arrays. Homogeneous primitive arrays are allowed ONLY if each element is an atomic
-    scalar signal (use *_array types: string_array, integer_array, float_array, boolean_array). The array is expected to
-    contain 0..N such elements per record.
-- Array field names MUST end with '_array' (e.g. keywords_array, tag_ids_array). Do not use plural-only forms
-    (e.g. keywords) for arrays; the suffix makes container semantics explicit.
-- Descriptions: concise, objective extraction rules (no marketing/emotion/speculation).
-- enum_values only for string fields with stable closed vocab; omit otherwise.
-- Exclude direct outcome labels (e.g. attrition_probability, will_buy, purchase_likelihood)
-    in predictive / feature engineering contexts.
-- When examples already appear as serialized JSON / key-value records, DO NOT merely relist the
-    raw original keys unless each is already an atomic, irreducible analytic signal. Prefer high-signal
-    derived / normalized / aggregated features (e.g. sentiment, category, language_code, boolean flags,
-    normalized_date, count metrics).
-- Superficial renames (adding trivial prefixes/suffixes like _value, _field, new_) are forbidden; a new
-    field name must reflect a semantic transformation.
-- Keep field count focused (typically <= 12) prioritizing reusable analytical / ML features over low-signal
-    restatements.
-- If you retain an original raw key unchanged, its description must justify why it is minimal and cannot
-    be further decomposed without losing analytical value.
+- Field names: lower snake_case, unique within each object, regex ^[a-z][a-z0-9_]*$, no subjective adjectives.
+- Field types: string | integer | float | boolean | enum | object | string_array | integer_array | float_array |
+    boolean_array | enum_array | object_array
+    * *_array are homogeneous lists of their primitive / enum / object base type.
+    * Use object/object_array ONLY for semantically cohesive grouped attributes; avoid gratuitous layers.
+- Enumerations: use enum_spec { name (UpperCamelCase), values [raw_tokens...] }. values length 1–{_MAX_ENUM_VALUES}.
+    Use ONLY when closed set is evidenced. Otherwise, use string.
+- Numeric (integer|float) names encode explicit unit/measure suffix (e.g. *_count, *_seconds, *_usd, *_ratio, *_score).
+- Boolean names start with 'is_' followed by positive predicate (no negations like is_not_*).
+- Array field names SHOULD end with '_array' for primitive/enum arrays; object_array
+    fields may use plural noun or *_array pattern.
+- Descriptions: concise, objective extraction criteria (no marketing/emotion/speculation).
+- Exclude direct outcome labels in predictive contexts.
+- Avoid superficial renames; semantic transformation only.
+- Keep total field count focused (typically <= 16) optimizing for reusable analytical / ML features.
 
 Output contract:
-Return exactly an InferredSchema object with JSON keys:
-    - purpose (string)
-    - examples_summary (string)
-    - examples_purpose_alignment (string)
-    - fields (array of FieldSpec objects: name, type, description, enum_values?)
-    - inference_prompt (string)
+Return exactly an InferredSchema JSON object with keys:
+        - purpose (string)
+        - examples_summary (string)
+        - examples_purpose_alignment (string)
+        - object_spec (ObjectSpec: name, fields[list[FieldSpec]])
+        - inference_prompt (string)
+Where each FieldSpec includes: name, type, description, optional enum_spec (for
+enum / enum_array), optional object_spec (for object / object_array).
 """.strip()
 
 
@@ -404,11 +264,12 @@ class SchemaInferer:
     def infer_schema(self, data: "SchemaInferenceInput", *args, max_retries: int = 3, **kwargs) -> "InferredSchema":
         """Infer a validated schema from representative examples.
 
-        Workflow:
-            1. Submit ``SchemaInferenceInput`` (JSON) + instructions via
-               ``responses.parse`` requesting an ``InferredSchema`` object.
-            2. Validate the returned field list with ``_basic_field_list_validation``.
-            3. Retry (up to ``max_retries``) if validation fails.
+          Workflow:
+                1. Submit ``SchemaInferenceInput`` (JSON) + instructions via
+                    ``responses.parse`` requesting an ``InferredSchema`` object.
+                2. Attempt dynamic model build (``parsed.build_model()``) which performs recursive
+                    structural validation (names, types, enum/object specs) via the dynamic layer.
+                3. Retry (up to ``max_retries``) on validation failure.
 
         Args:
             data (SchemaInferenceInput): Representative examples + purpose.
@@ -460,55 +321,17 @@ class SchemaInferer:
             )
             parsed = response.output_parsed
             try:
-                _basic_field_list_validation(parsed)
-                parsed.build_model()  # ensure dynamic model creation succeeds
+                # Validate the field list structure
+                parsed.build_model()
+                return parsed
             except ValueError as e:
                 last_err = e
                 previous_errors.append(str(e))
                 if attempt == max_retries - 1:
-                    raise
-                continue
-            return parsed
-        if last_err:  # pragma: no cover
+                    raise ValueError(
+                        f"Schema validation failed after {max_retries} attempts. Last error: {last_err}"
+                    ) from last_err
+
+        if last_err:
             raise last_err
-        raise RuntimeError("unreachable retry loop state")  # pragma: no cover
-
-
-def _basic_field_list_validation(parsed: InferredSchema) -> None:
-    """Lightweight structural validation of an inferred field list.
-
-    Checks:
-        * Non-empty field set.
-        * No duplicate names.
-        * All types in the allowed primitive set.
-        * ``enum_values`` only on string fields and size within bounds (2–24).
-
-    Args:
-        parsed (InferredSchema): Candidate ``InferredSchema`` instance.
-
-    Raises:
-        ValueError: Any invariant is violated.
-    """
-    names = [f.name for f in parsed.fields]
-    if not names:
-        raise ValueError("no fields suggested")
-    if len(names) != len(set(names)):
-        raise ValueError("duplicate field names detected")
-    allowed = {
-        "string",
-        "integer",
-        "float",
-        "boolean",
-        "string_array",
-        "integer_array",
-        "float_array",
-        "boolean_array",
-    }
-    for f in parsed.fields:
-        if f.type not in allowed:
-            raise ValueError(f"unsupported field type: {f.type}")
-        if f.enum_values is not None:
-            if f.type != "string":
-                raise ValueError(f"enum_values only allowed for plain string field: {f.name}")
-            if not (2 <= len(f.enum_values) <= 24):
-                raise ValueError(f"enum_values length out of bounds for field {f.name}")
+        raise RuntimeError("unreachable retry loop state")

@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, create_model
 
+__all__: list[str] = []
+
 _MAX_ENUM_VALUES = 24
 
 

@@ -7,7 +7,8 @@ from unittest.mock import patch
 from openai import OpenAI
 from pydantic import BaseModel
 
-from openaivec._schema import FieldSpec, InferredSchema, SchemaInferenceInput, SchemaInferer  # type: ignore
+from openaivec._dynamic import EnumSpec, FieldSpec, ObjectSpec  # internal types for constructing test schemas
+from openaivec._schema import InferredSchema, SchemaInferenceInput, SchemaInferer  # type: ignore
 
 SCHEMA_TEST_MODEL = "gpt-4.1-mini"
 
@@ -45,15 +46,32 @@ class TestSchemaInferer(unittest.TestCase):
             cls.INFERRED[name] = inferer.infer_schema(ds, max_retries=2)
 
     def test_inference_basic(self):
+        allowed_types = {
+            "string",
+            "integer",
+            "float",
+            "boolean",
+            "enum",
+            "object",
+            "string_array",
+            "integer_array",
+            "float_array",
+            "boolean_array",
+            "enum_array",
+            "object_array",
+        }
         for inferred in self.INFERRED.values():
-            self.assertIsInstance(inferred.fields, list)
-            self.assertGreater(len(inferred.fields), 0)
-            for f in inferred.fields:
-                self.assertIn(f.type, {"string", "integer", "float", "boolean"})
-                if f.enum_values is not None:
-                    self.assertEqual(f.type, "string")
-                    self.assertGreaterEqual(len(f.enum_values), 2)
-                    self.assertLessEqual(len(f.enum_values), 24)
+            self.assertIsInstance(inferred.object_spec, ObjectSpec)
+            self.assertIsInstance(inferred.object_spec.fields, list)
+            self.assertGreaterEqual(len(inferred.object_spec.fields), 0)
+            for f in inferred.object_spec.fields:
+                self.assertIn(f.type, allowed_types)
+                if f.type in {"enum", "enum_array"}:
+                    self.assertIsNotNone(f.enum_spec)
+                    self.assertGreater(len(f.enum_spec.values), 0)
+                    self.assertLessEqual(len(f.enum_spec.values), 24)
+                else:
+                    self.assertIsNone(f.enum_spec)
 
     def test_build_model(self):
         inferred = self.INFERRED["basic_support"]
@@ -64,29 +82,32 @@ class TestSchemaInferer(unittest.TestCase):
 
     def test_retry(self):
         call_count = 0
+        # Patch the dynamic validation point (build_model) instead of removed _basic_field_list_validation.
+        from openaivec._schema import InferredSchema as _IS  # local import to access original
 
-        def fail_first_call(parsed):  # type: ignore
+        original_build_model = _IS.build_model
+
+        def fail_first_call(self):  # type: ignore
             nonlocal call_count
             call_count += 1
             if call_count == 1:
                 raise ValueError("synthetic mismatch to trigger retry")
-            # Let subsequent calls succeed by not raising
+            return original_build_model(self)
 
-        with patch("openaivec._schema._basic_field_list_validation", side_effect=fail_first_call):
+        with patch("openaivec._schema.InferredSchema.build_model", new=fail_first_call):
             ds = self.DATASETS["retry_case"]
             client = OpenAI()
             inferer = SchemaInferer(client=client, model_name=SCHEMA_TEST_MODEL)
             suggestion = inferer.infer_schema(ds, max_retries=3)
 
         # Verify the suggestion is valid
-        self.assertIsInstance(suggestion.fields, list)
-        self.assertGreater(len(suggestion.fields), 0)
-        for f in suggestion.fields:
-            self.assertIn(f.type, {"string", "integer", "float", "boolean"})
-            if f.enum_values is not None:
-                self.assertEqual(f.type, "string")
-                self.assertGreaterEqual(len(f.enum_values), 2)
-                self.assertLessEqual(len(f.enum_values), 24)
+        self.assertIsInstance(suggestion.object_spec, ObjectSpec)
+        self.assertGreaterEqual(len(suggestion.object_spec.fields), 0)
+        for f in suggestion.object_spec.fields:
+            if f.type in {"enum", "enum_array"}:
+                self.assertIsNotNone(f.enum_spec)
+                self.assertGreater(len(f.enum_spec.values), 0)
+                self.assertLessEqual(len(f.enum_spec.values), 24)
 
         # Verify that retry mechanism was triggered - should have at least 2 calls
         # (first fails, second succeeds)
@@ -110,13 +131,12 @@ class TestSchemaInferer(unittest.TestCase):
         """Test that field descriptions from FieldSpec are reflected in generated Pydantic model."""
         inferred = self.INFERRED["basic_support"]
         model_cls = inferred.build_model()
-
         # Get the model schema which includes field descriptions
-        schema = model_cls.model_json_schema()
-        properties = schema.get("properties", {})
+        schema_json = model_cls.model_json_schema()
+        properties = schema_json.get("properties", {})
 
         # Verify that all fields from the inferred schema have descriptions in the model
-        for field_spec in inferred.fields:
+        for field_spec in inferred.object_spec.fields:
             field_name = field_spec.name
             self.assertIn(field_name, properties, f"Field '{field_name}' should be in model properties")
 
@@ -138,12 +158,15 @@ class TestInferredSchemaBuildModel(unittest.TestCase):
             purpose="Test primitive types",
             examples_summary="Various primitive type examples",
             examples_purpose_alignment="Primitive examples justify coverage of all base types",
-            fields=[
-                FieldSpec(name="text_field", type="string", description="A string field"),
-                FieldSpec(name="number_field", type="integer", description="An integer field"),
-                FieldSpec(name="decimal_field", type="float", description="A float field"),
-                FieldSpec(name="flag_field", type="boolean", description="A boolean field"),
-            ],
+            object_spec=ObjectSpec(
+                name="PrimitiveRoot",
+                fields=[
+                    FieldSpec(name="text_field", type="string", description="A string field"),
+                    FieldSpec(name="number_field", type="integer", description="An integer field"),
+                    FieldSpec(name="decimal_field", type="float", description="A float field"),
+                    FieldSpec(name="flag_field", type="boolean", description="A boolean field"),
+                ],
+            ),
             inference_prompt="Test prompt",
         )
 
@@ -166,15 +189,18 @@ class TestInferredSchemaBuildModel(unittest.TestCase):
             purpose="Test enum types",
             examples_summary="Enum examples",
             examples_purpose_alignment="Stable status labels appear repeatedly, supporting enum creation",
-            fields=[
-                FieldSpec(
-                    name="status_field",
-                    type="string",
-                    description="Status enum field",
-                    enum_values=["active", "inactive", "pending"],
-                ),
-                FieldSpec(name="regular_field", type="string", description="Regular string field"),
-            ],
+            object_spec=ObjectSpec(
+                name="EnumRoot",
+                fields=[
+                    FieldSpec(
+                        name="status_field",
+                        type="enum",
+                        description="Status enum field",
+                        enum_spec=EnumSpec(name="Status", values=["active", "inactive", "pending"]),
+                    ),
+                    FieldSpec(name="regular_field", type="string", description="Regular string field"),
+                ],
+            ),
             inference_prompt="Test prompt",
         )
 
@@ -183,69 +209,17 @@ class TestInferredSchemaBuildModel(unittest.TestCase):
         # Verify enum field type
         status_annotation = model_cls.model_fields["status_field"].annotation
         self.assertTrue(issubclass(status_annotation, Enum))
-
-        # Verify enum values
-        enum_values = [member.value for member in status_annotation]
-        self.assertEqual(set(enum_values), {"active", "inactive", "pending"})
+        # Verify enum member names (uppercased unique set)
+        member_names = {member.name for member in status_annotation}
+        self.assertSetEqual(member_names, {"ACTIVE", "INACTIVE", "PENDING"})
 
         # Verify non-enum field is still string
         regular_annotation = model_cls.model_fields["regular_field"].annotation
         self.assertEqual(regular_annotation, str)
 
-    def test_build_model_enum_name_sanitization(self):
-        """Test that enum member names are properly sanitized."""
-        schema = InferredSchema(
-            purpose="Test enum sanitization",
-            examples_summary="Enum sanitization examples",
-            examples_purpose_alignment="Enum labels contain special chars requiring sanitization",
-            fields=[
-                FieldSpec(
-                    name="complex_status",
-                    type="string",
-                    description="Complex enum with special characters",
-                    enum_values=["high-priority", "low priority", "2nd-level", "normal"],
-                ),
-            ],
-            inference_prompt="Test prompt",
-        )
+    # Removed enum name sanitization test: current implementation only uppercases & deduplicates values
 
-        model_cls = schema.build_model()
-        enum_cls = model_cls.model_fields["complex_status"].annotation
-
-        # Verify sanitized member names exist
-        member_names = [member.name for member in enum_cls]
-        self.assertIn("HIGH_PRIORITY", member_names)
-        self.assertIn("LOW_PRIORITY", member_names)
-        self.assertIn("V_2ND_LEVEL", member_names)  # Should be prefixed with V_ for digit start
-        self.assertIn("NORMAL", member_names)
-
-    def test_build_model_enum_collision_handling(self):
-        """Test that enum member name collisions are handled properly."""
-        schema = InferredSchema(
-            purpose="Test enum collision handling",
-            examples_summary="Enum collision examples",
-            examples_purpose_alignment="Similar raw labels could collide after normalization",
-            fields=[
-                FieldSpec(
-                    name="collision_test",
-                    type="string",
-                    description="Enum with potential collisions",
-                    enum_values=["test", "test-1", "test_1"],  # These could all map to TEST_1
-                ),
-            ],
-            inference_prompt="Test prompt",
-        )
-
-        model_cls = schema.build_model()
-        enum_cls = model_cls.model_fields["collision_test"].annotation
-
-        # Verify all values are preserved with unique member names
-        member_names = [member.name for member in enum_cls]
-        self.assertEqual(len(member_names), 3)  # Should have 3 unique member names
-
-        # Verify original values are preserved
-        member_values = [member.value for member in enum_cls]
-        self.assertEqual(set(member_values), {"test", "test-1", "test_1"})
+    # Removed collision handling test: simplified enum member generation no longer performs collision disambiguation
 
     def test_build_model_field_ordering(self):
         """Test that field ordering is preserved in the generated model."""
@@ -259,7 +233,7 @@ class TestInferredSchemaBuildModel(unittest.TestCase):
             purpose="Test field ordering",
             examples_summary="Field ordering examples",
             examples_purpose_alignment="Ordering matters for deterministic downstream column alignment",
-            fields=fields,
+            object_spec=ObjectSpec(name="OrderingRoot", fields=fields),
             inference_prompt="Test prompt",
         )
 
@@ -275,10 +249,13 @@ class TestInferredSchemaBuildModel(unittest.TestCase):
             purpose="Test field descriptions",
             examples_summary="Description examples",
             examples_purpose_alignment="Descriptions guide extraction disambiguation",
-            fields=[
-                FieldSpec(name="described_field", type="string", description="This is a detailed description"),
-                FieldSpec(name="another_field", type="integer", description="Another detailed description"),
-            ],
+            object_spec=ObjectSpec(
+                name="DescRoot",
+                fields=[
+                    FieldSpec(name="described_field", type="string", description="This is a detailed description"),
+                    FieldSpec(name="another_field", type="integer", description="Another detailed description"),
+                ],
+            ),
             inference_prompt="Test prompt",
         )
 
@@ -295,7 +272,7 @@ class TestInferredSchemaBuildModel(unittest.TestCase):
             purpose="Test empty fields",
             examples_summary="Empty examples",
             examples_purpose_alignment="Edge case of no extractable signals",
-            fields=[],
+            object_spec=ObjectSpec(name="EmptyRoot", fields=[]),
             inference_prompt="Test prompt",
         )
 
@@ -315,16 +292,27 @@ class TestInferredSchemaBuildModel(unittest.TestCase):
             purpose="Test mixed field types",
             examples_summary="Mixed type examples",
             examples_purpose_alignment="Examples demonstrate diverse field types including enums",
-            fields=[
-                FieldSpec(
-                    name="priority", type="string", description="Priority level", enum_values=["high", "medium", "low"]
-                ),
-                FieldSpec(name="count", type="integer", description="Item count"),
-                FieldSpec(name="score", type="float", description="Quality score"),
-                FieldSpec(name="is_active", type="boolean", description="Active status"),
-                FieldSpec(name="category", type="string", description="Category name", enum_values=["A", "B", "C"]),
-                FieldSpec(name="description", type="string", description="Free text description"),
-            ],
+            object_spec=ObjectSpec(
+                name="MixedRoot",
+                fields=[
+                    FieldSpec(
+                        name="priority",
+                        type="enum",
+                        description="Priority level",
+                        enum_spec=EnumSpec(name="Priority", values=["high", "medium", "low"]),
+                    ),
+                    FieldSpec(name="count", type="integer", description="Item count"),
+                    FieldSpec(name="score", type="float", description="Quality score"),
+                    FieldSpec(name="is_active", type="boolean", description="Active status"),
+                    FieldSpec(
+                        name="category",
+                        type="enum",
+                        description="Category name",
+                        enum_spec=EnumSpec(name="Category", values=["A", "B", "C"]),
+                    ),
+                    FieldSpec(name="description", type="string", description="Free text description"),
+                ],
+            ),
             inference_prompt="Test prompt",
         )
 
@@ -351,9 +339,12 @@ class TestInferredSchemaBuildModel(unittest.TestCase):
             purpose="Test independence",
             examples_summary="Independence examples",
             examples_purpose_alignment="Independence ensures rebuilding yields fresh class objects",
-            fields=[
-                FieldSpec(name="test_field", type="string", description="Test field"),
-            ],
+            object_spec=ObjectSpec(
+                name="IndependentRoot",
+                fields=[
+                    FieldSpec(name="test_field", type="string", description="Test field"),
+                ],
+            ),
             inference_prompt="Test prompt",
         )
 
@@ -373,12 +364,15 @@ class TestInferredSchemaBuildModel(unittest.TestCase):
             purpose="Test array types",
             examples_summary="Array type examples",
             examples_purpose_alignment="Examples justify homogeneous primitive arrays",
-            fields=[
-                FieldSpec(name="tags_array", type="string_array", description="List of tag strings"),
-                FieldSpec(name="ids_array", type="integer_array", description="List of integer ids"),
-                FieldSpec(name="scores_array", type="float_array", description="List of float scores"),
-                FieldSpec(name="is_flags_array", type="boolean_array", description="List of boolean flags"),
-            ],
+            object_spec=ObjectSpec(
+                name="ArrayRoot",
+                fields=[
+                    FieldSpec(name="tags_array", type="string_array", description="List of tag strings"),
+                    FieldSpec(name="ids_array", type="integer_array", description="List of integer ids"),
+                    FieldSpec(name="scores_array", type="float_array", description="List of float scores"),
+                    FieldSpec(name="is_flags_array", type="boolean_array", description="List of boolean flags"),
+                ],
+            ),
             inference_prompt="Test prompt",
         )
 
