@@ -261,7 +261,7 @@ class SchemaInferer:
     client: OpenAI
     model_name: str
 
-    def infer_schema(self, data: "SchemaInferenceInput", *args, max_retries: int = 3, **kwargs) -> "InferredSchema":
+    def infer_schema(self, data: SchemaInferenceInput, *args, max_retries: int = 8, **kwargs) -> InferredSchema:
         """Infer a validated schema from representative examples.
 
           Workflow:
