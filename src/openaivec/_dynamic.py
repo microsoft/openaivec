@@ -66,20 +66,16 @@ class EnumSpec(BaseModel):
     """Enumeration specification for enum / enum_array field types.
 
     Attributes:
-        name: Optional explicit Enum class name (UpperCamelCase). If omitted, the field name is used
-            (converted to UpperCamelCase). Must match ^[A-Z][A-Za-z0-9]*$ when provided.
+        name: Required Enum class name (UpperCamelCase). Must match ^[A-Z][A-Za-z0-9]*$. Previously optional; now
+            explicit to remove implicit coupling to the field name and make schemas self‑describing.
         values: Distinct (case-insensitive) raw label values. Must contain between 1 and
             ``_MAX_ENUM_VALUES`` entries before de‑duplication; an empty list is invalid. The
-            caller is responsible for enforcing minimum size constraints (e.g. >=1 here, additional
-            semantic rules enforced in calling context). Duplicates are ignored during model build.
+            caller is responsible for enforcing minimum size constraints. Duplicates are ignored
+            during model build.
     """
 
-    name: str | None = Field(
-        default=None,
-        description=(
-            "Optional explicit Enum class name (UpperCamelCase). Valid pattern: ^[A-Z][A-Za-z0-9]*$. If not set, "
-            "the field name (UpperCamelCase) is used."
-        ),
+    name: str = Field(
+        description=("Required Enum class name (UpperCamelCase). Valid pattern: ^[A-Z][A-Za-z0-9]*$."),
     )
     values: list[str] = Field(
         description=(
@@ -130,8 +126,7 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
         if not lower_sname_pattern.match(field.name):
             raise ValueError(f"Field name '{field.name}' must be in lower_snake_case format (e.g., 'my_field_name').")
 
-        # Derive candidate enum class base name from field name (UpperCamelCase) for default when enum_spec.name absent
-        upper_camel_field_name: str = "".join([w.capitalize() for w in field.name.split("_")])
+        # (EnumSpec.name now mandatory; no need to derive a fallback name from the field.)
         match field:
             case FieldSpec(
                 name=name,
@@ -153,11 +148,10 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
             case FieldSpec(name=name, type="enum", description=description, enum_spec=enum_spec, object_spec=None) if (
                 enum_spec
                 and 0 < len(enum_spec.values) <= _MAX_ENUM_VALUES
-                and (not enum_spec.name or re.match(r"^[A-Z][A-Za-z0-9]*$", enum_spec.name))
+                and upper_camel_pattern.match(enum_spec.name)
             ):
                 unique_members: list[str] = [v.upper() for v in set(enum_spec.values)]
-                enum_class_name = enum_spec.name or upper_camel_field_name
-                enum_type = Enum(enum_class_name, unique_members)
+                enum_type = Enum(enum_spec.name, unique_members)
                 output_fields[name] = (enum_type, Field(description=description))
 
             case FieldSpec(
@@ -165,11 +159,10 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
             ) if (
                 enum_spec
                 and 0 < len(enum_spec.values) <= _MAX_ENUM_VALUES
-                and (not enum_spec.name or re.match(r"^[A-Z][A-Za-z0-9]*$", enum_spec.name))
+                and upper_camel_pattern.match(enum_spec.name)
             ):
                 unique_members: list[str] = [v.upper() for v in set(enum_spec.values)]
-                enum_class_name = enum_spec.name or upper_camel_field_name
-                enum_type = Enum(enum_class_name, unique_members)
+                enum_type = Enum(enum_spec.name, unique_members)
                 output_fields[name] = (list[enum_type], Field(description=description))
 
             case FieldSpec(
@@ -212,7 +205,7 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
                 type="enum",
                 enum_spec=enum_spec,
                 object_spec=None,
-            ) if enum_spec and enum_spec.name and not re.match(r"^[A-Z][A-Za-z0-9]*$", enum_spec.name):
+            ) if enum_spec and not upper_camel_pattern.match(enum_spec.name):
                 raise ValueError(
                     (f"Field '{name}': enum_spec.name '{enum_spec.name}' invalid – must match ^[A-Z][A-Za-z0-9]*$")
                 )
@@ -253,7 +246,7 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
                 type="enum_array",
                 enum_spec=enum_spec,
                 object_spec=None,
-            ) if enum_spec and enum_spec.name and not re.match(r"^[A-Z][A-Za-z0-9]*$", enum_spec.name):
+            ) if enum_spec and not upper_camel_pattern.match(enum_spec.name):
                 raise ValueError(
                     (f"Field '{name}': enum_spec.name '{enum_spec.name}' invalid – must match ^[A-Z][A-Za-z0-9]*$")
                 )

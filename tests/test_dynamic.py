@@ -59,13 +59,13 @@ def test_build_model_enum_and_enum_array():
                 name="status_code",
                 type="enum",
                 description="status enum",
-                enum_spec=EnumSpec(values=["ok", "error", "warn"]),
+                enum_spec=EnumSpec(name="StatusCode", values=["ok", "error", "warn"]),
             ),
             FieldSpec(
                 name="statuses",
                 type="enum_array",
                 description="array enum",
-                enum_spec=EnumSpec(values=["ok", "error", "warn"]),
+                enum_spec=EnumSpec(name="StatusCode", values=["ok", "error", "warn"]),
             ),
         ],
     )
@@ -171,7 +171,7 @@ def test_build_model_nested_object_and_object_array():
                     name="a",
                     type="enum",
                     description="",
-                    enum_spec=EnumSpec(values=["x"]),
+                    enum_spec=EnumSpec(name="A", values=["x"]),
                     object_spec=ObjectSpec(name="O", fields=[]),
                 )
             ],
@@ -191,7 +191,7 @@ def test_build_model_nested_object_and_object_array():
                     name="a",
                     type="enum_array",
                     description="",
-                    enum_spec=EnumSpec(values=["x"]),
+                    enum_spec=EnumSpec(name="A", values=["x"]),
                     object_spec=ObjectSpec(name="O", fields=[]),
                 )
             ],
@@ -217,7 +217,7 @@ def test_build_model_nested_object_and_object_array():
                     name="a",
                     type="object",
                     description="",
-                    enum_spec=EnumSpec(values=["x"]),
+                    enum_spec=EnumSpec(name="A", values=["x"]),
                     object_spec=ObjectSpec(name="O", fields=[]),
                 )
             ],
@@ -226,7 +226,7 @@ def test_build_model_nested_object_and_object_array():
         ),
         # primitive with enum_spec (invalid)
         (
-            [FieldSpec(name="a", type="string", description="", enum_spec=EnumSpec(values=["x"]))],
+            [FieldSpec(name="a", type="string", description="", enum_spec=EnumSpec(name="A", values=["x"]))],
             "must not define enum_spec",
             "primitive_with_enum_values",
         ),
