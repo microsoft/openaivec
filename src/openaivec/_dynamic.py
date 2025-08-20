@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, create_model
 
+_MAX_ENUM_VALUES = 24
+
 
 class FieldSpec(BaseModel):
     name: str = Field(
@@ -48,7 +50,9 @@ class FieldSpec(BaseModel):
         default=None,
         description=(
             "List of allowed case-insensitive symbols for 'enum' / 'enum_array'. Required and non-empty for those "
-            "types; must be omitted for all others. Duplicates are ignored (deduplicated before Enum creation)."
+            f"types; must be omitted for all others. Maximum {_MAX_ENUM_VALUES} distinct values (after dedup). "
+            "Duplicates are "
+            "ignored (deduplicated before Enum creation)."
         ),
     )
     object_spec: ObjectSpec | None = Field(
@@ -123,7 +127,7 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
 
             case FieldSpec(
                 name=name, type="enum", description=description, enum_values=enum_values, object_spec=None
-            ) if enum_values:
+            ) if enum_values and len(enum_values) <= _MAX_ENUM_VALUES:
                 unique_members: list[str] = [v.upper() for v in set(enum_values)]
 
                 enum_type = Enum(upper_camel_field_name, unique_members)
@@ -131,7 +135,7 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
 
             case FieldSpec(
                 name=name, type="enum_array", description=description, enum_values=enum_values, object_spec=None
-            ) if enum_values:
+            ) if enum_values and len(enum_values) <= _MAX_ENUM_VALUES:
                 unique_members: list[str] = [v.upper() for v in set(enum_values)]
 
                 enum_type = Enum(upper_camel_field_name, unique_members)
@@ -160,6 +164,19 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
                 raise ValueError(
                     f"Field '{name}': enum type requires non-empty enum_values list (got {enum_values!r})."
                 )
+            # Enum type exceeding max length
+            case FieldSpec(
+                name=name,
+                type="enum",
+                enum_values=enum_values,
+                object_spec=None,
+            ) if enum_values and len(enum_values) > _MAX_ENUM_VALUES:
+                raise ValueError(
+                    (
+                        f"Field '{name}': enum type supports at most {_MAX_ENUM_VALUES} enum_values "
+                        f"(got {len(enum_values)})."
+                    )
+                )
             # Enum type incorrectly provides an object_spec
             case FieldSpec(
                 name=name,
@@ -179,6 +196,19 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
             ) if not enum_values:
                 raise ValueError(
                     f"Field '{name}': enum_array type requires non-empty enum_values list (got {enum_values!r})."
+                )
+            # Enum array type exceeding max length
+            case FieldSpec(
+                name=name,
+                type="enum_array",
+                enum_values=enum_values,
+                object_spec=None,
+            ) if enum_values and len(enum_values) > _MAX_ENUM_VALUES:
+                raise ValueError(
+                    (
+                        f"Field '{name}': enum_array type supports at most {_MAX_ENUM_VALUES} enum_values "
+                        f"(got {len(enum_values)})."
+                    )
                 )
             # Enum array type incorrectly provides an object_spec
             case FieldSpec(
