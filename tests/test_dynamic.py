@@ -5,14 +5,14 @@ from typing import get_args, get_origin
 
 import pytest
 
-from openaivec._dynamic import FieldSpec, ObjectSpec, _build_model
+from openaivec._dynamic import EnumSpec, FieldSpec, ObjectSpec, _build_model
 
 # ----------------------------- Success Cases -----------------------------
 
 
 def test_build_model_primitives_and_arrays():
     spec = ObjectSpec(
-        name="sample_object",
+        name="SampleObject",
         fields=[
             FieldSpec(name="title", type="string", description="a title"),
             FieldSpec(name="count", type="integer", description="an int"),
@@ -53,11 +53,19 @@ def test_build_model_primitives_and_arrays():
 
 def test_build_model_enum_and_enum_array():
     spec = ObjectSpec(
-        name="status_container",
+        name="StatusContainer",
         fields=[
-            FieldSpec(name="status_code", type="enum", description="status enum", enum_values=["ok", "error", "warn"]),
             FieldSpec(
-                name="statuses", type="enum_array", description="array enum", enum_values=["ok", "error", "warn"]
+                name="status_code",
+                type="enum",
+                description="status enum",
+                enum_spec=EnumSpec(values=["ok", "error", "warn"]),
+            ),
+            FieldSpec(
+                name="statuses",
+                type="enum_array",
+                description="array enum",
+                enum_spec=EnumSpec(values=["ok", "error", "warn"]),
             ),
         ],
     )
@@ -77,16 +85,52 @@ def test_build_model_enum_and_enum_array():
     assert issubclass(inner_enum, Enum)
 
 
+def test_build_model_enum_custom_name():
+    spec = ObjectSpec(
+        name="CustomEnumContainer",
+        fields=[
+            FieldSpec(
+                name="status_code",
+                type="enum",
+                description="status enum",
+                enum_spec=EnumSpec(name="StatusCodeEnum", values=["ok", "error"]),
+            )
+        ],
+    )
+    Model = _build_model(spec)
+    mf = Model.model_fields
+    enum_type = mf["status_code"].annotation
+    assert enum_type.__name__ == "StatusCodeEnum"
+
+
+@pytest.mark.parametrize("bad_name", ["lowercase", "1StartsWithDigit", "Has-Hyphen", "With Space", "Camel_Case"])
+def test_build_model_enum_custom_name_invalid(bad_name: str):
+    spec = ObjectSpec(
+        name="CustomEnumContainer",
+        fields=[
+            FieldSpec(
+                name="status_code",
+                type="enum",
+                description="status enum",
+                enum_spec=EnumSpec(name=bad_name, values=["ok", "error"]),
+            )
+        ],
+    )
+    with pytest.raises(ValueError) as ei:
+        _build_model(spec)
+    assert "enum_spec.name" in str(ei.value)
+
+
 def test_build_model_nested_object_and_object_array():
     address_spec = ObjectSpec(
-        name="address",
+        name="Address",
         fields=[
             FieldSpec(name="line1", type="string", description="line1"),
             FieldSpec(name="zip_code", type="string", description="zip"),
         ],
     )
     parent_spec = ObjectSpec(
-        name="user_profile",
+        name="UserProfile",
         fields=[
             FieldSpec(name="name", type="string", description="username"),
             FieldSpec(name="address", type="object", description="address obj", object_spec=address_spec),
@@ -116,7 +160,7 @@ def test_build_model_nested_object_and_object_array():
     [
         # enum missing enum_values
         (
-            [FieldSpec(name="a", type="enum", description="", enum_values=None)],
+            [FieldSpec(name="a", type="enum", description="", enum_spec=None)],
             "enum type requires",
             "enum_missing_values",
         ),
@@ -127,8 +171,8 @@ def test_build_model_nested_object_and_object_array():
                     name="a",
                     type="enum",
                     description="",
-                    enum_values=["x"],
-                    object_spec=ObjectSpec(name="o", fields=[]),
+                    enum_spec=EnumSpec(values=["x"]),
+                    object_spec=ObjectSpec(name="O", fields=[]),
                 )
             ],
             "must not provide object_spec",
@@ -136,7 +180,7 @@ def test_build_model_nested_object_and_object_array():
         ),
         # enum_array missing enum_values
         (
-            [FieldSpec(name="a", type="enum_array", description="", enum_values=None)],
+            [FieldSpec(name="a", type="enum_array", description="", enum_spec=None)],
             "enum_array type requires",
             "enum_array_missing_values",
         ),
@@ -147,8 +191,8 @@ def test_build_model_nested_object_and_object_array():
                     name="a",
                     type="enum_array",
                     description="",
-                    enum_values=["x"],
-                    object_spec=ObjectSpec(name="o", fields=[]),
+                    enum_spec=EnumSpec(values=["x"]),
+                    object_spec=ObjectSpec(name="O", fields=[]),
                 )
             ],
             "enum_array type must not provide object_spec",
@@ -166,29 +210,29 @@ def test_build_model_nested_object_and_object_array():
             "object_array type requires object_spec",
             "object_array_missing_spec",
         ),
-        # object with enum_values
+        # object with enum_spec (invalid)
         (
             [
                 FieldSpec(
                     name="a",
                     type="object",
                     description="",
-                    enum_values=["x"],
-                    object_spec=ObjectSpec(name="o", fields=[]),
+                    enum_spec=EnumSpec(values=["x"]),
+                    object_spec=ObjectSpec(name="O", fields=[]),
                 )
             ],
-            "must not define enum_values",
+            "must not define enum_spec",
             "object_with_enum_values",
         ),
-        # primitive with enum_values
+        # primitive with enum_spec (invalid)
         (
-            [FieldSpec(name="a", type="string", description="", enum_values=["x"])],
-            "must not define enum_values",
+            [FieldSpec(name="a", type="string", description="", enum_spec=EnumSpec(values=["x"]))],
+            "must not define enum_spec",
             "primitive_with_enum_values",
         ),
         # primitive with object_spec
         (
-            [FieldSpec(name="a", type="integer", description="", object_spec=ObjectSpec(name="o", fields=[]))],
+            [FieldSpec(name="a", type="integer", description="", object_spec=ObjectSpec(name="O", fields=[]))],
             "must not define object_spec",
             "primitive_with_object_spec",
         ),
@@ -209,7 +253,7 @@ def test_build_model_nested_object_and_object_array():
 )
 def test_build_model_error_cases(fields: list[FieldSpec], expected_substring: str, case_label: str):  # noqa: D401
     """All invalid field configurations should raise ValueError with indicative message."""
-    spec = ObjectSpec(name="bad", fields=fields)
+    spec = ObjectSpec(name="Bad", fields=fields)
     with pytest.raises(ValueError) as ei:
         _build_model(spec)
     msg = str(ei.value)
