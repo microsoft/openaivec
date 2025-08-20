@@ -68,10 +68,9 @@ class EnumSpec(BaseModel):
     Attributes:
         name: Required Enum class name (UpperCamelCase). Must match ^[A-Z][A-Za-z0-9]*$. Previously optional; now
             explicit to remove implicit coupling to the field name and make schemas self‑describing.
-        values: Distinct (case-insensitive) raw label values. Must contain between 1 and
-            ``_MAX_ENUM_VALUES`` entries before de‑duplication; an empty list is invalid. The
-            caller is responsible for enforcing minimum size constraints. Duplicates are ignored
-            during model build.
+        values: Raw label values (1–_MAX_ENUM_VALUES before de‑dup). Values are uppercased then
+            de-duplicated using a set; ordering of generated Enum members is not guaranteed. Any
+            casing variants collapse silently to a single member.
     """
 
     name: str = Field(
@@ -79,8 +78,8 @@ class EnumSpec(BaseModel):
     )
     values: list[str] = Field(
         description=(
-            f"Raw enum label values (1–{_MAX_ENUM_VALUES}). Duplicates ignored; case-insensitive. "
-            "Values are converted to UPPER_CASE member names (sanitized)."
+            f"Raw enum label values (1–{_MAX_ENUM_VALUES}). Uppercased then deduplicated; order of members "
+            "not guaranteed."
         )
     )
 
@@ -150,8 +149,8 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
                 and 0 < len(enum_spec.values) <= _MAX_ENUM_VALUES
                 and upper_camel_pattern.match(enum_spec.name)
             ):
-                unique_members: list[str] = [v.upper() for v in set(enum_spec.values)]
-                enum_type = Enum(enum_spec.name, unique_members)
+                member_names = list({v.upper() for v in enum_spec.values})
+                enum_type = Enum(enum_spec.name, member_names)
                 output_fields[name] = (enum_type, Field(description=description))
 
             case FieldSpec(
@@ -161,8 +160,8 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
                 and 0 < len(enum_spec.values) <= _MAX_ENUM_VALUES
                 and upper_camel_pattern.match(enum_spec.name)
             ):
-                unique_members: list[str] = [v.upper() for v in set(enum_spec.values)]
-                enum_type = Enum(enum_spec.name, unique_members)
+                member_names = list({v.upper() for v in enum_spec.values})
+                enum_type = Enum(enum_spec.name, member_names)
                 output_fields[name] = (list[enum_type], Field(description=description))
 
             case FieldSpec(
