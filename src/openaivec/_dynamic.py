@@ -8,7 +8,15 @@ from pydantic import BaseModel, Field, create_model
 
 
 class FieldSpec(BaseModel):
-    name: str
+    name: str = Field(
+        description=(
+            "Field name in lower_snake_case. Rules: (1) Use only lowercase letters, numbers, and underscores; "
+            "must start with a letter. (2) For numeric quantities append an explicit unit (e.g. 'duration_seconds', "
+            "'price_usd'). (3) Boolean fields use an affirmative 'is_' prefix (e.g. 'is_active'); avoid negative / "
+            "ambiguous forms like 'is_deleted' (prefer 'is_active', 'is_enabled'). (4) Name must be unique within the "
+            "containing object."
+        )
+    )
     type: Literal[
         "string",
         "integer",
@@ -22,15 +30,50 @@ class FieldSpec(BaseModel):
         "boolean_array",
         "enum_array",
         "object_array",
-    ]
-    description: str
-    enum_values: list[str] | None = None
-    object_spec: ObjectSpec | None = None  # type: ignore[name-defined]
+    ] = Field(
+        description=(
+            "Logical data type. Allowed values: string | integer | float | boolean | enum | object | string_array | "
+            "integer_array | float_array | boolean_array | enum_array | object_array. *_array variants represent a "
+            "homogeneous list of the base type. 'enum' / 'enum_array' require 'enum_values'. 'object' / 'object_array' "
+            "require 'object_spec'. Primitives must not define 'enum_values' or 'object_spec'."
+        )
+    )
+    description: str = Field(
+        description=(
+            "Human‑readable, concise explanation of the field's meaning and business intent. Should clarify units, "
+            "value semantics, and any domain constraints not captured by type. 1–2 sentences; no implementation notes."
+        )
+    )
+    enum_values: list[str] | None = Field(
+        default=None,
+        description=(
+            "List of allowed case-insensitive symbols for 'enum' / 'enum_array'. Required and non-empty for those "
+            "types; must be omitted for all others. Duplicates are ignored (deduplicated before Enum creation)."
+        ),
+    )
+    object_spec: ObjectSpec | None = Field(
+        default=None,
+        description=(
+            "Nested object schema. Required for 'object' / 'object_array'; must be omitted for every other type. The "
+            "contained 'name' is used to derive the generated nested Pydantic model class name."
+        ),
+    )
 
 
 class ObjectSpec(BaseModel):
-    name: str
-    fields: list[FieldSpec]
+    name: str = Field(
+        description=(
+            "Object name in lower_snake_case (singular noun). Used to derive the generated Pydantic model class name "
+            "(UpperCamelCase). Must start with a lowercase letter; only lowercase letters, numbers, underscores "
+            "allowed."
+        )
+    )
+    fields: list[FieldSpec] = Field(
+        description=(
+            "Non-empty list of FieldSpec definitions composing the object. Each field name must be unique; order is "
+            "preserved in the generated model."
+        )
+    )
 
 
 def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
