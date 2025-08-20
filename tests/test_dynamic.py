@@ -5,7 +5,7 @@ from typing import get_args, get_origin
 
 import pytest
 
-from openaivec._dynamic import EnumSpec, FieldSpec, ObjectSpec, _build_model
+from openaivec._dynamic import _MAX_ENUM_VALUES, EnumSpec, FieldSpec, ObjectSpec, _build_model
 
 # ----------------------------- Success Cases -----------------------------
 
@@ -103,6 +103,42 @@ def test_build_model_enum_custom_name():
     assert enum_type.__name__ == "StatusCodeEnum"
 
 
+def test_build_model_enum_case_insensitive_dedup():
+    spec = ObjectSpec(
+        name="EnumDedup",
+        fields=[
+            FieldSpec(
+                name="mixed",
+                type="enum",
+                description="mixed case variants",
+                enum_spec=EnumSpec(name="Mixed", values=["ok", "OK", "Ok"]),
+            )
+        ],
+    )
+    Model = _build_model(spec)
+    enum_type = Model.model_fields["mixed"].annotation
+    members = {m.name for m in enum_type}
+    assert members == {"OK"}
+
+
+def test_build_model_enum_size_boundary():
+    values = [f"v{i}" for i in range(_MAX_ENUM_VALUES)]
+    spec = ObjectSpec(
+        name="EnumBoundary",
+        fields=[
+            FieldSpec(
+                name="codes",
+                type="enum",
+                description="boundary size",
+                enum_spec=EnumSpec(name="Codes", values=values),
+            )
+        ],
+    )
+    Model = _build_model(spec)
+    enum_type = Model.model_fields["codes"].annotation
+    assert len(list(enum_type)) == _MAX_ENUM_VALUES
+
+
 @pytest.mark.parametrize("bad_name", ["lowercase", "1StartsWithDigit", "Has-Hyphen", "With Space", "Camel_Case"])
 def test_build_model_enum_custom_name_invalid(bad_name: str):
     spec = ObjectSpec(
@@ -158,13 +194,12 @@ def test_build_model_nested_object_and_object_array():
 @pytest.mark.parametrize(
     "fields,expected_substring,case_label",
     [
-        # enum missing enum_values
+        # --- enum errors ---
         (
             [FieldSpec(name="a", type="enum", description="", enum_spec=None)],
             "enum type requires",
             "enum_missing_values",
         ),
-        # enum with object_spec
         (
             [
                 FieldSpec(
@@ -178,13 +213,29 @@ def test_build_model_nested_object_and_object_array():
             "must not provide object_spec",
             "enum_with_object_spec",
         ),
-        # enum_array missing enum_values
+        (
+            [
+                FieldSpec(
+                    name="a",
+                    type="enum",
+                    description="",
+                    enum_spec=EnumSpec(name="A", values=[f"v{i}" for i in range(_MAX_ENUM_VALUES + 1)]),
+                )
+            ],
+            "supports at most",
+            "enum_size_overflow",
+        ),
+        (
+            [FieldSpec(name="a", type="enum", description="", enum_spec=EnumSpec(name="badName", values=["x"]))],
+            "enum_spec.name",
+            "enum_invalid_name_pattern",
+        ),
+        # --- enum_array errors ---
         (
             [FieldSpec(name="a", type="enum_array", description="", enum_spec=None)],
             "enum_array type requires",
             "enum_array_missing_values",
         ),
-        # enum_array with object_spec
         (
             [
                 FieldSpec(
@@ -198,19 +249,50 @@ def test_build_model_nested_object_and_object_array():
             "enum_array type must not provide object_spec",
             "enum_array_with_object_spec",
         ),
-        # object missing object_spec
+        (
+            [
+                FieldSpec(
+                    name="a",
+                    type="enum_array",
+                    description="",
+                    enum_spec=EnumSpec(name="A", values=[f"v{i}" for i in range(_MAX_ENUM_VALUES + 1)]),
+                )
+            ],
+            "supports at most",
+            "enum_array_size_overflow",
+        ),
+        (
+            [FieldSpec(name="a", type="enum_array", description="", enum_spec=EnumSpec(name="badName", values=["x"]))],
+            "enum_spec.name",
+            "enum_array_invalid_name_pattern",
+        ),
+        # --- object / object_array missing spec ---
         (
             [FieldSpec(name="a", type="object", description="")],
             "object type requires object_spec",
             "object_missing_spec",
         ),
-        # object_array missing object_spec
         (
             [FieldSpec(name="a", type="object_array", description="")],
             "object_array type requires object_spec",
             "object_array_missing_spec",
         ),
-        # object with enum_spec (invalid)
+        # --- object/object_array invalid nested name ---
+        (
+            [FieldSpec(name="a", type="object", description="", object_spec=ObjectSpec(name="badName", fields=[]))],
+            "object_spec.name",
+            "object_invalid_nested_name",
+        ),
+        (
+            [
+                FieldSpec(
+                    name="a", type="object_array", description="", object_spec=ObjectSpec(name="badName", fields=[])
+                )
+            ],
+            "object_spec.name",
+            "object_array_invalid_nested_name",
+        ),
+        # --- object/object_array with enum_spec misuse ---
         (
             [
                 FieldSpec(
@@ -224,19 +306,31 @@ def test_build_model_nested_object_and_object_array():
             "must not define enum_spec",
             "object_with_enum_values",
         ),
-        # primitive with enum_spec (invalid)
+        (
+            [
+                FieldSpec(
+                    name="a",
+                    type="object_array",
+                    description="",
+                    enum_spec=EnumSpec(name="A", values=["x"]),
+                    object_spec=ObjectSpec(name="O", fields=[]),
+                )
+            ],
+            "must not define enum_spec",
+            "object_array_with_enum_values",
+        ),
+        # --- primitive misuses ---
         (
             [FieldSpec(name="a", type="string", description="", enum_spec=EnumSpec(name="A", values=["x"]))],
             "must not define enum_spec",
             "primitive_with_enum_values",
         ),
-        # primitive with object_spec
         (
             [FieldSpec(name="a", type="integer", description="", object_spec=ObjectSpec(name="O", fields=[]))],
             "must not define object_spec",
             "primitive_with_object_spec",
         ),
-        # duplicate field names
+        # --- field name issues ---
         (
             [
                 FieldSpec(name="dup", type="string", description=""),
@@ -245,9 +339,7 @@ def test_build_model_nested_object_and_object_array():
             "unique",
             "duplicate_names",
         ),
-        # empty field name
         ([FieldSpec(name="", type="string", description="")], "lower_snake_case", "empty_name"),
-        # invalid snake case (uppercase)
         ([FieldSpec(name="BadName", type="string", description="")], "lower_snake_case", "uppercase_name"),
     ],
 )
@@ -258,3 +350,148 @@ def test_build_model_error_cases(fields: list[FieldSpec], expected_substring: st
         _build_model(spec)
     msg = str(ei.value)
     assert expected_substring in msg, f"case={case_label}, got={msg}"
+
+
+# ----------------------------- Additional Coverage (previously uncovered) -----------------------------
+
+
+def test_enum_size_boundary_ok():
+    values = [f"v{i}" for i in range(_MAX_ENUM_VALUES)]
+    spec = ObjectSpec(
+        name="EnumBoundary",
+        fields=[
+            FieldSpec(
+                name="boundary",
+                type="enum",
+                description="boundary ok",
+                enum_spec=EnumSpec(name="BoundaryEnum", values=values),
+            )
+        ],
+    )
+    Model = _build_model(spec)
+    enum_type = Model.model_fields["boundary"].annotation
+    assert len(list(enum_type)) == _MAX_ENUM_VALUES
+
+
+def test_enum_size_overflow():
+    values = [f"v{i}" for i in range(_MAX_ENUM_VALUES + 1)]
+    spec = ObjectSpec(
+        name="EnumOverflow",
+        fields=[
+            FieldSpec(
+                name="overflow",
+                type="enum",
+                description="overflow",
+                enum_spec=EnumSpec(name="OverflowEnum", values=values),
+            )
+        ],
+    )
+    with pytest.raises(ValueError) as ei:
+        _build_model(spec)
+    assert "supports at most" in str(ei.value)
+
+
+def test_enum_array_size_overflow():
+    values = [f"v{i}" for i in range(_MAX_ENUM_VALUES + 1)]
+    spec = ObjectSpec(
+        name="EnumArrayOverflow",
+        fields=[
+            FieldSpec(
+                name="overflow_list",
+                type="enum_array",
+                description="overflow",
+                enum_spec=EnumSpec(name="OverflowEnum", values=values),
+            )
+        ],
+    )
+    with pytest.raises(ValueError) as ei:
+        _build_model(spec)
+    assert "enum_array type supports at most" in str(ei.value)
+
+
+def test_enum_array_invalid_name_pattern():
+    spec = ObjectSpec(
+        name="EnumArrayInvalidName",
+        fields=[
+            FieldSpec(
+                name="vals",
+                type="enum_array",
+                description="bad name",
+                enum_spec=EnumSpec(name="badName", values=["a", "b"]),
+            )
+        ],
+    )
+    with pytest.raises(ValueError) as ei:
+        _build_model(spec)
+    assert "enum_spec.name" in str(ei.value)
+
+
+def test_object_spec_invalid_name():
+    spec = ObjectSpec(
+        name="RootBadObject",
+        fields=[
+            FieldSpec(
+                name="child",
+                type="object",
+                description="child invalid name",
+                object_spec=ObjectSpec(name="bad_name", fields=[]),
+            )
+        ],
+    )
+    with pytest.raises(ValueError) as ei:
+        _build_model(spec)
+    assert "object_spec.name" in str(ei.value)
+
+
+def test_object_array_spec_invalid_name():
+    spec = ObjectSpec(
+        name="RootBadObjectArray",
+        fields=[
+            FieldSpec(
+                name="children",
+                type="object_array",
+                description="children invalid name",
+                object_spec=ObjectSpec(name="1Bad", fields=[]),
+            )
+        ],
+    )
+    with pytest.raises(ValueError) as ei:
+        _build_model(spec)
+    assert "object_spec.name" in str(ei.value)
+
+
+def test_object_array_with_enum_spec():
+    spec = ObjectSpec(
+        name="ObjectArrayWithEnumSpec",
+        fields=[
+            FieldSpec(
+                name="children",
+                type="object_array",
+                description="invalid enum_spec",
+                enum_spec=EnumSpec(name="E", values=["x"]),
+                object_spec=ObjectSpec(name="Child", fields=[]),
+            )
+        ],
+    )
+    with pytest.raises(ValueError) as ei:
+        _build_model(spec)
+    assert "must not define enum_spec" in str(ei.value)
+
+
+def test_enum_case_insensitive_dedup():
+    spec = ObjectSpec(
+        name="EnumDedup",
+        fields=[
+            FieldSpec(
+                name="code",
+                type="enum",
+                description="dedup",
+                enum_spec=EnumSpec(name="CodeEnum", values=["ok", "OK", "Ok"]),
+            )
+        ],
+    )
+    Model = _build_model(spec)
+    enum_type = Model.model_fields["code"].annotation
+    # After upper + set, only one member expected
+    assert len(list(enum_type)) == 1
+    assert list(enum_type)[0].name == "OK"
