@@ -216,8 +216,12 @@ class OpenAIVecSeriesAccessor:
             top_p=top_p,
         )
 
-        # Forward any extra kwargs to the underlying Responses API.
-        return pd.Series(client.parse(self._obj.tolist(), **api_kwargs), index=self._obj.index, name=self._obj.name)
+        # Forward any extra kwargs to the underlying Responses API, excluding proxy-specific ones.
+        proxy_params = {"show_progress", "batch_size"}
+        filtered_kwargs = {k: v for k, v in api_kwargs.items() if k not in proxy_params}
+        return pd.Series(
+            client.parse(self._obj.tolist(), **filtered_kwargs), index=self._obj.index, name=self._obj.name
+        )
 
     def responses(
         self,
@@ -437,7 +441,94 @@ class OpenAIVecSeriesAccessor:
             **api_kwargs,
         )
 
-    def infer_schema(self, purpose: str, max_examples: int = 100) -> InferredSchema:
+    def parse_with_cache(
+        self,
+        instructions: str,
+        cache: BatchingMapProxy[str, ResponseFormat],
+        response_format: ResponseFormat = None,
+        max_examples: int = 100,
+        temperature: float | None = 0.0,
+        top_p: float = 1.0,
+        **api_kwargs,
+    ) -> pd.Series:
+        """Parse Series values using an LLM with a provided cache.
+        This method allows you to parse the Series content into structured data
+        using an LLM, optionally inferring a schema based on the provided purpose.
+        Args:
+            instructions (str): System prompt for the LLM.
+            cache (BatchingMapProxy[str, BaseModel]): Explicit cache instance for
+                batching and deduplication control.
+            response_format (type[BaseModel] | None): Pydantic model or built-in type
+                for structured output. If None, schema is inferred.
+            max_examples (int): Maximum number of examples to use for schema inference.
+                Defaults to 100.
+            temperature (float | None): Sampling temperature. Defaults to 0.0.
+            top_p (float): Nucleus sampling parameter. Defaults to 1.0.
+        Additional Keyword Args:
+            Arbitrary OpenAI Responses API parameters (e.g. `frequency_penalty`, `presence_penalty`,
+            `seed`, etc.) are forwarded verbatim to the underlying client.
+        Returns:
+            pandas.Series: Series with parsed structured data as instances of
+                `response_format` or inferred schema model.
+        """
+
+        schema: InferredSchema | None = None
+        if response_format is None:
+            schema = self.infer_schema(purpose=instructions, max_examples=max_examples, **api_kwargs)
+
+        return self.responses_with_cache(
+            instructions=schema.inference_prompt if schema else instructions,
+            cache=cache,
+            response_format=response_format or schema.model,
+            temperature=temperature,
+            top_p=top_p,
+            **api_kwargs,
+        )
+
+    def parse(
+        self,
+        instructions: str,
+        response_format: ResponseFormat = None,
+        max_examples: int = 100,
+        batch_size: int | None = None,
+        show_progress: bool = False,
+        temperature: float | None = 0.0,
+        top_p: float = 1.0,
+        **api_kwargs,
+    ) -> pd.Series:
+        """Parse Series values using an LLM with optional schema inference.
+
+        This method allows you to parse the Series content into structured data
+        using an LLM, optionally inferring a schema based on the provided purpose.
+
+        Args:
+            instructions (str): System prompt for the LLM.
+            response_format (type[BaseModel] | None): Pydantic model or built-in type
+                for structured output. If None, schema is inferred.
+            max_examples (int): Maximum number of examples to use for schema inference.
+                Defaults to 100.
+            batch_size (int | None): Number of requests to process in parallel.
+                Defaults to None (automatic optimization).
+            show_progress (bool): Whether to display a progress bar during processing.
+                Defaults to False.
+            temperature (float | None): Sampling temperature. Defaults to 0.0.
+            top_p (float): Nucleus sampling parameter. Defaults to 1.0.
+
+        Returns:
+            pandas.Series: Series with parsed structured data as instances of
+                `response_format` or inferred schema model.
+        """
+        return self.parse_with_cache(
+            instructions=instructions,
+            cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
+            response_format=response_format,
+            max_examples=max_examples,
+            temperature=temperature,
+            top_p=top_p,
+            **api_kwargs,
+        )
+
+    def infer_schema(self, purpose: str, max_examples: int = 100, **api_kwargs) -> InferredSchema:
         """Infer a structured data schema from Series content using AI.
 
         This method analyzes a sample of the Series values to automatically infer
@@ -488,7 +579,7 @@ class OpenAIVecSeriesAccessor:
         inferer = CONTAINER.resolve(SchemaInferer)
 
         input: SchemaInferenceInput = SchemaInferenceInput(
-            examples=self._obj.sample(n=min(max_examples, len(self._obj))).tolist(), purpose=purpose
+            examples=self._obj.sample(n=min(max_examples, len(self._obj))).tolist(), purpose=purpose, **api_kwargs
         )
         return inferer.infer_schema(input)
 
@@ -537,90 +628,6 @@ class OpenAIVecSeriesAccessor:
             # If the Series has a name and all elements are dict or BaseModel, use it as the prefix for the columns
             extracted.columns = [f"{self._obj.name}_{col}" for col in extracted.columns]
         return extracted
-
-    def auto_extract(
-        self,
-        purpose: str,
-        max_examples: int = 100,
-        batch_size: int | None = None,
-        show_progress: bool = False,
-        **api_kwargs,
-    ) -> pd.DataFrame:
-        """Automatically infer schema and extract structured data in one step.
-
-        This convenience method combines schema inference and data extraction into
-        a single operation. It first analyzes a sample of the Series to infer an
-        appropriate schema based on the stated purpose, then immediately applies
-        that schema to extract structured data from all values in the Series.
-
-        Args:
-            purpose (str): Plain language description of what information to extract
-                and how it will be used (e.g., "Extract product features for search",
-                "Parse customer feedback for sentiment analysis"). This guides both
-                schema inference and field selection.
-            max_examples (int): Maximum number of examples to use for schema inference.
-                A larger sample may produce more accurate schemas but increases
-                inference time. Defaults to 100.
-            batch_size (int | None): Number of requests to process in parallel during
-                extraction. Defaults to None (automatic optimization). Set to a specific
-                value to control API usage and performance.
-            show_progress (bool): Whether to display a progress bar during extraction.
-                Useful for large datasets. Defaults to False.
-            **api_kwargs: Additional OpenAI API parameters (e.g., `temperature`, `top_p`,
-                `frequency_penalty`, `presence_penalty`, `seed`) forwarded to the task execution.
-
-        Returns:
-            pd.DataFrame: A DataFrame with extracted structured data. Each inferred
-                field becomes a column, with the same index as the original Series.
-                Column names and types are determined by the inferred schema.
-
-        Example:
-            ```python
-            # Extract structured data from product reviews
-            reviews = pd.Series([
-                "Great laptop! 16GB RAM, fast SSD, battery lasts 10 hours",
-                "Decent phone. 128GB storage, camera is okay, screen is bright",
-                "Gaming desktop with RTX 4090, 32GB RAM, runs everything smoothly"
-            ])
-
-            # One-step extraction
-            extracted = reviews.ai.auto_extract(
-                purpose="Extract product specifications and performance metrics",
-                show_progress=True
-            )
-            # Result: DataFrame with columns like 'ram', 'storage', 'battery_life', etc.
-
-            # Extract sentiment and issues from support tickets
-            tickets = pd.Series([
-                "Account locked, can't reset password, very frustrated",
-                "Billing error, charged twice for subscription",
-                "Great support! Issue resolved quickly"
-            ])
-
-            features = tickets.ai.auto_extract(
-                purpose="Extract issue type and customer sentiment for support analytics"
-            )
-            ```
-
-        Note:
-            This method is ideal for exploratory data analysis when you don't have
-            a predefined schema. For production use cases with stable schemas,
-            consider using `infer_schema()` once and reusing the schema with `task()`.
-            The inferred schema is not returned, so if you need to inspect or save it,
-            use `infer_schema()` and `task()` separately.
-        """
-        schema = self._obj.ai.infer_schema(purpose=purpose, max_examples=max_examples)
-
-        return pd.DataFrame(
-            {
-                "inferred": self._obj.ai.task(
-                    task=schema.task,
-                    batch_size=batch_size,
-                    show_progress=show_progress,
-                    **api_kwargs,
-                ),
-            }
-        ).ai.extract("inferred")
 
 
 @pd.api.extensions.register_dataframe_accessor("ai")
@@ -822,6 +829,95 @@ class OpenAIVecDataFrameAccessor:
             **api_kwargs,
         )
 
+    def parse_with_cache(
+        self,
+        instructions: str,
+        cache: BatchingMapProxy[str, ResponseFormat],
+        response_format: ResponseFormat = None,
+        max_examples: int = 100,
+        temperature: float | None = 0.0,
+        top_p: float = 1.0,
+        **api_kwargs,
+    ) -> pd.Series:
+        """Parse DataFrame rows using an LLM with a provided cache.
+
+        This method allows you to parse each DataFrame row (serialized as JSON)
+        into structured data using an LLM, optionally inferring a schema based
+        on the provided purpose.
+
+        Args:
+            instructions (str): System prompt for the LLM.
+            cache (BatchingMapProxy[str, ResponseFormat]): Explicit cache instance for
+                batching and deduplication control.
+            response_format (type[BaseModel] | None): Pydantic model or built-in type
+                for structured output. If None, schema is inferred.
+            max_examples (int): Maximum number of examples to use for schema inference.
+                Defaults to 100.
+            temperature (float | None): Sampling temperature. Defaults to 0.0.
+            top_p (float): Nucleus sampling parameter. Defaults to 1.0.
+
+        Additional Keyword Args:
+            Arbitrary OpenAI Responses API parameters (e.g. `frequency_penalty`, `presence_penalty`,
+            `seed`, etc.) are forwarded verbatim to the underlying client.
+
+        Returns:
+            pandas.Series: Series with parsed structured data as instances of
+                `response_format` or inferred schema model.
+        """
+        return _df_rows_to_json_series(self._obj).ai.parse_with_cache(
+            instructions=instructions,
+            cache=cache,
+            response_format=response_format,
+            max_examples=max_examples,
+            temperature=temperature,
+            top_p=top_p,
+            **api_kwargs,
+        )
+
+    def parse(
+        self,
+        instructions: str,
+        response_format: ResponseFormat = None,
+        max_examples: int = 100,
+        batch_size: int | None = None,
+        show_progress: bool = False,
+        temperature: float | None = 0.0,
+        top_p: float = 1.0,
+        **api_kwargs,
+    ) -> pd.Series:
+        """Parse DataFrame rows using an LLM with optional schema inference.
+
+        This method allows you to parse each DataFrame row (serialized as JSON)
+        into structured data using an LLM, optionally inferring a schema based
+        on the provided purpose.
+
+        Args:
+            instructions (str): System prompt for the LLM.
+            response_format (type[BaseModel] | None): Pydantic model or built-in type
+                for structured output. If None, schema is inferred.
+            max_examples (int): Maximum number of examples to use for schema inference.
+                Defaults to 100.
+            batch_size (int | None): Number of requests to process in parallel.
+                Defaults to None (automatic optimization).
+            show_progress (bool): Whether to display a progress bar during processing.
+                Defaults to False.
+            temperature (float | None): Sampling temperature. Defaults to 0.0.
+            top_p (float): Nucleus sampling parameter. Defaults to 1.0.
+
+        Returns:
+            pandas.Series: Series with parsed structured data as instances of
+                `response_format` or inferred schema model.
+        """
+        return self.parse_with_cache(
+            instructions=instructions,
+            cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
+            response_format=response_format,
+            max_examples=max_examples,
+            temperature=temperature,
+            top_p=top_p,
+            **api_kwargs,
+        )
+
     def infer_schema(self, purpose: str, max_examples: int = 100) -> InferredSchema:
         """Infer a structured data schema from DataFrame rows using AI.
 
@@ -988,100 +1084,6 @@ class OpenAIVecDataFrameAccessor:
 
         return df
 
-    def auto_extract(
-        self,
-        purpose: str,
-        max_examples: int = 100,
-        batch_size: int | None = None,
-        show_progress: bool = False,
-        **api_kwargs,
-    ) -> pd.DataFrame:
-        """Automatically infer schema and add extracted fields to the DataFrame.
-
-        This convenience method combines schema inference and data extraction to
-        automatically add new columns to the existing DataFrame. It analyzes a
-        sample of the DataFrame rows to infer an appropriate schema based on the
-        stated purpose, then extracts structured data and joins it with the
-        original DataFrame.
-
-        Args:
-            purpose (str): Plain language description of what information to extract
-                and how it will be used (e.g., "Extract customer sentiment metrics",
-                "Parse product attributes for analytics"). This guides both schema
-                inference and field selection.
-            max_examples (int): Maximum number of rows to use for schema inference.
-                A larger sample may produce more accurate schemas but increases
-                inference time. Defaults to 100.
-            batch_size (int | None): Number of requests to process in parallel during
-                extraction. Defaults to None (automatic optimization). Set to a specific
-                value to control API usage and performance.
-            show_progress (bool): Whether to display a progress bar during extraction.
-                Useful for large datasets. Defaults to False.
-            **api_kwargs: Additional OpenAI API parameters (e.g., `temperature`, `top_p`,
-                `frequency_penalty`, `presence_penalty`, `seed`) forwarded to the task execution.
-
-        Returns:
-            pd.DataFrame: The original DataFrame with new columns added from the
-                inferred structured data. Each inferred field becomes a new column.
-                The original columns and index are preserved.
-
-        Example:
-            ```python
-            # Add sentiment and issue type to support tickets
-            df = pd.DataFrame({
-                'ticket_id': [1, 2, 3],
-                'description': [
-                    "Can't login, password reset not working",
-                    "Billing error, charged twice last month",
-                    "Great service, issue resolved quickly!"
-                ],
-                'date': ['2024-01-01', '2024-01-02', '2024-01-03']
-            })
-
-            # Add inferred fields to existing DataFrame
-            enriched_df = df.ai.auto_extract(
-                purpose="Extract issue type and sentiment for support dashboard",
-                show_progress=True
-            )
-            # Result: Original df with new columns like 'issue_type', 'sentiment', etc.
-
-            # Add product specifications to inventory data
-            inventory = pd.DataFrame({
-                'sku': ['A001', 'B002', 'C003'],
-                'description': [
-                    "Laptop 16GB RAM, 512GB SSD, Intel i7",
-                    "Phone 128GB, 5G, dual camera",
-                    "Tablet 10-inch, WiFi only, 64GB"
-                ]
-            })
-
-            enriched_inventory = inventory.ai.auto_extract(
-                purpose="Extract technical specifications for inventory system"
-            )
-            ```
-
-        Note:
-            This method is ideal for enriching existing DataFrames with additional
-            structured fields extracted from text columns. The schema is inferred
-            from the entire DataFrame content (converted to JSON format). For
-            production use cases with stable schemas, consider using `infer_schema()`
-            once and reusing the schema with `task()`.
-        """
-        # Infer schema from DataFrame rows
-        schema = self._obj.ai.infer_schema(purpose=purpose, max_examples=max_examples)
-
-        # Extract structured data using the inferred schema
-        inferred_series = self._obj.ai.task(
-            task=schema.task,
-            batch_size=batch_size,
-            show_progress=show_progress,
-            **api_kwargs,
-        )
-
-        return self._obj.assign(
-            inferred=inferred_series,
-        ).ai.extract("inferred")
-
     def similarity(self, col1: str, col2: str) -> pd.Series:
         """Compute cosine similarity between two columns containing embedding vectors.
 
@@ -1176,7 +1178,11 @@ class AsyncOpenAIVecSeriesAccessor:
             temperature=temperature,
             top_p=top_p,
         )
-        results = await client.parse(self._obj.tolist(), **api_kwargs)
+
+        # Forward any extra kwargs to the underlying Responses API, excluding proxy-specific ones.
+        proxy_params = {"show_progress", "batch_size", "max_concurrency"}
+        filtered_kwargs = {k: v for k, v in api_kwargs.items() if k not in proxy_params}
+        results = await client.parse(self._obj.tolist(), **filtered_kwargs)
         return pd.Series(results, index=self._obj.index, name=self._obj.name)
 
     async def responses(
@@ -1457,95 +1463,106 @@ class AsyncOpenAIVecSeriesAccessor:
             **api_kwargs,
         )
 
-    async def auto_extract(
+    async def parse_with_cache(
         self,
-        purpose: str,
+        instructions: str,
+        cache: AsyncBatchingMapProxy[str, ResponseFormat],
+        response_format: ResponseFormat = None,
+        max_examples: int = 100,
+        temperature: float | None = 0.0,
+        top_p: float = 1.0,
+        **api_kwargs,
+    ) -> pd.Series:
+        """Parse Series values using an LLM with a provided cache (asynchronously).
+
+        This method allows you to parse the Series content into structured data
+        using an LLM, optionally inferring a schema based on the provided purpose.
+
+        Args:
+            instructions (str): System prompt for the LLM.
+            cache (AsyncBatchingMapProxy[str, ResponseFormat]): Explicit cache instance for
+                batching and deduplication control.
+            response_format (type[BaseModel] | None): Pydantic model or built-in type
+                for structured output. If None, schema is inferred.
+            max_examples (int): Maximum number of examples to use for schema inference.
+                Defaults to 100.
+            temperature (float | None): Sampling temperature. Defaults to 0.0.
+            top_p (float): Nucleus sampling parameter. Defaults to 1.0.
+
+        Additional Keyword Args:
+            Arbitrary OpenAI Responses API parameters (e.g. `frequency_penalty`, `presence_penalty`,
+            `seed`, etc.) are forwarded verbatim to the underlying client.
+
+        Returns:
+            pandas.Series: Series with parsed structured data as instances of
+                `response_format` or inferred schema model.
+
+        Note:
+            This is an asynchronous method and must be awaited.
+        """
+        schema: InferredSchema | None = None
+        if response_format is None:
+            # Use synchronous schema inference
+            schema = self._obj.ai.infer_schema(purpose=instructions, max_examples=max_examples)
+
+        return await self.responses_with_cache(
+            instructions=schema.inference_prompt if schema else instructions,
+            cache=cache,
+            response_format=response_format or schema.model,
+            temperature=temperature,
+            top_p=top_p,
+            **api_kwargs,
+        )
+
+    async def parse(
+        self,
+        instructions: str,
+        response_format: ResponseFormat = None,
         max_examples: int = 100,
         batch_size: int | None = None,
         max_concurrency: int = 8,
         show_progress: bool = False,
+        temperature: float | None = 0.0,
+        top_p: float = 1.0,
         **api_kwargs,
-    ) -> pd.DataFrame:
-        """Automatically infer schema and extract structured data in one step (asynchronously).
+    ) -> pd.Series:
+        """Parse Series values using an LLM with optional schema inference (asynchronously).
 
-        This convenience method combines schema inference and data extraction into
-        a single operation. It first analyzes a sample of the Series to infer an
-        appropriate schema based on the stated purpose, then immediately applies
-        that schema to extract structured data from all values in the Series.
+        This method allows you to parse the Series content into structured data
+        using an LLM, optionally inferring a schema based on the provided purpose.
 
         Args:
-            purpose (str): Plain language description of what information to extract
-                and how it will be used (e.g., "Extract product features for search",
-                "Parse customer feedback for sentiment analysis"). This guides both
-                schema inference and field selection.
+            instructions (str): System prompt for the LLM.
+            response_format (type[BaseModel] | None): Pydantic model or built-in type
+                for structured output. If None, schema is inferred.
             max_examples (int): Maximum number of examples to use for schema inference.
-                A larger sample may produce more accurate schemas but increases
-                inference time. Defaults to 100.
-            batch_size (int | None): Number of requests to process in parallel during
-                extraction. Defaults to None (automatic optimization). Set to a specific
-                value to control API usage and performance.
-            max_concurrency (int): Maximum number of concurrent requests during
-                extraction. Defaults to 8.
-            show_progress (bool): Whether to display a progress bar during extraction.
-                Useful for large datasets. Defaults to False.
-            **api_kwargs: Additional OpenAI API parameters (e.g., `temperature`, `top_p`,
-                `frequency_penalty`, `presence_penalty`, `seed`) forwarded to the task execution.
+                Defaults to 100.
+            batch_size (int | None): Number of requests to process in parallel.
+                Defaults to None (automatic optimization).
+            max_concurrency (int): Maximum number of concurrent requests. Defaults to 8.
+            show_progress (bool): Whether to display a progress bar during processing.
+                Defaults to False.
+            temperature (float | None): Sampling temperature. Defaults to 0.0.
+            top_p (float): Nucleus sampling parameter. Defaults to 1.0.
 
         Returns:
-            pd.DataFrame: A DataFrame with extracted structured data. Each inferred
-                field becomes a column, with the same index as the original Series.
-                Column names and types are determined by the inferred schema.
-
-        Example:
-            ```python
-            # Extract structured data from product reviews
-            reviews = pd.Series([
-                "Great laptop! 16GB RAM, fast SSD, battery lasts 10 hours",
-                "Decent phone. 128GB storage, camera is okay, screen is bright",
-                "Gaming desktop with RTX 4090, 32GB RAM, runs everything smoothly"
-            ])
-
-            # One-step extraction (must be awaited)
-            extracted = await reviews.aio.auto_extract(
-                purpose="Extract product specifications and performance metrics",
-                max_concurrency=4,
-                show_progress=True
-            )
-            # Result: DataFrame with columns like 'ram', 'storage', 'battery_life', etc.
-
-            # Extract sentiment and issues from support tickets
-            tickets = pd.Series([
-                "Account locked, can't reset password, very frustrated",
-                "Billing error, charged twice for subscription",
-                "Great support! Issue resolved quickly"
-            ])
-
-            features = await tickets.aio.auto_extract(
-                purpose="Extract issue type and customer sentiment for support analytics",
-                batch_size=32
-            )
-            ```
+            pandas.Series: Series with parsed structured data as instances of
+                `response_format` or inferred schema model.
 
         Note:
-            This is an asynchronous method and must be awaited. This method is ideal
-            for exploratory data analysis when you don't have a predefined schema.
-            For production use cases with stable schemas, consider using the synchronous
-            `infer_schema()` once and reusing the schema with `task()`. The inferred
-            schema is not returned, so if you need to inspect or save it, use
-            `infer_schema()` and `task()` separately.
+            This is an asynchronous method and must be awaited.
         """
-        # Use synchronous infer_schema since it's not async
-        schema = self._obj.ai.infer_schema(purpose=purpose, max_examples=max_examples)
-
-        inferred_series = await self._obj.aio.task(
-            task=schema.task,
-            batch_size=batch_size,
-            max_concurrency=max_concurrency,
-            show_progress=show_progress,
+        return await self.parse_with_cache(
+            instructions=instructions,
+            cache=AsyncBatchingMapProxy(
+                batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
+            ),
+            response_format=response_format,
+            max_examples=max_examples,
+            temperature=temperature,
+            top_p=top_p,
             **api_kwargs,
         )
-
-        return pd.DataFrame({"inferred": inferred_series}).ai.extract("inferred")
 
 
 @pd.api.extensions.register_dataframe_accessor("aio")
@@ -1775,6 +1792,105 @@ class AsyncOpenAIVecDataFrameAccessor:
             **api_kwargs,
         )
 
+    async def parse_with_cache(
+        self,
+        instructions: str,
+        cache: AsyncBatchingMapProxy[str, ResponseFormat],
+        response_format: ResponseFormat = None,
+        max_examples: int = 100,
+        temperature: float | None = 0.0,
+        top_p: float = 1.0,
+        **api_kwargs,
+    ) -> pd.Series:
+        """Parse DataFrame rows using an LLM with a provided cache (asynchronously).
+
+        This method allows you to parse each DataFrame row (serialized as JSON)
+        into structured data using an LLM, optionally inferring a schema based
+        on the provided purpose.
+
+        Args:
+            instructions (str): System prompt for the LLM.
+            cache (AsyncBatchingMapProxy[str, ResponseFormat]): Explicit cache instance for
+                batching and deduplication control.
+            response_format (type[BaseModel] | None): Pydantic model or built-in type
+                for structured output. If None, schema is inferred.
+            max_examples (int): Maximum number of examples to use for schema inference.
+                Defaults to 100.
+            temperature (float | None): Sampling temperature. Defaults to 0.0.
+            top_p (float): Nucleus sampling parameter. Defaults to 1.0.
+
+        Additional Keyword Args:
+            Arbitrary OpenAI Responses API parameters (e.g. `frequency_penalty`, `presence_penalty`,
+            `seed`, etc.) are forwarded verbatim to the underlying client.
+
+        Returns:
+            pandas.Series: Series with parsed structured data as instances of
+                `response_format` or inferred schema model.
+
+        Note:
+            This is an asynchronous method and must be awaited.
+        """
+        return await _df_rows_to_json_series(self._obj).aio.parse_with_cache(
+            instructions=instructions,
+            cache=cache,
+            response_format=response_format,
+            max_examples=max_examples,
+            temperature=temperature,
+            top_p=top_p,
+            **api_kwargs,
+        )
+
+    async def parse(
+        self,
+        instructions: str,
+        response_format: ResponseFormat = None,
+        max_examples: int = 100,
+        batch_size: int | None = None,
+        max_concurrency: int = 8,
+        show_progress: bool = False,
+        temperature: float | None = 0.0,
+        top_p: float = 1.0,
+        **api_kwargs,
+    ) -> pd.Series:
+        """Parse DataFrame rows using an LLM with optional schema inference (asynchronously).
+
+        This method allows you to parse each DataFrame row (serialized as JSON)
+        into structured data using an LLM, optionally inferring a schema based
+        on the provided purpose.
+
+        Args:
+            instructions (str): System prompt for the LLM.
+            response_format (type[BaseModel] | None): Pydantic model or built-in type
+                for structured output. If None, schema is inferred.
+            max_examples (int): Maximum number of examples to use for schema inference.
+                Defaults to 100.
+            batch_size (int | None): Number of requests to process in parallel.
+                Defaults to None (automatic optimization).
+            max_concurrency (int): Maximum number of concurrent requests. Defaults to 8.
+            show_progress (bool): Whether to display a progress bar during processing.
+                Defaults to False.
+            temperature (float | None): Sampling temperature. Defaults to 0.0.
+            top_p (float): Nucleus sampling parameter. Defaults to 1.0.
+
+        Returns:
+            pandas.Series: Series with parsed structured data as instances of
+                `response_format` or inferred schema model.
+
+        Note:
+            This is an asynchronous method and must be awaited.
+        """
+        return await self.parse_with_cache(
+            instructions=instructions,
+            cache=AsyncBatchingMapProxy(
+                batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
+            ),
+            response_format=response_format,
+            max_examples=max_examples,
+            temperature=temperature,
+            top_p=top_p,
+            **api_kwargs,
+        )
+
     async def pipe(self, func: Callable[[pd.DataFrame], Awaitable[T] | T]) -> T:
         """Apply a function to the DataFrame, supporting both synchronous and asynchronous functions.
 
@@ -1954,103 +2070,3 @@ class AsyncOpenAIVecDataFrameAccessor:
                 df.at[actual_index, target_column_name] = result.output
 
         return df
-
-    async def auto_extract(
-        self,
-        purpose: str,
-        max_examples: int = 100,
-        batch_size: int | None = None,
-        max_concurrency: int = 8,
-        show_progress: bool = False,
-        **api_kwargs,
-    ) -> pd.DataFrame:
-        """Automatically infer schema and add extracted fields to the DataFrame (asynchronously).
-
-        This convenience method combines schema inference and data extraction to
-        automatically add new columns to the existing DataFrame. It analyzes a
-        sample of the DataFrame rows to infer an appropriate schema based on the
-        stated purpose, then extracts structured data and joins it with the
-        original DataFrame.
-
-        Args:
-            purpose (str): Plain language description of what information to extract
-                and how it will be used (e.g., "Extract customer sentiment metrics",
-                "Parse product attributes for analytics"). This guides both schema
-                inference and field selection.
-            max_examples (int): Maximum number of rows to use for schema inference.
-                A larger sample may produce more accurate schemas but increases
-                inference time. Defaults to 100.
-            batch_size (int | None): Number of requests to process in parallel during
-                extraction. Defaults to None (automatic optimization). Set to a specific
-                value to control API usage and performance.
-            max_concurrency (int): Maximum number of concurrent requests during
-                extraction. Defaults to 8.
-            show_progress (bool): Whether to display a progress bar during extraction.
-                Useful for large datasets. Defaults to False.
-            **api_kwargs: Additional OpenAI API parameters (e.g., `temperature`, `top_p`,
-                `frequency_penalty`, `presence_penalty`, `seed`) forwarded to the task execution.
-
-        Returns:
-            pd.DataFrame: The original DataFrame with new columns added from the
-                inferred structured data. Each inferred field becomes a new column.
-                The original columns and index are preserved.
-
-        Example:
-            ```python
-            # Add sentiment and issue type to support tickets
-            df = pd.DataFrame({
-                'ticket_id': [1, 2, 3],
-                'description': [
-                    "Can't login, password reset not working",
-                    "Billing error, charged twice last month",
-                    "Great service, issue resolved quickly!"
-                ],
-                'date': ['2024-01-01', '2024-01-02', '2024-01-03']
-            })
-
-            # Add inferred fields to existing DataFrame (must be awaited)
-            enriched_df = await df.aio.auto_extract(
-                purpose="Extract issue type and sentiment for support dashboard",
-                max_concurrency=4,
-                show_progress=True
-            )
-            # Result: Original df with new columns like 'issue_type', 'sentiment', etc.
-
-            # Add product specifications to inventory data
-            inventory = pd.DataFrame({
-                'sku': ['A001', 'B002', 'C003'],
-                'description': [
-                    "Laptop 16GB RAM, 512GB SSD, Intel i7",
-                    "Phone 128GB, 5G, dual camera",
-                    "Tablet 10-inch, WiFi only, 64GB"
-                ]
-            })
-
-            enriched_inventory = await inventory.aio.auto_extract(
-                purpose="Extract technical specifications for inventory system",
-                batch_size=32
-            )
-            ```
-
-        Note:
-            This is an asynchronous method and must be awaited. This method is ideal
-            for enriching existing DataFrames with additional structured fields
-            extracted from text columns. The schema is inferred synchronously from
-            the DataFrame content. For production use cases with stable schemas,
-            consider using `infer_schema()` once and reusing the schema with `task()`.
-        """
-        # Infer schema from DataFrame rows (synchronous)
-        schema = self._obj.ai.infer_schema(purpose=purpose, max_examples=max_examples)
-
-        # Extract structured data using the inferred schema (asynchronous)
-        inferred_series = await self._obj.aio.task(
-            task=schema.task,
-            batch_size=batch_size,
-            max_concurrency=max_concurrency,
-            show_progress=show_progress,
-            **api_kwargs,
-        )
-
-        return self._obj.assign(
-            inferred=inferred_series,
-        ).ai.extract("inferred")

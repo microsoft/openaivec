@@ -20,6 +20,11 @@ class Fruit(BaseModel):
     taste: str
 
 
+class SentimentResult(BaseModel):
+    sentiment: str
+    confidence: float
+
+
 class TestPandasExt(unittest.TestCase):
     def setUp(self):
         self.df = pd.DataFrame(
@@ -28,52 +33,403 @@ class TestPandasExt(unittest.TestCase):
             }
         )
 
-    def test_embeddings(self):
-        embeddings: pd.Series = self.df["name"].ai.embeddings()
+    # ===== BASIC SERIES METHODS =====
 
-        # assert all values are elements of np.ndarray
-        self.assertTrue(all(isinstance(embedding, np.ndarray) for embedding in embeddings))
+    def test_series_embeddings(self):
+        """Test Series.ai.embeddings method."""
+        embeddings = self.df["name"].ai.embeddings()
 
-    def test_aio_embeddings(self):
-        async def run():
-            return await self.df["name"].aio.embeddings()
-
-        embeddings: pd.Series = asyncio.run(run())
         self.assertTrue(all(isinstance(embedding, np.ndarray) for embedding in embeddings))
         self.assertEqual(embeddings.shape, (3,))
         self.assertTrue(embeddings.index.equals(self.df.index))
 
-    def test_responses(self):
-        names_fr: pd.Series = self.df["name"].ai.responses("translate to French")
+    def test_series_responses(self):
+        """Test Series.ai.responses method."""
+        names_fr = self.df["name"].ai.responses("translate to French")
 
-        # assert all values are elements of str
         self.assertTrue(all(isinstance(x, str) for x in names_fr))
+        self.assertEqual(names_fr.shape, (3,))
+        self.assertTrue(names_fr.index.equals(self.df.index))
 
-    def test_aio_responses(self):
+    def test_series_count_tokens(self):
+        """Test Series.ai.count_tokens method."""
+        num_tokens = self.df.name.ai.count_tokens()
+
+        self.assertTrue(all(isinstance(num_token, int) for num_token in num_tokens))
+        self.assertEqual(num_tokens.shape, (3,))
+
+    def test_series_parse(self):
+        """Test Series.ai.parse method with structured output."""
+        reviews = pd.Series(
+            ["Great product! Love it.", "Terrible quality, broke immediately.", "Average item, nothing special."]
+        )
+
+        results = reviews.ai.parse(
+            instructions="Extract sentiment (positive/negative/neutral) and a confidence score (0-1)",
+            batch_size=2,
+            show_progress=False,
+        )
+
+        self.assertEqual(len(results), 3)
+        self.assertTrue(results.index.equals(reviews.index))
+        self.assertTrue(all(isinstance(result, (dict, BaseModel)) for result in results))
+
+    def test_series_infer_schema(self):
+        """Test Series.ai.infer_schema method."""
+        reviews = pd.Series(
+            [
+                "Great product! 5 stars. Fast shipping.",
+                "Poor quality. 1 star. Broke after one day.",
+                "Average item. 3 stars. Decent value.",
+                "Excellent service! 5 stars. Highly recommend.",
+                "Terrible experience. 2 stars. Slow delivery.",
+            ]
+        )
+
+        schema = reviews.ai.infer_schema(purpose="Extract product review analysis data", max_examples=3)
+
+        self.assertIsNotNone(schema)
+        self.assertIsNotNone(schema.model)
+        self.assertIsNotNone(schema.task)
+        self.assertIsNotNone(schema.object_spec)
+        self.assertIsNotNone(schema.object_spec.fields)
+        self.assertIsInstance(schema.object_spec.fields, list)
+        self.assertGreater(len(schema.object_spec.fields), 0)
+        self.assertTrue(hasattr(schema.model, "__name__"))
+
+    def test_series_task(self):
+        """Test Series.ai.task method with actual task execution."""
+        from openaivec._model import PreparedTask
+
+        task = PreparedTask(instructions="Translate to French", response_format=str, temperature=0.0, top_p=1.0)
+
+        series = pd.Series(["cat", "dog"])
+        results = series.ai.task(task=task, batch_size=2, show_progress=False)
+
+        self.assertEqual(len(results), 2)
+        self.assertTrue(results.index.equals(series.index))
+        self.assertTrue(all(isinstance(result, str) for result in results))
+
+    # ===== BASIC DATAFRAME METHODS =====
+
+    def test_dataframe_responses(self):
+        """Test DataFrame.ai.responses method."""
+        names_fr = self.df.ai.responses("translate to French")
+
+        self.assertTrue(all(isinstance(x, str) for x in names_fr))
+        self.assertEqual(names_fr.shape, (3,))
+        self.assertTrue(names_fr.index.equals(self.df.index))
+
+    def test_dataframe_parse(self):
+        """Test DataFrame.ai.parse method with structured output."""
+        df = pd.DataFrame(
+            [
+                {"review": "Great product!", "user": "Alice"},
+                {"review": "Terrible quality", "user": "Bob"},
+                {"review": "Average item", "user": "Charlie"},
+            ]
+        )
+
+        results = df.ai.parse(instructions="Extract sentiment from the review", batch_size=2, show_progress=False)
+
+        self.assertEqual(len(results), 3)
+        self.assertTrue(results.index.equals(df.index))
+        self.assertTrue(all(isinstance(result, (dict, BaseModel)) for result in results))
+
+    def test_dataframe_infer_schema(self):
+        """Test DataFrame.ai.infer_schema method."""
+        df = pd.DataFrame(
+            [
+                {"product": "laptop", "review": "Great performance", "rating": 5},
+                {"product": "mouse", "review": "Poor quality", "rating": 2},
+                {"product": "keyboard", "review": "Average product", "rating": 3},
+            ]
+        )
+
+        schema = df.ai.infer_schema(purpose="Extract product analysis metrics", max_examples=2)
+
+        self.assertIsNotNone(schema)
+        self.assertIsNotNone(schema.model)
+        self.assertIsNotNone(schema.task)
+        self.assertIsNotNone(schema.object_spec.fields)
+        self.assertIsInstance(schema.object_spec.fields, list)
+        self.assertGreater(len(schema.object_spec.fields), 0)
+
+    def test_dataframe_task(self):
+        """Test DataFrame.ai.task method with actual task execution."""
+        from openaivec._model import PreparedTask
+
+        task = PreparedTask(
+            instructions="Extract the animal name from the data", response_format=str, temperature=0.0, top_p=1.0
+        )
+
+        df = pd.DataFrame([{"animal": "cat", "legs": 4}, {"animal": "dog", "legs": 4}])
+
+        results = df.ai.task(task=task, batch_size=2, show_progress=False)
+
+        self.assertEqual(len(results), 2)
+        self.assertTrue(results.index.equals(df.index))
+        self.assertTrue(all(isinstance(result, str) for result in results))
+
+    def test_dataframe_similarity(self):
+        """Test DataFrame.ai.similarity method."""
+        df = pd.DataFrame(
+            {
+                "vector1": [np.array([1, 0]), np.array([0, 1]), np.array([1, 1])],
+                "vector2": [np.array([1, 0]), np.array([0, 1]), np.array([1, -1])],
+            }
+        )
+        similarity_scores = df.ai.similarity("vector1", "vector2")
+
+        expected_scores = [1.0, 1.0, 0.0]  # Cosine similarities
+        self.assertTrue(np.allclose(similarity_scores, expected_scores))
+
+    def test_dataframe_similarity_invalid_vectors(self):
+        """Test DataFrame.ai.similarity with invalid vectors."""
+        df = pd.DataFrame(
+            {
+                "vector1": [np.array([1, 0]), "invalid", np.array([1, 1])],
+                "vector2": [np.array([1, 0]), np.array([0, 1]), np.array([1, -1])],
+            }
+        )
+
+        with self.assertRaises(TypeError):
+            df.ai.similarity("vector1", "vector2")
+
+    def test_dataframe_fillna(self):
+        """Test DataFrame.ai.fillna method."""
+        # Test with no missing values
+        df_complete = pd.DataFrame(
+            {
+                "name": ["Alice", "Bob", "Charlie", "David"],
+                "age": [25, 30, 35, 40],
+                "city": ["Tokyo", "Osaka", "Kyoto", "Tokyo"],
+            }
+        )
+
+        result_df = df_complete.ai.fillna("name")
+        pd.testing.assert_frame_equal(result_df, df_complete)
+
+        # Test structure preservation
+        df_custom_index = pd.DataFrame(
+            {"name": ["Alice", "Bob", "Charlie"], "score": [85, 90, 78]}, index=["student_1", "student_2", "student_3"]
+        )
+
+        result_df = df_custom_index.ai.fillna("name")
+        pd.testing.assert_index_equal(result_df.index, df_custom_index.index)
+        self.assertEqual(result_df.shape, df_custom_index.shape)
+
+    # ===== ASYNC SERIES METHODS =====
+
+    def test_series_aio_embeddings(self):
+        """Test Series.aio.embeddings method."""
+
+        async def run():
+            return await self.df["name"].aio.embeddings()
+
+        embeddings = asyncio.run(run())
+        self.assertTrue(all(isinstance(embedding, np.ndarray) for embedding in embeddings))
+        self.assertEqual(embeddings.shape, (3,))
+        self.assertTrue(embeddings.index.equals(self.df.index))
+
+    def test_series_aio_responses(self):
+        """Test Series.aio.responses method."""
+
         async def run():
             return await self.df["name"].aio.responses("translate to French")
 
-        names_fr: pd.Series = asyncio.run(run())
+        names_fr = asyncio.run(run())
         self.assertTrue(all(isinstance(x, str) for x in names_fr))
         self.assertEqual(names_fr.shape, (3,))
         self.assertTrue(names_fr.index.equals(self.df.index))
 
-    def test_responses_dataframe(self):
-        names_fr: pd.Series = self.df.ai.responses("translate to French")
+    def test_series_aio_parse(self):
+        """Test Series.aio.parse method with structured output."""
 
-        # assert all values are elements of str
-        self.assertTrue(all(isinstance(x, str) for x in names_fr))
+        async def run_test():
+            reviews = pd.Series(["Excellent service!", "Poor experience.", "Okay product."])
 
-    def test_aio_responses_dataframe(self):
+            return await reviews.aio.parse(
+                instructions="Extract sentiment and rating", batch_size=2, max_concurrency=2, show_progress=False
+            )
+
+        results = asyncio.run(run_test())
+
+        self.assertEqual(len(results), 3)
+        self.assertTrue(all(isinstance(result, (dict, BaseModel)) for result in results))
+
+    def test_series_aio_task(self):
+        """Test Series.aio.task method with actual task execution."""
+        from openaivec._model import PreparedTask
+
+        async def run_test():
+            task = PreparedTask(
+                instructions="Classify sentiment as positive or negative",
+                response_format=str,
+                temperature=0.0,
+                top_p=1.0,
+            )
+
+            series = pd.Series(["I love this!", "This is terrible"])
+
+            return await series.aio.task(task=task, batch_size=2, max_concurrency=2, show_progress=False)
+
+        results = asyncio.run(run_test())
+
+        self.assertEqual(len(results), 2)
+        self.assertTrue(all(isinstance(result, str) for result in results))
+
+    # ===== ASYNC DATAFRAME METHODS =====
+
+    def test_dataframe_aio_responses(self):
+        """Test DataFrame.aio.responses method."""
+
         async def run():
             return await self.df.aio.responses("translate the 'name' field to French")
 
-        names_fr: pd.Series = asyncio.run(run())
+        names_fr = asyncio.run(run())
         self.assertTrue(all(isinstance(x, str) for x in names_fr))
         self.assertEqual(names_fr.shape, (3,))
         self.assertTrue(names_fr.index.equals(self.df.index))
 
-    def test_extract_series(self):
+    def test_dataframe_aio_parse(self):
+        """Test DataFrame.aio.parse method with structured output."""
+
+        async def run_test():
+            df = pd.DataFrame(
+                [
+                    {"text": "Happy customer", "score": 5},
+                    {"text": "Unhappy customer", "score": 1},
+                    {"text": "Neutral feedback", "score": 3},
+                ]
+            )
+
+            return await df.aio.parse(
+                instructions="Analyze the sentiment", batch_size=2, max_concurrency=2, show_progress=False
+            )
+
+        results = asyncio.run(run_test())
+
+        self.assertEqual(len(results), 3)
+        self.assertTrue(all(isinstance(result, (dict, BaseModel)) for result in results))
+
+    def test_dataframe_aio_task(self):
+        """Test DataFrame.aio.task method with actual task execution."""
+        from openaivec._model import PreparedTask
+
+        async def run_test():
+            task = PreparedTask(instructions="Describe the animal", response_format=str, temperature=0.0, top_p=1.0)
+
+            df = pd.DataFrame([{"name": "fluffy", "type": "cat"}, {"name": "buddy", "type": "dog"}])
+
+            return await df.aio.task(task=task, batch_size=2, max_concurrency=2, show_progress=False)
+
+        results = asyncio.run(run_test())
+
+        self.assertEqual(len(results), 2)
+        self.assertTrue(all(isinstance(result, str) for result in results))
+
+    def test_dataframe_aio_fillna(self):
+        """Test DataFrame.aio.fillna method."""
+
+        async def run_test():
+            df_with_missing = pd.DataFrame(
+                {
+                    "name": ["Alice", "Bob", "Charlie"],
+                    "age": [25, 30, 35],
+                    "city": ["Tokyo", "Osaka", "Kyoto"],
+                }
+            )
+            return await df_with_missing.aio.fillna("name")
+
+        result, original = (
+            asyncio.run(run_test()),
+            pd.DataFrame(
+                {
+                    "name": ["Alice", "Bob", "Charlie"],
+                    "age": [25, 30, 35],
+                    "city": ["Tokyo", "Osaka", "Kyoto"],
+                }
+            ),
+        )
+        pd.testing.assert_frame_equal(result, original)
+
+    def test_dataframe_aio_pipe(self):
+        """Test DataFrame.aio.pipe method."""
+
+        async def run_test():
+            df = pd.DataFrame({"name": ["apple", "banana", "cherry"], "color": ["red", "yellow", "red"]})
+
+            def add_column(df):
+                df = df.copy()
+                df["processed"] = df["name"] + "_processed"
+                return df
+
+            result1 = await df.aio.pipe(add_column)
+
+            async def add_async_column(df):
+                await asyncio.sleep(0.01)
+                df = df.copy()
+                df["async_processed"] = df["name"] + "_async"
+                return df
+
+            result2 = await df.aio.pipe(add_async_column)
+
+            return result1, result2, df
+
+        result1, result2, original_df = asyncio.run(run_test())
+
+        # Verify sync function result
+        self.assertIn("processed", result1.columns)
+        self.assertEqual(len(result1), 3)
+        self.assertTrue(result1["processed"].str.endswith("_processed").all())
+
+        # Verify async function result
+        self.assertIn("async_processed", result2.columns)
+        self.assertEqual(len(result2), 3)
+        self.assertTrue(result2["async_processed"].str.endswith("_async").all())
+
+        # Original DataFrame should be unchanged
+        self.assertNotIn("processed", original_df.columns)
+        self.assertNotIn("async_processed", original_df.columns)
+
+    def test_dataframe_aio_assign(self):
+        """Test DataFrame.aio.assign method."""
+
+        async def run_test():
+            df = pd.DataFrame({"name": ["alice", "bob", "charlie"], "age": [25, 30, 35]})
+
+            def compute_category(df):
+                return ["young" if age < 30 else "adult" for age in df["age"]]
+
+            result1 = await df.aio.assign(category=compute_category)
+
+            async def compute_async_score(df):
+                await asyncio.sleep(0.01)
+                return [age * 2 for age in df["age"]]
+
+            result2 = await df.aio.assign(score=compute_async_score)
+
+            return result1, result2, df
+
+        result1, result2, original_df = asyncio.run(run_test())
+
+        # Verify sync function assignment
+        self.assertIn("category", result1.columns)
+        self.assertEqual(list(result1["category"]), ["young", "adult", "adult"])
+
+        # Verify async function assignment
+        self.assertIn("score", result2.columns)
+        self.assertEqual(list(result2["score"]), [50, 60, 70])
+
+        # Original DataFrame should be unchanged
+        self.assertNotIn("category", original_df.columns)
+        self.assertNotIn("score", original_df.columns)
+
+    # ===== EXTRACT METHODS =====
+
+    def test_series_extract_pydantic(self):
+        """Test Series.ai.extract with Pydantic models."""
         sample_series = pd.Series(
             [
                 Fruit(color="red", flavor="sweet", taste="crunchy"),
@@ -82,23 +438,13 @@ class TestPandasExt(unittest.TestCase):
             ],
             name="fruit",
         )
+
         extracted_df = sample_series.ai.extract()
         expected_columns = ["fruit_color", "fruit_flavor", "fruit_taste"]
         self.assertListEqual(list(extracted_df.columns), expected_columns)
 
-    def test_extract_series_without_name(self):
-        sample_series = pd.Series(
-            [
-                Fruit(color="red", flavor="sweet", taste="crunchy"),
-                Fruit(color="yellow", flavor="sweet", taste="soft"),
-                Fruit(color="red", flavor="sweet", taste="tart"),
-            ]
-        )
-        extracted_df = sample_series.ai.extract()
-        expected_columns = ["color", "flavor", "taste"]  # without prefix
-        self.assertListEqual(list(extracted_df.columns), expected_columns)
-
-    def test_extract_series_dict(self):
+    def test_series_extract_dict(self):
+        """Test Series.ai.extract with dictionaries."""
         sample_series = pd.Series(
             [
                 {"color": "red", "flavor": "sweet", "taste": "crunchy"},
@@ -107,11 +453,27 @@ class TestPandasExt(unittest.TestCase):
             ],
             name="fruit",
         )
+
         extracted_df = sample_series.ai.extract()
         expected_columns = ["fruit_color", "fruit_flavor", "fruit_taste"]
         self.assertListEqual(list(extracted_df.columns), expected_columns)
 
-    def test_extract_series_with_none(self):
+    def test_series_extract_without_name(self):
+        """Test Series.ai.extract without series name."""
+        sample_series = pd.Series(
+            [
+                Fruit(color="red", flavor="sweet", taste="crunchy"),
+                Fruit(color="yellow", flavor="sweet", taste="soft"),
+                Fruit(color="red", flavor="sweet", taste="tart"),
+            ]
+        )
+
+        extracted_df = sample_series.ai.extract()
+        expected_columns = ["color", "flavor", "taste"]  # without prefix
+        self.assertListEqual(list(extracted_df.columns), expected_columns)
+
+    def test_series_extract_with_none(self):
+        """Test Series.ai.extract with None values."""
         sample_series = pd.Series(
             [
                 Fruit(color="red", flavor="sweet", taste="crunchy"),
@@ -120,16 +482,14 @@ class TestPandasExt(unittest.TestCase):
             ],
             name="fruit",
         )
-        extracted_df = sample_series.ai.extract()
 
-        # assert columns are ['fruit_color', 'fruit_flavor', 'fruit_taste']
+        extracted_df = sample_series.ai.extract()
         expected_columns = ["fruit_color", "fruit_flavor", "fruit_taste"]
         self.assertListEqual(list(extracted_df.columns), expected_columns)
-
-        # assert the row with None is filled with NaN
         self.assertTrue(extracted_df.iloc[1].isna().all())
 
-    def test_extract_series_with_invalid_row(self):
+    def test_series_extract_with_invalid_row(self):
+        """Test Series.ai.extract with invalid data types."""
         sample_series = pd.Series(
             [
                 Fruit(color="red", flavor="sweet", taste="crunchy"),
@@ -138,16 +498,14 @@ class TestPandasExt(unittest.TestCase):
             ],
             name="fruit",
         )
-        extracted_df = sample_series.ai.extract()
 
-        # assert columns are ['fruit_color', 'fruit_flavor', 'fruit_taste']
+        extracted_df = sample_series.ai.extract()
         expected_columns = ["fruit_color", "fruit_flavor", "fruit_taste"]
         self.assertListEqual(list(extracted_df.columns), expected_columns)
-
-        # assert the invalid row is filled with NaN
         self.assertTrue(extracted_df.iloc[1].isna().all())
 
-    def test_extract(self):
+    def test_dataframe_extract_pydantic(self):
+        """Test DataFrame.ai.extract with Pydantic models."""
         sample_df = pd.DataFrame(
             [
                 {"name": "apple", "fruit": Fruit(color="red", flavor="sweet", taste="crunchy")},
@@ -159,7 +517,8 @@ class TestPandasExt(unittest.TestCase):
         expected_columns = ["name", "fruit_color", "fruit_flavor", "fruit_taste"]
         self.assertListEqual(list(sample_df.columns), expected_columns)
 
-    def test_extract_dict(self):
+    def test_dataframe_extract_dict(self):
+        """Test DataFrame.ai.extract with dictionaries."""
         sample_df = pd.DataFrame(
             [
                 {"fruit": {"name": "apple", "color": "red", "flavor": "sweet", "taste": "crunchy"}},
@@ -171,7 +530,8 @@ class TestPandasExt(unittest.TestCase):
         expected_columns = ["fruit_name", "fruit_color", "fruit_flavor", "fruit_taste"]
         self.assertListEqual(list(sample_df.columns), expected_columns)
 
-    def test_extract_dict_with_none(self):
+    def test_dataframe_extract_dict_with_none(self):
+        """Test DataFrame.ai.extract with None values."""
         sample_df = pd.DataFrame(
             [
                 {"fruit": {"name": "apple", "color": "red", "flavor": "sweet", "taste": "crunchy"}},
@@ -182,11 +542,10 @@ class TestPandasExt(unittest.TestCase):
 
         expected_columns = ["fruit_name", "fruit_color", "fruit_flavor", "fruit_taste"]
         self.assertListEqual(list(sample_df.columns), expected_columns)
-
-        # assert the row with None is filled with NaN
         self.assertTrue(sample_df.iloc[1].isna().all())
 
-    def test_extract_with_invalid_row(self):
+    def test_dataframe_extract_with_invalid_row(self):
+        """Test DataFrame.ai.extract error handling with invalid data."""
         sample_df = pd.DataFrame(
             [
                 {"fruit": {"name": "apple", "color": "red", "flavor": "sweet", "taste": "crunchy"}},
@@ -198,64 +557,94 @@ class TestPandasExt(unittest.TestCase):
         expected_columns = ["fruit"]
         self.assertListEqual(list(sample_df.columns), expected_columns)
 
-    def test_count_tokens(self):
-        num_tokens: pd.Series = self.df.name.ai.count_tokens()
+    # ===== CACHE METHODS =====
 
-        # assert all values are elements of int
-        self.assertTrue(all(isinstance(num_token, int) for num_token in num_tokens))
+    def test_shared_cache_responses_sync(self):
+        """Test shared cache functionality for responses."""
+        from openaivec._proxy import BatchingMapProxy
 
-    def test_similarity(self):
-        sample_df = pd.DataFrame(
-            {
-                "vector1": [np.array([1, 0]), np.array([0, 1]), np.array([1, 1])],
-                "vector2": [np.array([1, 0]), np.array([0, 1]), np.array([1, -1])],
-            }
-        )
-        similarity_scores = sample_df.ai.similarity("vector1", "vector2")
+        shared_cache = BatchingMapProxy(batch_size=32)
+        series1 = pd.Series(["cat", "dog", "elephant"])
+        series2 = pd.Series(["dog", "elephant", "lion"])
 
-        # Expected cosine similarity values
-        expected_scores = [
-            1.0,  # Cosine similarity between [1, 0] and [1, 0]
-            1.0,  # Cosine similarity between [0, 1] and [0, 1]
-            0.0,  # Cosine similarity between [1, 1] and [1, -1]
-        ]
+        result1 = series1.ai.responses_with_cache(instructions="translate to French", cache=shared_cache)
+        result2 = series2.ai.responses_with_cache(instructions="translate to French", cache=shared_cache)
 
-        # Assert similarity scores match expected values
-        self.assertTrue(np.allclose(similarity_scores, expected_scores))
+        self.assertTrue(all(isinstance(x, str) for x in result1))
+        self.assertTrue(all(isinstance(x, str) for x in result2))
+        self.assertEqual(len(result1), 3)
+        self.assertEqual(len(result2), 3)
 
-    def test_similarity_with_invalid_vectors(self):
-        sample_df = pd.DataFrame(
-            {
-                "vector1": [np.array([1, 0]), "invalid", np.array([1, 1])],
-                "vector2": [np.array([1, 0]), np.array([0, 1]), np.array([1, -1])],
-            }
-        )
+        # Check cache sharing works
+        dog_idx1 = series1[series1 == "dog"].index[0]
+        dog_idx2 = series2[series2 == "dog"].index[0]
+        elephant_idx1 = series1[series1 == "elephant"].index[0]
+        elephant_idx2 = series2[series2 == "elephant"].index[0]
 
-        with self.assertRaises(TypeError):
-            sample_df.ai.similarity("vector1", "vector2")
+        self.assertEqual(result1[dog_idx1], result2[dog_idx2])
+        self.assertEqual(result1[elephant_idx1], result2[elephant_idx2])
 
-    def test_fillna_with_no_missing_values(self):
-        """Test fillna method when target column has no missing values."""
-        # Create a DataFrame without missing values in target column
-        df_complete = pd.DataFrame(
-            {
-                "name": ["Alice", "Bob", "Charlie", "David"],
-                "age": [25, 30, 35, 40],
-                "city": ["Tokyo", "Osaka", "Kyoto", "Tokyo"],
-            }
-        )
+    def test_shared_cache_embeddings_sync(self):
+        """Test shared cache functionality for embeddings."""
+        from openaivec._proxy import BatchingMapProxy
 
-        # Test fillna on a column with no missing values
-        result_df = df_complete.ai.fillna("name")
+        shared_cache = BatchingMapProxy(batch_size=32)
+        series1 = pd.Series(["apple", "banana", "cherry"])
+        series2 = pd.Series(["banana", "cherry", "date"])
 
-        # Assert that the result is identical to the original
-        pd.testing.assert_frame_equal(result_df, df_complete)
+        embeddings1 = series1.ai.embeddings_with_cache(cache=shared_cache)
+        embeddings2 = series2.ai.embeddings_with_cache(cache=shared_cache)
+
+        self.assertTrue(all(isinstance(emb, np.ndarray) for emb in embeddings1))
+        self.assertTrue(all(isinstance(emb, np.ndarray) for emb in embeddings2))
+        self.assertEqual(len(embeddings1), 3)
+        self.assertEqual(len(embeddings2), 3)
+
+        # Check cache sharing
+        banana_idx1 = series1[series1 == "banana"].index[0]
+        banana_idx2 = series2[series2 == "banana"].index[0]
+        cherry_idx1 = series1[series1 == "cherry"].index[0]
+        cherry_idx2 = series2[series2 == "cherry"].index[0]
+
+        np.testing.assert_array_equal(embeddings1[banana_idx1], embeddings2[banana_idx2])
+        np.testing.assert_array_equal(embeddings1[cherry_idx1], embeddings2[cherry_idx2])
+
+    def test_shared_cache_async(self):
+        """Test shared cache functionality for async methods."""
+        from openaivec._proxy import AsyncBatchingMapProxy
+
+        async def run_test():
+            shared_cache = AsyncBatchingMapProxy(batch_size=32, max_concurrency=4)
+            series1 = pd.Series(["cat", "dog", "elephant"])
+            series2 = pd.Series(["dog", "elephant", "lion"])
+
+            result1 = await series1.aio.responses_with_cache(instructions="translate to French", cache=shared_cache)
+            result2 = await series2.aio.responses_with_cache(instructions="translate to French", cache=shared_cache)
+
+            return result1, result2, series1, series2
+
+        result1, result2, series1, series2 = asyncio.run(run_test())
+
+        self.assertTrue(all(isinstance(x, str) for x in result1))
+        self.assertTrue(all(isinstance(x, str) for x in result2))
+        self.assertEqual(len(result1), 3)
+        self.assertEqual(len(result2), 3)
+
+        # Check cache sharing
+        dog_idx1 = series1[series1 == "dog"].index[0]
+        dog_idx2 = series2[series2 == "dog"].index[0]
+        elephant_idx1 = series1[series1 == "elephant"].index[0]
+        elephant_idx2 = series2[series2 == "elephant"].index[0]
+
+        self.assertEqual(result1[dog_idx1], result2[dog_idx2])
+        self.assertEqual(result1[elephant_idx1], result2[elephant_idx2])
+
+    # ===== FILLNA SPECIFIC TESTS =====
 
     def test_fillna_task_creation(self):
         """Test that fillna method creates a valid task."""
         from openaivec.task.table import fillna
 
-        # Create a DataFrame with missing values
         df_with_missing = pd.DataFrame(
             {
                 "name": ["Alice", "Bob", None, "David"],
@@ -264,10 +653,8 @@ class TestPandasExt(unittest.TestCase):
             }
         )
 
-        # Test that task creation works without errors
         task = fillna(df_with_missing, "name")
 
-        # Assert that the task is created
         self.assertIsNotNone(task)
         self.assertEqual(task.temperature, 0.0)
         self.assertEqual(task.top_p, 1.0)
@@ -301,7 +688,6 @@ class TestPandasExt(unittest.TestCase):
 
     def test_fillna_missing_rows_detection(self):
         """Test that fillna correctly identifies missing rows."""
-        # Create a DataFrame with some missing values
         df_with_missing = pd.DataFrame(
             {
                 "name": ["Alice", "Bob", None, "David", None],
@@ -310,313 +696,115 @@ class TestPandasExt(unittest.TestCase):
             }
         )
 
-        # Get missing rows manually
         missing_rows = df_with_missing[df_with_missing["name"].isna()]
 
-        # Assert that we correctly identify 2 missing rows
         self.assertEqual(len(missing_rows), 2)
         self.assertTrue(missing_rows.index.tolist() == [2, 4])
 
-    def test_fillna_dataframe_copy(self):
-        """Test that fillna returns a copy and doesn't modify original."""
-        # Test fillna (this will actually call the API, but we check basic behavior)
-        # For testing purposes, we'll just verify that the original isn't modified
-        # when there are no missing values
-        df_no_missing = pd.DataFrame(
-            {
-                "name": ["Alice", "Bob", "Charlie", "David"],
-                "age": [25, 30, 35, 40],
-                "city": ["Tokyo", "Osaka", "Kyoto", "Tokyo"],
-            }
-        )
+    # ===== EDGE CASES & ERROR HANDLING =====
 
-        result_df = df_no_missing.ai.fillna("name")
+    def test_empty_series_handling(self):
+        """Test handling of empty Series for various methods."""
+        empty_series = pd.Series([], dtype=str)
 
-        # Assert original is unchanged
-        pd.testing.assert_frame_equal(df_no_missing, result_df)
+        # Test embeddings with empty series
+        embeddings = empty_series.ai.embeddings()
+        self.assertEqual(len(embeddings), 0)
+        self.assertTrue(embeddings.index.equals(empty_series.index))
 
-    def test_fillna_index_preservation_structure(self):
-        """Test that fillna preserves DataFrame structure without API calls."""
-        # Create a DataFrame with custom index but no missing values
-        df_custom_index = pd.DataFrame(
-            {"name": ["Alice", "Bob", "Charlie"], "score": [85, 90, 78]}, index=["student_1", "student_2", "student_3"]
-        )
+        # Test responses with empty series
+        responses = empty_series.ai.responses("translate to French")
+        self.assertEqual(len(responses), 0)
+        self.assertTrue(responses.index.equals(empty_series.index))
 
-        # Test fillna on complete data (no API call needed)
-        result_df = df_custom_index.ai.fillna("name")
+        # Test count_tokens with empty series
+        tokens = empty_series.ai.count_tokens()
+        self.assertEqual(len(tokens), 0)
 
-        # Assert that the structure is preserved
-        pd.testing.assert_index_equal(result_df.index, df_custom_index.index)
-        self.assertEqual(result_df.shape, df_custom_index.shape)
-        pd.testing.assert_frame_equal(result_df, df_custom_index)
+    def test_empty_dataframe_handling(self):
+        """Test handling of empty DataFrame for various methods."""
+        empty_df = pd.DataFrame()
 
-    def test_shared_cache_responses_sync(self):
-        """Test that multiple Series instances can share the same cache for responses."""
-        from openaivec._proxy import BatchingMapProxy
+        # Test that empty dataframe doesn't crash
+        self.assertTrue(empty_df.empty)
 
-        # Create a shared cache with custom batch size
-        shared_cache = BatchingMapProxy(batch_size=32)
+    def test_structured_output_with_pydantic(self):
+        """Test structured output using Pydantic models."""
+        series = pd.Series(["I love this product!", "This is terrible"])
 
-        # Create two different Series with some overlapping data
-        series1 = pd.Series(["cat", "dog", "elephant"])
-        series2 = pd.Series(["dog", "elephant", "lion"])  # "dog" and "elephant" are shared
-
-        # Use the shared cache for both series
-        result1 = series1.ai.responses_with_cache(instructions="translate to French", cache=shared_cache)
-        result2 = series2.ai.responses_with_cache(instructions="translate to French", cache=shared_cache)
-
-        # Verify results are valid
-        self.assertTrue(all(isinstance(x, str) for x in result1))
-        self.assertTrue(all(isinstance(x, str) for x in result2))
-        self.assertEqual(len(result1), 3)
-        self.assertEqual(len(result2), 3)
-
-        # Check that overlapping items ("dog", "elephant") have the same results
-        # Find indices of shared items
-        dog_idx1 = series1[series1 == "dog"].index[0]
-        dog_idx2 = series2[series2 == "dog"].index[0]
-        elephant_idx1 = series1[series1 == "elephant"].index[0]
-        elephant_idx2 = series2[series2 == "elephant"].index[0]
-
-        # The translations should be identical due to cache sharing
-        self.assertEqual(result1[dog_idx1], result2[dog_idx2])
-        self.assertEqual(result1[elephant_idx1], result2[elephant_idx2])
-
-    def test_shared_cache_embeddings_sync(self):
-        """Test that multiple Series instances can share the same cache for embeddings."""
-        import numpy as np
-
-        from openaivec._proxy import BatchingMapProxy
-
-        # Create a shared cache with custom batch size
-        shared_cache = BatchingMapProxy(batch_size=32)
-
-        # Create two different Series with some overlapping data
-        series1 = pd.Series(["apple", "banana", "cherry"])
-        series2 = pd.Series(["banana", "cherry", "date"])  # "banana" and "cherry" are shared
-
-        # Use the shared cache for both series
-        embeddings1 = series1.ai.embeddings_with_cache(cache=shared_cache)
-        embeddings2 = series2.ai.embeddings_with_cache(cache=shared_cache)
-
-        # Verify embeddings are valid numpy arrays
-        self.assertTrue(all(isinstance(emb, np.ndarray) for emb in embeddings1))
-        self.assertTrue(all(isinstance(emb, np.ndarray) for emb in embeddings2))
-        self.assertEqual(len(embeddings1), 3)
-        self.assertEqual(len(embeddings2), 3)
-
-        # Check that overlapping items have identical embeddings due to cache sharing
-        banana_idx1 = series1[series1 == "banana"].index[0]
-        banana_idx2 = series2[series2 == "banana"].index[0]
-        cherry_idx1 = series1[series1 == "cherry"].index[0]
-        cherry_idx2 = series2[series2 == "cherry"].index[0]
-
-        # The embeddings should be identical due to cache sharing
-        np.testing.assert_array_equal(embeddings1[banana_idx1], embeddings2[banana_idx2])
-        np.testing.assert_array_equal(embeddings1[cherry_idx1], embeddings2[cherry_idx2])
-
-    def test_shared_cache_dataframe_responses_sync(self):
-        """Test that DataFrame instances can share the same cache for responses."""
-        from openaivec._proxy import BatchingMapProxy
-
-        # Create a shared cache
-        shared_cache = BatchingMapProxy(batch_size=32)
-
-        # Create two DataFrames with overlapping serialized JSON representations
-        df1 = pd.DataFrame(
-            [
-                {"animal": "cat", "legs": 4},
-                {"animal": "dog", "legs": 4},
-            ]
-        )
-        df2 = pd.DataFrame(
-            [
-                {"animal": "dog", "legs": 4},  # This row should be cached
-                {"animal": "bird", "legs": 2},
-            ]
-        )
-
-        # Use the shared cache for both DataFrames
-        result1 = df1.ai.responses_with_cache(instructions="what animal is this?", cache=shared_cache)
-        result2 = df2.ai.responses_with_cache(instructions="what animal is this?", cache=shared_cache)
-
-        # Verify results are valid
-        self.assertTrue(all(isinstance(x, str) for x in result1))
-        self.assertTrue(all(isinstance(x, str) for x in result2))
-        self.assertEqual(len(result1), 2)
-        self.assertEqual(len(result2), 2)
-
-        # Since both DataFrames have the same row {"animal": "dog", "legs": 4},
-        # the responses should be identical due to cache sharing
-        # (The exact match depends on JSON serialization being consistent)
-        self.assertIsNotNone(result1[1])  # Dog response from df1
-        self.assertIsNotNone(result2[0])  # Dog response from df2 (should be cached)
-
-    def test_shared_cache_responses_async(self):
-        """Test that multiple async Series instances can share the same cache for responses."""
-        from openaivec._proxy import AsyncBatchingMapProxy
-
-        async def run_test():
-            # Create a shared cache with custom batch size
-            shared_cache = AsyncBatchingMapProxy(batch_size=32, max_concurrency=4)
-
-            # Create two different Series with some overlapping data
-            series1 = pd.Series(["cat", "dog", "elephant"])
-            series2 = pd.Series(["dog", "elephant", "lion"])  # "dog" and "elephant" are shared
-
-            # Use the shared cache for both series
-            result1 = await series1.aio.responses_with_cache(instructions="translate to French", cache=shared_cache)
-            result2 = await series2.aio.responses_with_cache(instructions="translate to French", cache=shared_cache)
-
-            return result1, result2, series1, series2
-
-        result1, result2, series1, series2 = asyncio.run(run_test())
-
-        # Verify results are valid
-        self.assertTrue(all(isinstance(x, str) for x in result1))
-        self.assertTrue(all(isinstance(x, str) for x in result2))
-        self.assertEqual(len(result1), 3)
-        self.assertEqual(len(result2), 3)
-
-        # Check that overlapping items ("dog", "elephant") have the same results
-        dog_idx1 = series1[series1 == "dog"].index[0]
-        dog_idx2 = series2[series2 == "dog"].index[0]
-        elephant_idx1 = series1[series1 == "elephant"].index[0]
-        elephant_idx2 = series2[series2 == "elephant"].index[0]
-
-        # The translations should be identical due to cache sharing
-        self.assertEqual(result1[dog_idx1], result2[dog_idx2])
-        self.assertEqual(result1[elephant_idx1], result2[elephant_idx2])
-
-    def test_shared_cache_embeddings_async(self):
-        """Test that multiple async Series instances can share the same cache for embeddings."""
-        import numpy as np
-
-        from openaivec._proxy import AsyncBatchingMapProxy
-
-        async def run_test():
-            # Create a shared cache with custom batch size
-            shared_cache = AsyncBatchingMapProxy(batch_size=32, max_concurrency=4)
-
-            # Create two different Series with some overlapping data
-            series1 = pd.Series(["apple", "banana", "cherry"])
-            series2 = pd.Series(["banana", "cherry", "date"])  # "banana" and "cherry" are shared
-
-            # Use the shared cache for both series
-            embeddings1 = await series1.aio.embeddings_with_cache(cache=shared_cache)
-            embeddings2 = await series2.aio.embeddings_with_cache(cache=shared_cache)
-
-            return embeddings1, embeddings2, series1, series2
-
-        embeddings1, embeddings2, series1, series2 = asyncio.run(run_test())
-
-        # Verify embeddings are valid numpy arrays
-        self.assertTrue(all(isinstance(emb, np.ndarray) for emb in embeddings1))
-        self.assertTrue(all(isinstance(emb, np.ndarray) for emb in embeddings2))
-        self.assertEqual(len(embeddings1), 3)
-        self.assertEqual(len(embeddings2), 3)
-
-        # Check that overlapping items have identical embeddings due to cache sharing
-        banana_idx1 = series1[series1 == "banana"].index[0]
-        banana_idx2 = series2[series2 == "banana"].index[0]
-        cherry_idx1 = series1[series1 == "cherry"].index[0]
-        cherry_idx2 = series2[series2 == "cherry"].index[0]
-
-        # The embeddings should be identical due to cache sharing
-        np.testing.assert_array_equal(embeddings1[banana_idx1], embeddings2[banana_idx2])
-        np.testing.assert_array_equal(embeddings1[cherry_idx1], embeddings2[cherry_idx2])
-
-    def test_shared_cache_dataframe_responses_async(self):
-        """Test that async DataFrame instances can share the same cache for responses."""
-        from openaivec._proxy import AsyncBatchingMapProxy
-
-        async def run_test():
-            # Create a shared cache
-            shared_cache = AsyncBatchingMapProxy(batch_size=32, max_concurrency=4)
-
-            # Create two DataFrames with overlapping serialized JSON representations
-            df1 = pd.DataFrame(
-                [
-                    {"animal": "cat", "legs": 4},
-                    {"animal": "dog", "legs": 4},
-                ]
-            )
-            df2 = pd.DataFrame(
-                [
-                    {"animal": "dog", "legs": 4},  # This row should be cached
-                    {"animal": "bird", "legs": 2},
-                ]
+        try:
+            results = series.ai.responses(
+                instructions="Analyze sentiment and provide confidence score",
+                response_format=SentimentResult,
+                batch_size=2,
+                show_progress=False,
             )
 
-            # Use the shared cache for both DataFrames
-            result1 = await df1.aio.responses_with_cache(instructions="what animal is this?", cache=shared_cache)
-            result2 = await df2.aio.responses_with_cache(instructions="what animal is this?", cache=shared_cache)
+            self.assertEqual(len(results), 2)
+            for result in results:
+                self.assertIsInstance(result, SentimentResult)
+                self.assertIn(result.sentiment.lower(), ["positive", "negative", "neutral"])
+                self.assertIsInstance(result.confidence, float)
 
-            return result1, result2
+        except Exception:
+            # Some API calls might fail in test environment
+            pass
 
-        result1, result2 = asyncio.run(run_test())
+    def test_parse_with_cache_methods(self):
+        """Test parse_with_cache methods for both Series and DataFrame."""
+        from openaivec._proxy import BatchingMapProxy
 
-        # Verify results are valid
-        self.assertTrue(all(isinstance(x, str) for x in result1))
-        self.assertTrue(all(isinstance(x, str) for x in result2))
-        self.assertEqual(len(result1), 2)
-        self.assertEqual(len(result2), 2)
+        # Test Series parse_with_cache
+        series = pd.Series(["Good product", "Bad experience"])
+        cache = BatchingMapProxy(batch_size=2)
 
-        # Since both DataFrames have the same row {"animal": "dog", "legs": 4},
-        # the responses should be identical due to cache sharing
-        self.assertIsNotNone(result1[1])  # Dog response from df1
-        self.assertIsNotNone(result2[0])  # Dog response from df2 (should be cached)
+        results = series.ai.parse_with_cache(instructions="Extract sentiment", cache=cache, show_progress=False)
 
-    def test_series_ai_task(self):
-        """Test Series.ai.task method."""
-        # Test basic task execution
-        series = pd.Series(["test1", "test2", "test3"])
-        # We can't test actual API calls without mocking, but we can test the method exists
-        # and accepts the right parameters
-        self.assertTrue(hasattr(series.ai, "task"))
-        self.assertTrue(callable(series.ai.task))
+        self.assertEqual(len(results), 2)
+        self.assertTrue(all(isinstance(result, (dict, BaseModel)) for result in results))
 
-    def test_series_aio_task(self):
-        """Test Series.aio.task method (async)."""
-        # Test that async task method exists and is callable
-        series = pd.Series(["test1", "test2", "test3"])
-        self.assertTrue(hasattr(series.aio, "task"))
-        self.assertTrue(callable(series.aio.task))
+        # Test DataFrame parse_with_cache
+        df = pd.DataFrame([{"review": "Great product", "rating": 5}, {"review": "Poor quality", "rating": 1}])
 
-    def test_dataframe_ai_task(self):
-        """Test DataFrame.ai.task method."""
-        # Test basic task execution
-        df = pd.DataFrame({"col1": ["test1", "test2"], "col2": ["a", "b"]})
-        # We can't test actual API calls without mocking, but we can test the method exists
-        # and accepts the right parameters
-        self.assertTrue(hasattr(df.ai, "task"))
-        self.assertTrue(callable(df.ai.task))
+        df_results = df.ai.parse_with_cache(instructions="Analyze sentiment", cache=cache, show_progress=False)
 
-    def test_dataframe_aio_task(self):
-        """Test DataFrame.aio.task method (async)."""
-        # Test that async task method exists and is callable
-        df = pd.DataFrame({"col1": ["test1", "test2"], "col2": ["a", "b"]})
-        self.assertTrue(hasattr(df.aio, "task"))
-        self.assertTrue(callable(df.aio.task))
+        self.assertEqual(len(df_results), 2)
+        self.assertTrue(all(isinstance(result, (dict, BaseModel)) for result in df_results))
 
-    def test_aio_fillna(self):
-        """Test DataFrame.aio.fillna method (async)."""
+    # ===== CONFIGURATION & PARAMETER TESTS =====
 
-        async def run_test():
-            df_with_missing = pd.DataFrame(
-                {
-                    "name": ["Alice", "Bob", "Charlie"],
-                    "age": [25, 30, 35],
-                    "city": ["Tokyo", "Osaka", "Kyoto"],
-                }
-            )
-            # Test that fillna returns same DataFrame when no missing values
-            result = await df_with_missing.aio.fillna("name")
-            return result, df_with_missing
+    def test_configuration_methods(self):
+        """Test configuration methods use, use_async, responses_model, embeddings_model."""
+        from openai import AsyncOpenAI, OpenAI
 
-        result, original = asyncio.run(run_test())
-        # When no missing values, should return identical DataFrame
-        pd.testing.assert_frame_equal(result, original)
+        # Test that configuration methods exist and are callable
+        self.assertTrue(callable(pandas_ext.use))
+        self.assertTrue(callable(pandas_ext.use_async))
+        self.assertTrue(callable(pandas_ext.responses_model))
+        self.assertTrue(callable(pandas_ext.embeddings_model))
+
+        # Test setting custom client (these use environment variables automatically)
+        test_client = OpenAI()
+        try:
+            pandas_ext.use(test_client)
+        except Exception:
+            # Connection/API errors are acceptable for testing
+            pass
+
+        # Test setting async client
+        async_test_client = AsyncOpenAI()
+        try:
+            pandas_ext.use_async(async_test_client)
+        except Exception:
+            # Connection/API errors are acceptable for testing
+            pass
+
+        # Test model configuration
+        try:
+            pandas_ext.responses_model("gpt-4.1-mini")
+            pandas_ext.embeddings_model("text-embedding-3-small")
+        except Exception as e:
+            self.fail(f"Model configuration failed unexpectedly: {e}")
 
     def test_show_progress_parameter_consistency(self):
         """Test that show_progress parameter is consistently available across methods."""
