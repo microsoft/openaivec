@@ -91,9 +91,10 @@ class TestPandasExt(unittest.TestCase):
         self.assertIsNotNone(schema)
         self.assertIsNotNone(schema.model)
         self.assertIsNotNone(schema.task)
-        self.assertIsNotNone(schema.fields)
-        self.assertIsInstance(schema.fields, list)
-        self.assertGreater(len(schema.fields), 0)
+        self.assertIsNotNone(schema.object_spec)
+        self.assertIsNotNone(schema.object_spec.fields)
+        self.assertIsInstance(schema.object_spec.fields, list)
+        self.assertGreater(len(schema.object_spec.fields), 0)
         self.assertTrue(hasattr(schema.model, "__name__"))
 
     def test_series_task(self):
@@ -150,9 +151,9 @@ class TestPandasExt(unittest.TestCase):
         self.assertIsNotNone(schema)
         self.assertIsNotNone(schema.model)
         self.assertIsNotNone(schema.task)
-        self.assertIsNotNone(schema.fields)
-        self.assertIsInstance(schema.fields, list)
-        self.assertGreater(len(schema.fields), 0)
+        self.assertIsNotNone(schema.object_spec.fields)
+        self.assertIsInstance(schema.object_spec.fields, list)
+        self.assertGreater(len(schema.object_spec.fields), 0)
 
     def test_dataframe_task(self):
         """Test DataFrame.ai.task method with actual task execution."""
@@ -782,8 +783,8 @@ class TestPandasExt(unittest.TestCase):
         self.assertTrue(callable(pandas_ext.responses_model))
         self.assertTrue(callable(pandas_ext.embeddings_model))
 
-        # Test setting custom client (should not raise)
-        test_client = OpenAI(api_key="test-key")
+        # Test setting custom client (these use environment variables automatically)
+        test_client = OpenAI()
         try:
             pandas_ext.use(test_client)
         except Exception:
@@ -791,7 +792,7 @@ class TestPandasExt(unittest.TestCase):
             pass
 
         # Test setting async client
-        async_test_client = AsyncOpenAI(api_key="test-key")
+        async_test_client = AsyncOpenAI()
         try:
             pandas_ext.use_async(async_test_client)
         except Exception:

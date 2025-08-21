@@ -216,8 +216,12 @@ class OpenAIVecSeriesAccessor:
             top_p=top_p,
         )
 
-        # Forward any extra kwargs to the underlying Responses API.
-        return pd.Series(client.parse(self._obj.tolist(), **api_kwargs), index=self._obj.index, name=self._obj.name)
+        # Forward any extra kwargs to the underlying Responses API, excluding proxy-specific ones.
+        proxy_params = {"show_progress", "batch_size"}
+        filtered_kwargs = {k: v for k, v in api_kwargs.items() if k not in proxy_params}
+        return pd.Series(
+            client.parse(self._obj.tolist(), **filtered_kwargs), index=self._obj.index, name=self._obj.name
+        )
 
     def responses(
         self,
@@ -1174,7 +1178,11 @@ class AsyncOpenAIVecSeriesAccessor:
             temperature=temperature,
             top_p=top_p,
         )
-        results = await client.parse(self._obj.tolist(), **api_kwargs)
+
+        # Forward any extra kwargs to the underlying Responses API, excluding proxy-specific ones.
+        proxy_params = {"show_progress", "batch_size", "max_concurrency"}
+        filtered_kwargs = {k: v for k, v in api_kwargs.items() if k not in proxy_params}
+        results = await client.parse(self._obj.tolist(), **filtered_kwargs)
         return pd.Series(results, index=self._obj.index, name=self._obj.name)
 
     async def responses(
