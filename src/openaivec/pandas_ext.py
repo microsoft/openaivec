@@ -454,6 +454,7 @@ class OpenAIVecSeriesAccessor:
         """Parse Series values using an LLM with a provided cache.
         This method allows you to parse the Series content into structured data
         using an LLM, optionally inferring a schema based on the provided purpose.
+
         Args:
             instructions (str): System prompt for the LLM.
             cache (BatchingMapProxy[str, BaseModel]): Explicit cache instance for
