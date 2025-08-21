@@ -416,74 +416,16 @@ def task_udf(
         **Automatic Caching**: Duplicate inputs within each partition are cached,
         reducing API calls and costs significantly on datasets with repeated content.
     """
-    # Serialize task parameters for Spark serialization compatibility
-    task_instructions = task.instructions
-    task_temperature = task.temperature
-    task_top_p = task.top_p
-
-    if issubclass(task.response_format, BaseModel):
-        task_response_format_json = serialize_base_model(task.response_format)
-
-        # Deserialize the response format from JSON
-        response_format = deserialize_base_model(task_response_format_json)
-        spark_schema = _pydantic_to_spark_schema(response_format)
-
-        @pandas_udf(returnType=spark_schema)  # type: ignore[call-overload]
-        def task_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
-            pandas_ext.responses_model(model_name)
-            cache = AsyncBatchingMapProxy[str, response_format](
-                batch_size=batch_size,
-                max_concurrency=max_concurrency,
-            )
-
-            try:
-                for part in col:
-                    predictions: pd.Series = asyncio.run(
-                        part.aio.responses_with_cache(
-                            instructions=task_instructions,
-                            response_format=response_format,
-                            temperature=task_temperature,
-                            top_p=task_top_p,
-                            cache=cache,
-                            **api_kwargs,
-                        )
-                    )
-                    yield pd.DataFrame(predictions.map(_safe_dump).tolist())
-            finally:
-                asyncio.run(cache.clear())
-
-        return task_udf  # type: ignore[return-value]
-
-    elif issubclass(task.response_format, str):
-
-        @pandas_udf(returnType=StringType())  # type: ignore[call-overload]
-        def task_string_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
-            pandas_ext.responses_model(model_name)
-            cache = AsyncBatchingMapProxy[str, str](
-                batch_size=batch_size,
-                max_concurrency=max_concurrency,
-            )
-
-            try:
-                for part in col:
-                    predictions: pd.Series = asyncio.run(
-                        part.aio.responses_with_cache(
-                            instructions=task_instructions,
-                            response_format=str,
-                            temperature=task_temperature,
-                            top_p=task_top_p,
-                            cache=cache,
-                            **api_kwargs,
-                        )
-                    )
-                    yield predictions.map(_safe_cast_str)
-            finally:
-                asyncio.run(cache.clear())
-
-        return task_string_udf  # type: ignore[return-value]
-
-    else:
-        raise ValueError(f"Unsupported response_format in task: {task.response_format}")
+    return responses_udf(
+        instructions=task.instructions,
+        response_format=task.response_format,
+        model_name=model_name,
+        batch_size=batch_size,
+        temperature=task.temperature,
+        top_p=task.top_p,
+        max_concurrency=max_concurrency,
+        **api_kwargs,
+    )
 
 
 def embeddings_udf(
