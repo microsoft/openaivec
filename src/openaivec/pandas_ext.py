@@ -224,7 +224,6 @@ class OpenAIVecSeriesAccessor:
         instructions: str,
         response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
-        max_concurrency: int = 8,
         temperature: float | None = 0.0,
         top_p: float = 1.0,
         show_progress: bool = False,
@@ -263,7 +262,7 @@ class OpenAIVecSeriesAccessor:
         """
         return self.responses_with_cache(
             instructions=instructions,
-            cache=BatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress),
+            cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
             response_format=response_format,
             temperature=temperature,
             top_p=top_p,
@@ -313,9 +312,7 @@ class OpenAIVecSeriesAccessor:
             name=self._obj.name,
         )
 
-    def embeddings(
-        self, batch_size: int | None = None, max_concurrency: int = 8, show_progress: bool = False
-    ) -> pd.Series:
+    def embeddings(self, batch_size: int | None = None, show_progress: bool = False) -> pd.Series:
         """Compute OpenAI embeddings for every Series element.
 
         Example:
@@ -343,7 +340,7 @@ class OpenAIVecSeriesAccessor:
                 (dtype ``float32``).
         """
         return self.embeddings_with_cache(
-            cache=BatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress),
+            cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
         )
 
     def task_with_cache(
@@ -392,7 +389,6 @@ class OpenAIVecSeriesAccessor:
         self,
         task: PreparedTask,
         batch_size: int | None = None,
-        max_concurrency=8,
         show_progress: bool = False,
         **api_kwargs,
     ) -> pd.Series:
@@ -437,7 +433,7 @@ class OpenAIVecSeriesAccessor:
         """
         return self.task_with_cache(
             task=task,
-            cache=BatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress),
+            cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
             **api_kwargs,
         )
 
@@ -491,7 +487,6 @@ class OpenAIVecSeriesAccessor:
         response_format: ResponseFormat = None,
         max_examples: int = 100,
         batch_size: int | None = None,
-        max_concurrency: int = 8,
         show_progress: bool = False,
         temperature: float | None = 0.0,
         top_p: float = 1.0,
@@ -521,7 +516,7 @@ class OpenAIVecSeriesAccessor:
         """
         return self.parse_with_cache(
             instructions=instructions,
-            cache=BatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress),
+            cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
             response_format=response_format,
             max_examples=max_examples,
             temperature=temperature,
@@ -698,7 +693,6 @@ class OpenAIVecDataFrameAccessor:
         instructions: str,
         response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
-        max_concurrency: int = 8,
         temperature: float | None = 0.0,
         top_p: float = 1.0,
         show_progress: bool = False,
@@ -732,8 +726,6 @@ class OpenAIVecDataFrameAccessor:
             batch_size (int | None, optional): Number of requests sent in one batch.
                 Defaults to ``None`` (automatic batch size optimization
                 based on execution time). Set to a positive integer for fixed batch size.
-            max_concurrency (int, optional): Maximum number of concurrent
-                requests. Defaults to ``8``.
             temperature (float | None, optional): Sampling temperature. Defaults to ``0.0``.
             top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
@@ -743,7 +735,7 @@ class OpenAIVecDataFrameAccessor:
         """
         return self.responses_with_cache(
             instructions=instructions,
-            cache=BatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress),
+            cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
             response_format=response_format,
             temperature=temperature,
             top_p=top_p,
@@ -779,7 +771,6 @@ class OpenAIVecDataFrameAccessor:
         self,
         task: PreparedTask,
         batch_size: int | None = None,
-        max_concurrency: int = 8,
         show_progress: bool = False,
         **api_kwargs,
     ) -> pd.Series:
@@ -815,8 +806,6 @@ class OpenAIVecDataFrameAccessor:
             batch_size (int | None, optional): Number of requests sent in one batch
                 to optimize API usage. Defaults to ``None`` (automatic batch size
                 optimization based on execution time). Set to a positive integer for fixed batch size.
-            max_concurrency (int, optional): Maximum number of concurrent
-                requests. Defaults to ``8``.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
 
         Additional Keyword Args:
@@ -832,7 +821,6 @@ class OpenAIVecDataFrameAccessor:
         return _df_rows_to_json_series(self._obj).ai.task(
             task=task,
             batch_size=batch_size,
-            max_concurrency=max_concurrency,
             show_progress=show_progress,
             **api_kwargs,
         )
@@ -888,7 +876,6 @@ class OpenAIVecDataFrameAccessor:
         response_format: ResponseFormat = None,
         max_examples: int = 100,
         batch_size: int | None = None,
-        max_concurrency: int = 8,
         show_progress: bool = False,
         temperature: float | None = 0.0,
         top_p: float = 1.0,
@@ -908,7 +895,6 @@ class OpenAIVecDataFrameAccessor:
                 Defaults to 100.
             batch_size (int | None): Number of requests to process in parallel.
                 Defaults to None (automatic optimization).
-            max_concurrency (int): Maximum number of concurrent requests. Defaults to 8.
             show_progress (bool): Whether to display a progress bar during processing.
                 Defaults to False.
             temperature (float | None): Sampling temperature. Defaults to 0.0.
@@ -920,7 +906,7 @@ class OpenAIVecDataFrameAccessor:
         """
         return self.parse_with_cache(
             instructions=instructions,
-            cache=BatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress),
+            cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
             response_format=response_format,
             max_examples=max_examples,
             temperature=temperature,
@@ -1021,7 +1007,6 @@ class OpenAIVecDataFrameAccessor:
         target_column_name: str,
         max_examples: int = 500,
         batch_size: int | None = None,
-        max_concurrency: int = 8,
         show_progress: bool = False,
         **api_kwargs,
     ) -> pd.DataFrame:
@@ -1041,8 +1026,6 @@ class OpenAIVecDataFrameAccessor:
             batch_size (int | None, optional): Number of requests sent in one batch
                 to optimize API usage. Defaults to ``None`` (automatic batch size
                 optimization based on execution time). Set to a positive integer for fixed batch size.
-            max_concurrency (int, optional): Maximum number of concurrent
-                requests. Defaults to ``8``.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
 
         Additional Keyword Args:
@@ -1080,7 +1063,7 @@ class OpenAIVecDataFrameAccessor:
             return self._obj
 
         filled_values: list[FillNaResponse] = missing_rows.ai.task(
-            task=task, batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress, **api_kwargs
+            task=task, batch_size=batch_size, show_progress=show_progress, **api_kwargs
         )
 
         # get deep copy of the DataFrame to avoid modifying the original
