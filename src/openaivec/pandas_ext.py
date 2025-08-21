@@ -635,6 +635,7 @@ class OpenAIVecSeriesAccessor:
         purpose: str,
         max_examples: int = 100,
         batch_size: int | None = None,
+        max_concurrency: int = 8,
         show_progress: bool = False,
         **api_kwargs,
     ) -> pd.DataFrame:
@@ -656,6 +657,7 @@ class OpenAIVecSeriesAccessor:
             batch_size (int | None): Number of requests to process in parallel during
                 extraction. Defaults to None (automatic optimization). Set to a specific
                 value to control API usage and performance.
+            max_concurrency (int): Maximum number of concurrent requests. Defaults to 8.
             show_progress (bool): Whether to display a progress bar during extraction.
                 Useful for large datasets. Defaults to False.
             **api_kwargs: Additional OpenAI API parameters (e.g., `temperature`, `top_p`,
@@ -708,6 +710,7 @@ class OpenAIVecSeriesAccessor:
                 "inferred": self._obj.ai.task(
                     task=schema.task,
                     batch_size=batch_size,
+                    max_concurrency=max_concurrency,
                     show_progress=show_progress,
                     **api_kwargs,
                 ),
@@ -782,6 +785,7 @@ class OpenAIVecDataFrameAccessor:
         instructions: str,
         response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
+        max_concurrency: int = 8,
         temperature: float | None = 0.0,
         top_p: float = 1.0,
         show_progress: bool = False,
@@ -815,6 +819,8 @@ class OpenAIVecDataFrameAccessor:
             batch_size (int | None, optional): Number of requests sent in one batch.
                 Defaults to ``None`` (automatic batch size optimization
                 based on execution time). Set to a positive integer for fixed batch size.
+            max_concurrency (int, optional): Maximum number of concurrent
+                requests. Defaults to ``8``.
             temperature (float | None, optional): Sampling temperature. Defaults to ``0.0``.
             top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
@@ -824,7 +830,7 @@ class OpenAIVecDataFrameAccessor:
         """
         return self.responses_with_cache(
             instructions=instructions,
-            cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
+            cache=BatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress),
             response_format=response_format,
             temperature=temperature,
             top_p=top_p,
@@ -860,6 +866,7 @@ class OpenAIVecDataFrameAccessor:
         self,
         task: PreparedTask,
         batch_size: int | None = None,
+        max_concurrency: int = 8,
         show_progress: bool = False,
         **api_kwargs,
     ) -> pd.Series:
@@ -895,6 +902,8 @@ class OpenAIVecDataFrameAccessor:
             batch_size (int | None, optional): Number of requests sent in one batch
                 to optimize API usage. Defaults to ``None`` (automatic batch size
                 optimization based on execution time). Set to a positive integer for fixed batch size.
+            max_concurrency (int, optional): Maximum number of concurrent
+                requests. Defaults to ``8``.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
 
         Additional Keyword Args:
@@ -910,6 +919,7 @@ class OpenAIVecDataFrameAccessor:
         return _df_rows_to_json_series(self._obj).ai.task(
             task=task,
             batch_size=batch_size,
+            max_concurrency=max_concurrency,
             show_progress=show_progress,
             **api_kwargs,
         )
@@ -1007,6 +1017,7 @@ class OpenAIVecDataFrameAccessor:
         target_column_name: str,
         max_examples: int = 500,
         batch_size: int | None = None,
+        max_concurrency: int = 8,
         show_progress: bool = False,
         **api_kwargs,
     ) -> pd.DataFrame:
@@ -1026,6 +1037,8 @@ class OpenAIVecDataFrameAccessor:
             batch_size (int | None, optional): Number of requests sent in one batch
                 to optimize API usage. Defaults to ``None`` (automatic batch size
                 optimization based on execution time). Set to a positive integer for fixed batch size.
+            max_concurrency (int, optional): Maximum number of concurrent
+                requests. Defaults to ``8``.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
 
         Additional Keyword Args:
@@ -1063,7 +1076,7 @@ class OpenAIVecDataFrameAccessor:
             return self._obj
 
         filled_values: list[FillNaResponse] = missing_rows.ai.task(
-            task=task, batch_size=batch_size, show_progress=show_progress, **api_kwargs
+            task=task, batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress, **api_kwargs
         )
 
         # get deep copy of the DataFrame to avoid modifying the original
@@ -1085,6 +1098,7 @@ class OpenAIVecDataFrameAccessor:
         purpose: str,
         max_examples: int = 100,
         batch_size: int | None = None,
+        max_concurrency: int = 8,
         show_progress: bool = False,
         **api_kwargs,
     ) -> pd.DataFrame:
@@ -1107,6 +1121,7 @@ class OpenAIVecDataFrameAccessor:
             batch_size (int | None): Number of requests to process in parallel during
                 extraction. Defaults to None (automatic optimization). Set to a specific
                 value to control API usage and performance.
+            max_concurrency (int): Maximum number of concurrent requests. Defaults to 8.
             show_progress (bool): Whether to display a progress bar during extraction.
                 Useful for large datasets. Defaults to False.
             **api_kwargs: Additional OpenAI API parameters (e.g., `temperature`, `top_p`,
@@ -1166,6 +1181,7 @@ class OpenAIVecDataFrameAccessor:
         inferred_series = self._obj.ai.task(
             task=schema.task,
             batch_size=batch_size,
+            max_concurrency=max_concurrency,
             show_progress=show_progress,
             **api_kwargs,
         )
