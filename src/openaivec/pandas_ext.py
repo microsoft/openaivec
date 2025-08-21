@@ -924,6 +924,97 @@ class OpenAIVecDataFrameAccessor:
             **api_kwargs,
         )
 
+    def parse_with_cache(
+        self,
+        instructions: str,
+        cache: BatchingMapProxy[str, ResponseFormat],
+        response_format: ResponseFormat = None,
+        max_examples: int = 100,
+        temperature: float | None = 0.0,
+        top_p: float = 1.0,
+        **api_kwargs,
+    ) -> pd.Series:
+        """Parse DataFrame rows using an LLM with a provided cache.
+
+        This method allows you to parse each DataFrame row (serialized as JSON)
+        into structured data using an LLM, optionally inferring a schema based
+        on the provided purpose.
+
+        Args:
+            instructions (str): System prompt for the LLM.
+            cache (BatchingMapProxy[str, ResponseFormat]): Explicit cache instance for
+                batching and deduplication control.
+            response_format (type[BaseModel] | None): Pydantic model or built-in type
+                for structured output. If None, schema is inferred.
+            max_examples (int): Maximum number of examples to use for schema inference.
+                Defaults to 100.
+            temperature (float | None): Sampling temperature. Defaults to 0.0.
+            top_p (float): Nucleus sampling parameter. Defaults to 1.0.
+
+        Additional Keyword Args:
+            Arbitrary OpenAI Responses API parameters (e.g. `frequency_penalty`, `presence_penalty`,
+            `seed`, etc.) are forwarded verbatim to the underlying client.
+
+        Returns:
+            pandas.Series: Series with parsed structured data as instances of
+                `response_format` or inferred schema model.
+        """
+        return _df_rows_to_json_series(self._obj).ai.parse_with_cache(
+            instructions=instructions,
+            cache=cache,
+            response_format=response_format,
+            max_examples=max_examples,
+            temperature=temperature,
+            top_p=top_p,
+            **api_kwargs,
+        )
+
+    def parse(
+        self,
+        instructions: str,
+        response_format: ResponseFormat = None,
+        max_examples: int = 100,
+        batch_size: int | None = None,
+        max_concurrency: int = 8,
+        show_progress: bool = False,
+        temperature: float | None = 0.0,
+        top_p: float = 1.0,
+        **api_kwargs,
+    ) -> pd.Series:
+        """Parse DataFrame rows using an LLM with optional schema inference.
+
+        This method allows you to parse each DataFrame row (serialized as JSON)
+        into structured data using an LLM, optionally inferring a schema based
+        on the provided purpose.
+
+        Args:
+            instructions (str): System prompt for the LLM.
+            response_format (type[BaseModel] | None): Pydantic model or built-in type
+                for structured output. If None, schema is inferred.
+            max_examples (int): Maximum number of examples to use for schema inference.
+                Defaults to 100.
+            batch_size (int | None): Number of requests to process in parallel.
+                Defaults to None (automatic optimization).
+            max_concurrency (int): Maximum number of concurrent requests. Defaults to 8.
+            show_progress (bool): Whether to display a progress bar during processing.
+                Defaults to False.
+            temperature (float | None): Sampling temperature. Defaults to 0.0.
+            top_p (float): Nucleus sampling parameter. Defaults to 1.0.
+
+        Returns:
+            pandas.Series: Series with parsed structured data as instances of
+                `response_format` or inferred schema model.
+        """
+        return self.parse_with_cache(
+            instructions=instructions,
+            cache=BatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress),
+            response_format=response_format,
+            max_examples=max_examples,
+            temperature=temperature,
+            top_p=top_p,
+            **api_kwargs,
+        )
+
     def infer_schema(self, purpose: str, max_examples: int = 100) -> InferredSchema:
         """Infer a structured data schema from DataFrame rows using AI.
 
@@ -1565,6 +1656,107 @@ class AsyncOpenAIVecSeriesAccessor:
             **api_kwargs,
         )
 
+    async def parse_with_cache(
+        self,
+        instructions: str,
+        cache: AsyncBatchingMapProxy[str, ResponseFormat],
+        response_format: ResponseFormat = None,
+        max_examples: int = 100,
+        temperature: float | None = 0.0,
+        top_p: float = 1.0,
+        **api_kwargs,
+    ) -> pd.Series:
+        """Parse Series values using an LLM with a provided cache (asynchronously).
+
+        This method allows you to parse the Series content into structured data
+        using an LLM, optionally inferring a schema based on the provided purpose.
+
+        Args:
+            instructions (str): System prompt for the LLM.
+            cache (AsyncBatchingMapProxy[str, ResponseFormat]): Explicit cache instance for
+                batching and deduplication control.
+            response_format (type[BaseModel] | None): Pydantic model or built-in type
+                for structured output. If None, schema is inferred.
+            max_examples (int): Maximum number of examples to use for schema inference.
+                Defaults to 100.
+            temperature (float | None): Sampling temperature. Defaults to 0.0.
+            top_p (float): Nucleus sampling parameter. Defaults to 1.0.
+
+        Additional Keyword Args:
+            Arbitrary OpenAI Responses API parameters (e.g. `frequency_penalty`, `presence_penalty`,
+            `seed`, etc.) are forwarded verbatim to the underlying client.
+
+        Returns:
+            pandas.Series: Series with parsed structured data as instances of
+                `response_format` or inferred schema model.
+
+        Note:
+            This is an asynchronous method and must be awaited.
+        """
+        schema: InferredSchema | None = None
+        if response_format is None:
+            # Use synchronous schema inference
+            schema = self._obj.ai.infer_schema(purpose=instructions, max_examples=max_examples)
+
+        return await self.responses_with_cache(
+            instructions=schema.inference_prompt if schema else instructions,
+            cache=cache,
+            response_format=response_format or schema.model,
+            temperature=temperature,
+            top_p=top_p,
+            **api_kwargs,
+        )
+
+    async def parse(
+        self,
+        instructions: str,
+        response_format: ResponseFormat = None,
+        max_examples: int = 100,
+        batch_size: int | None = None,
+        max_concurrency: int = 8,
+        show_progress: bool = False,
+        temperature: float | None = 0.0,
+        top_p: float = 1.0,
+        **api_kwargs,
+    ) -> pd.Series:
+        """Parse Series values using an LLM with optional schema inference (asynchronously).
+
+        This method allows you to parse the Series content into structured data
+        using an LLM, optionally inferring a schema based on the provided purpose.
+
+        Args:
+            instructions (str): System prompt for the LLM.
+            response_format (type[BaseModel] | None): Pydantic model or built-in type
+                for structured output. If None, schema is inferred.
+            max_examples (int): Maximum number of examples to use for schema inference.
+                Defaults to 100.
+            batch_size (int | None): Number of requests to process in parallel.
+                Defaults to None (automatic optimization).
+            max_concurrency (int): Maximum number of concurrent requests. Defaults to 8.
+            show_progress (bool): Whether to display a progress bar during processing.
+                Defaults to False.
+            temperature (float | None): Sampling temperature. Defaults to 0.0.
+            top_p (float): Nucleus sampling parameter. Defaults to 1.0.
+
+        Returns:
+            pandas.Series: Series with parsed structured data as instances of
+                `response_format` or inferred schema model.
+
+        Note:
+            This is an asynchronous method and must be awaited.
+        """
+        return await self.parse_with_cache(
+            instructions=instructions,
+            cache=AsyncBatchingMapProxy(
+                batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
+            ),
+            response_format=response_format,
+            max_examples=max_examples,
+            temperature=temperature,
+            top_p=top_p,
+            **api_kwargs,
+        )
+
     async def auto_extract(
         self,
         purpose: str,
@@ -1880,6 +2072,105 @@ class AsyncOpenAIVecDataFrameAccessor:
             batch_size=batch_size,
             max_concurrency=max_concurrency,
             show_progress=show_progress,
+            **api_kwargs,
+        )
+
+    async def parse_with_cache(
+        self,
+        instructions: str,
+        cache: AsyncBatchingMapProxy[str, ResponseFormat],
+        response_format: ResponseFormat = None,
+        max_examples: int = 100,
+        temperature: float | None = 0.0,
+        top_p: float = 1.0,
+        **api_kwargs,
+    ) -> pd.Series:
+        """Parse DataFrame rows using an LLM with a provided cache (asynchronously).
+
+        This method allows you to parse each DataFrame row (serialized as JSON)
+        into structured data using an LLM, optionally inferring a schema based
+        on the provided purpose.
+
+        Args:
+            instructions (str): System prompt for the LLM.
+            cache (AsyncBatchingMapProxy[str, ResponseFormat]): Explicit cache instance for
+                batching and deduplication control.
+            response_format (type[BaseModel] | None): Pydantic model or built-in type
+                for structured output. If None, schema is inferred.
+            max_examples (int): Maximum number of examples to use for schema inference.
+                Defaults to 100.
+            temperature (float | None): Sampling temperature. Defaults to 0.0.
+            top_p (float): Nucleus sampling parameter. Defaults to 1.0.
+
+        Additional Keyword Args:
+            Arbitrary OpenAI Responses API parameters (e.g. `frequency_penalty`, `presence_penalty`,
+            `seed`, etc.) are forwarded verbatim to the underlying client.
+
+        Returns:
+            pandas.Series: Series with parsed structured data as instances of
+                `response_format` or inferred schema model.
+
+        Note:
+            This is an asynchronous method and must be awaited.
+        """
+        return await _df_rows_to_json_series(self._obj).aio.parse_with_cache(
+            instructions=instructions,
+            cache=cache,
+            response_format=response_format,
+            max_examples=max_examples,
+            temperature=temperature,
+            top_p=top_p,
+            **api_kwargs,
+        )
+
+    async def parse(
+        self,
+        instructions: str,
+        response_format: ResponseFormat = None,
+        max_examples: int = 100,
+        batch_size: int | None = None,
+        max_concurrency: int = 8,
+        show_progress: bool = False,
+        temperature: float | None = 0.0,
+        top_p: float = 1.0,
+        **api_kwargs,
+    ) -> pd.Series:
+        """Parse DataFrame rows using an LLM with optional schema inference (asynchronously).
+
+        This method allows you to parse each DataFrame row (serialized as JSON)
+        into structured data using an LLM, optionally inferring a schema based
+        on the provided purpose.
+
+        Args:
+            instructions (str): System prompt for the LLM.
+            response_format (type[BaseModel] | None): Pydantic model or built-in type
+                for structured output. If None, schema is inferred.
+            max_examples (int): Maximum number of examples to use for schema inference.
+                Defaults to 100.
+            batch_size (int | None): Number of requests to process in parallel.
+                Defaults to None (automatic optimization).
+            max_concurrency (int): Maximum number of concurrent requests. Defaults to 8.
+            show_progress (bool): Whether to display a progress bar during processing.
+                Defaults to False.
+            temperature (float | None): Sampling temperature. Defaults to 0.0.
+            top_p (float): Nucleus sampling parameter. Defaults to 1.0.
+
+        Returns:
+            pandas.Series: Series with parsed structured data as instances of
+                `response_format` or inferred schema model.
+
+        Note:
+            This is an asynchronous method and must be awaited.
+        """
+        return await self.parse_with_cache(
+            instructions=instructions,
+            cache=AsyncBatchingMapProxy(
+                batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
+            ),
+            response_format=response_format,
+            max_examples=max_examples,
+            temperature=temperature,
+            top_p=top_p,
             **api_kwargs,
         )
 
