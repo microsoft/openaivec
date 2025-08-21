@@ -430,6 +430,43 @@ def task_udf(
     )
 
 
+def infer_schema(
+    instructions: str,
+    example_table_name: str,
+    example_field_name: str,
+    max_examples: int = 100,
+) -> InferredSchema:
+    """Infer the schema for a response format based on example data.
+
+    This function retrieves examples from a Spark table and infers the schema
+    for the response format using the provided instructions. It is useful when
+    you want to dynamically generate a schema based on existing data.
+
+    Args:
+        instructions (str): Instructions for the model to infer the schema.
+        example_table_name (str | None): Name of the Spark table containing example data.
+        example_field_name (str | None): Name of the field in the table to use as examples.
+        max_examples (int): Maximum number of examples to retrieve for schema inference.
+
+    Returns:
+        InferredSchema: An object containing the inferred schema and response format.
+    """
+
+    from pyspark.sql import SparkSession
+
+    spark = SparkSession.builder.getOrCreate()
+    examples: list[str] = (
+        spark.table(example_table_name).rdd.map(lambda row: row[example_field_name]).takeSample(max_examples)
+    )
+
+    input = SchemaInferenceInput(
+        instructions=instructions,
+        examples=examples,
+    )
+    inferer = CONTAINER.resolve(SchemaInferer)
+    return inferer.infer(input)
+
+
 def parse_udf(
     instructions: str,
     response_format: type[ResponseFormat] | None = None,
@@ -443,28 +480,67 @@ def parse_udf(
     max_concurrency: int = 8,
     **api_kwargs,
 ) -> UserDefinedFunction:
+    """Create an asynchronous Spark pandas UDF for parsing responses.
+    This function allows users to create UDFs that parse responses based on
+    provided instructions and either a predefined response format or example data.
+    It supports both structured responses using Pydantic models and plain text responses.
+    Each partition maintains its own cache to eliminate duplicate API calls within
+    the partition, significantly reducing API usage and costs when processing
+    datasets with overlapping content.
+
+    Args:
+        instructions (str): The system prompt or instructions for the model.
+        response_format (type[ResponseFormat] | None): The desired output format.
+            Either `str` for plain text or a Pydantic `BaseModel` for structured JSON output.
+            If not provided, the schema will be inferred from example data.
+        example_table_name (str | None): Name of the Spark table containing example data.
+            If provided, `example_field_name` must also be specified.
+        example_field_name (str | None): Name of the field in the table to use as examples.
+            If provided, `example_table_name` must also be specified.
+        max_examples (int): Maximum number of examples to retrieve for schema inference.
+            Defaults to 100.
+        model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
+            For OpenAI, use the model name (e.g, "gpt-4.1-mini"). Defaults to "gpt-4.1-mini".
+        batch_size (int | None): Number of rows per async batch request within each partition.
+            Larger values reduce API call overhead but increase memory usage.
+            Defaults to None (automatic batch size optimization that dynamically
+            adjusts based on execution time, targeting 30-60 seconds per batch).
+            Set to a positive integer (e.g., 32-128) for fixed batch size
+        temperature (float | None): Sampling temperature (0.0 to 2.0). Defaults to 0.0.
+        top_p (float): Nucleus sampling parameter. Defaults to 1.0.
+        max_concurrency (int): Maximum number of concurrent API requests **PER EXECUTOR**.
+            Total cluster concurrency = max_concurrency × number_of_executors.
+            Higher values increase throughput but may hit OpenAI rate limits.
+            Recommended: 4-12 per executor. Defaults to 8.
+    Additional Keyword Args:
+        Arbitrary OpenAI Responses API parameters (e.g. ``frequency_penalty``, ``presence_penalty``,
+        ``seed``, ``max_output_tokens``, etc.) are forwarded verbatim to the underlying API calls.
+        These parameters are applied to all API requests made by the UDF and override any
+        parameters set in the response_format or example data.
+    Returns:
+        UserDefinedFunction: A Spark pandas UDF configured to parse responses asynchronously.
+            Output schema is `StringType` for str response format or a struct derived from
+            the response_format for BaseModel.
+    Raises:
+        ValueError: If neither `response_format` nor `example_table_name` and `example_field_name` are provided.
+    """
+
     if not response_format and not (example_field_name and example_table_name):
         raise ValueError("Either response_format or example_table_name and example_field_name must be provided.")
 
     schema: InferredSchema | None = None
 
     if not response_format:
-        from pyspark.sql import SparkSession
-        from pyspark.sql.functions import rand
-
-        spark = SparkSession.builder.getOrCreate()
-        rows = spark.table(example_table_name).select(example_field_name).orderBy(rand()).limit(max_examples).collect()
-        examples = [row[example_field_name] for row in rows]
-        input = SchemaInferenceInput(
+        schema = infer_schema(
             instructions=instructions,
-            examples=examples,
+            example_table_name=example_table_name,
+            example_field_name=example_field_name,
+            max_examples=max_examples,
         )
-        inferer = CONTAINER.resolve(SchemaInferer)
-        schema = inferer.infer(input)
 
     return responses_udf(
         instructions=schema.inference_prompt if schema else instructions,
-        response_format=schema.response_format if schema else response_format,
+        response_format=schema.model if schema else response_format,
         model_name=model_name,
         batch_size=batch_size,
         temperature=temperature,
