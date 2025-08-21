@@ -138,7 +138,9 @@ from typing_extensions import Literal
 
 from openaivec import pandas_ext
 from openaivec._model import PreparedTask, ResponseFormat
+from openaivec._provider import CONTAINER
 from openaivec._proxy import AsyncBatchingMapProxy
+from openaivec._schema import InferredSchema, SchemaInferenceInput, SchemaInferer
 from openaivec._serialize import deserialize_base_model, serialize_base_model
 from openaivec._util import TextChunker
 
@@ -423,6 +425,50 @@ def task_udf(
         batch_size=batch_size,
         temperature=task.temperature,
         top_p=task.top_p,
+        max_concurrency=max_concurrency,
+        **api_kwargs,
+    )
+
+
+def parse_udf(
+    instructions: str,
+    response_format: type[ResponseFormat] | None = None,
+    example_table_name: str | None = None,
+    example_field_name: str | None = None,
+    max_examples: int = 100,
+    model_name: str = "gpt-4.1-mini",
+    batch_size: int | None = None,
+    temperature: float | None = 0.0,
+    top_p: float = 1.0,
+    max_concurrency: int = 8,
+    **api_kwargs,
+) -> UserDefinedFunction:
+    if not response_format and not (example_field_name and example_table_name):
+        raise ValueError("Either response_format or example_table_name and example_field_name must be provided.")
+
+    schema: InferredSchema | None = None
+
+    if not response_format:
+        from pyspark.sql import SparkSession
+        from pyspark.sql.functions import rand
+
+        spark = SparkSession.builder.getOrCreate()
+        rows = spark.table(example_table_name).select(example_field_name).orderBy(rand()).limit(max_examples).collect()
+        examples = [row[example_field_name] for row in rows]
+        input = SchemaInferenceInput(
+            instructions=instructions,
+            examples=examples,
+        )
+        inferer = CONTAINER.resolve(SchemaInferer)
+        schema = inferer.infer(input)
+
+    return responses_udf(
+        instructions=schema.inference_prompt if schema else instructions,
+        response_format=schema.response_format if schema else response_format,
+        model_name=model_name,
+        batch_size=batch_size,
+        temperature=temperature,
+        top_p=top_p,
         max_concurrency=max_concurrency,
         **api_kwargs,
     )
