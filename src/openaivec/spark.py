@@ -137,7 +137,7 @@ from pyspark.sql.udf import UserDefinedFunction
 from typing_extensions import Literal
 
 from openaivec import pandas_ext
-from openaivec._model import PreparedTask, ResponseFormat
+from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
 from openaivec._provider import CONTAINER
 from openaivec._proxy import AsyncBatchingMapProxy
 from openaivec._schema import InferredSchema, SchemaInferenceInput, SchemaInferer
@@ -155,6 +155,44 @@ __all__ = [
 
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+
+
+def setup(api_key: str, responses_model_name: str | None = None, embeddings_model_name: str | None = None):
+    from pyspark.sql import SparkSession
+
+    spark = SparkSession.builder.getOrCreate()
+    sc = spark.sparkContext
+    sc.environment["OPENAI_API_KEY"] = api_key
+
+    if responses_model_name:
+        CONTAINER.register(ResponsesModelName, lambda: responses_model_name)
+
+    if embeddings_model_name:
+        from openaivec._model import EmbeddingsModelName
+
+        CONTAINER.register(EmbeddingsModelName, lambda: embeddings_model_name)
+
+
+def setup_azure(
+    api_key: str,
+    base_url: str,
+    api_version: str = "preview",
+    responses_model_name: str | None = None,
+    embeddings_model_name: str | None = None,
+):
+    from pyspark.sql import SparkSession
+
+    spark = SparkSession.builder.getOrCreate()
+    sc = spark.sparkContext
+    sc.environment["AZURE_OPENAI_API_KEY"] = api_key
+    sc.environment["AZURE_OPENAI_BASE_URL"] = base_url
+    sc.environment["AZURE_OPENAI_API_VERSION"] = api_version
+
+    if responses_model_name:
+        CONTAINER.register(ResponsesModelName, lambda: responses_model_name)
+
+    if embeddings_model_name:
+        CONTAINER.register(EmbeddingsModelName, lambda: embeddings_model_name)
 
 
 def _python_type_to_spark(python_type):
