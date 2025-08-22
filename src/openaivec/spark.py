@@ -165,12 +165,12 @@ def setup(api_key: str, responses_model_name: str | None = None, embeddings_mode
     sc.environment["OPENAI_API_KEY"] = api_key
 
     if responses_model_name:
-        CONTAINER.register(ResponsesModelName, lambda: responses_model_name)
+        CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName(responses_model_name))
 
     if embeddings_model_name:
         from openaivec._model import EmbeddingsModelName
 
-        CONTAINER.register(EmbeddingsModelName, lambda: embeddings_model_name)
+        CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName(embeddings_model_name))
 
 
 def setup_azure(
@@ -189,10 +189,10 @@ def setup_azure(
     sc.environment["AZURE_OPENAI_API_VERSION"] = api_version
 
     if responses_model_name:
-        CONTAINER.register(ResponsesModelName, lambda: responses_model_name)
+        CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName(responses_model_name))
 
     if embeddings_model_name:
-        CONTAINER.register(EmbeddingsModelName, lambda: embeddings_model_name)
+        CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName(embeddings_model_name))
 
 
 def _python_type_to_spark(python_type):
