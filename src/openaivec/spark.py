@@ -273,7 +273,7 @@ def _safe_dump(x: BaseModel | None) -> dict:
 def responses_udf(
     instructions: str,
     response_format: type[ResponseFormat] = str,
-    model_name: str = "gpt-4.1-mini",
+    model_name: str = CONTAINER.resolve(ResponsesModelName).value,
     batch_size: int | None = None,
     temperature: float | None = 0.0,
     top_p: float = 1.0,
@@ -403,7 +403,7 @@ def responses_udf(
 
 def task_udf(
     task: PreparedTask[ResponseFormat],
-    model_name: str = "gpt-4.1-mini",
+    model_name: str = CONTAINER.resolve(ResponsesModelName).value,
     batch_size: int | None = None,
     max_concurrency: int = 8,
     **api_kwargs,
@@ -511,7 +511,7 @@ def parse_udf(
     example_table_name: str | None = None,
     example_field_name: str | None = None,
     max_examples: int = 100,
-    model_name: str = "gpt-4.1-mini",
+    model_name: str = CONTAINER.resolve(ResponsesModelName).value,
     batch_size: int | None = None,
     temperature: float | None = 0.0,
     top_p: float = 1.0,
@@ -589,7 +589,9 @@ def parse_udf(
 
 
 def embeddings_udf(
-    model_name: str = "text-embedding-3-small", batch_size: int | None = None, max_concurrency: int = 8
+    model_name: str = CONTAINER.resolve(EmbeddingsModelName).value,
+    batch_size: int | None = None,
+    max_concurrency: int = 8,
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF for generating embeddings.
 
