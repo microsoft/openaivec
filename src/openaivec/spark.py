@@ -532,15 +532,15 @@ def infer_schema(
 
     spark = SparkSession.builder.getOrCreate()
     examples: list[str] = (
-        spark.table(example_table_name).rdd.map(lambda row: row[example_field_name]).takeSample(max_examples)
+        spark.table(example_table_name).rdd.map(lambda row: row[example_field_name]).takeSample(False, max_examples)
     )
 
     input = SchemaInferenceInput(
-        instructions=instructions,
+        purpose=instructions,
         examples=examples,
     )
     inferer = CONTAINER.resolve(SchemaInferer)
-    return inferer.infer(input)
+    return inferer.infer_schema(input)
 
 
 def parse_udf(

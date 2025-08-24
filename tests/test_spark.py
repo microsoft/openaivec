@@ -9,6 +9,8 @@ from openaivec.spark import (
     _pydantic_to_spark_schema,
     count_tokens_udf,
     embeddings_udf,
+    infer_schema,
+    parse_udf,
     responses_udf,
     similarity_udf,
     task_udf,
@@ -228,6 +230,137 @@ class TestSparkUDFs(TestCase):
         )
         df_pandas = result_df.toPandas()
         assert df_pandas.shape == (3, 2)
+
+    def test_infer_schema(self):
+        """Test infer_schema functionality."""
+        # Create a sample table with example data
+        sample_data = [
+            ("apple is red and sweet",),
+            ("banana is yellow and tropical",),
+            ("cherry is small and tart",),
+        ]
+        dummy_df = self.spark.createDataFrame(sample_data, ["description"])
+        dummy_df.createOrReplaceTempView("fruits")
+
+        # Infer schema from the example data
+        inferred = infer_schema(
+            instructions="Extract fruit name, color, and taste from the description",
+            example_table_name="fruits",
+            example_field_name="description",
+            max_examples=3,
+        )
+
+        # Verify the inferred schema has the expected structure
+        assert inferred.model is not None
+        assert inferred.inference_prompt is not None
+        assert len(inferred.inference_prompt) > 0
+
+    def test_parse_udf_with_response_format(self):
+        """Test parse_udf with explicit response format."""
+
+        class ParsedData(BaseModel):
+            product: str
+            price: float
+            quantity: int
+
+        self.spark.udf.register(
+            "parse_product",
+            parse_udf(
+                instructions="Extract product information from the text",
+                response_format=ParsedData,
+                model_name="gpt-4.1-nano",
+            ),
+        )
+
+        text_data = [
+            ("Buy 5 apples for $10.50",),
+            ("Purchase 3 bananas at $6.75",),
+            ("Get 10 oranges for $15.00",),
+        ]
+        dummy_df = self.spark.createDataFrame(text_data, ["text"])
+        dummy_df.createOrReplaceTempView("products")
+
+        df = self.spark.sql(
+            """
+            with t as (SELECT parse_product(text) as info from products)
+            select info.product, info.price, info.quantity from t
+            """
+        )
+        df_pandas = df.toPandas()
+        assert df_pandas.shape == (3, 3)
+        # Verify column types
+        assert "product" in df_pandas.columns
+        assert "price" in df_pandas.columns
+        assert "quantity" in df_pandas.columns
+
+    def test_parse_udf_with_example_data(self):
+        """Test parse_udf with schema inference from example data."""
+        # Create example data for schema inference
+        sample_data = [
+            ("Meeting scheduled for 2024-01-15 at 10:00 AM with John",),
+            ("Conference call on 2024-01-16 at 2:30 PM with Sarah",),
+            ("Presentation on 2024-01-17 at 9:00 AM with the team",),
+        ]
+        dummy_df = self.spark.createDataFrame(sample_data, ["event_text"])
+        dummy_df.createOrReplaceTempView("events")
+
+        # Create UDF with schema inference
+        self.spark.udf.register(
+            "parse_event",
+            parse_udf(
+                instructions="Extract date, time, and participants from the event description",
+                example_table_name="events",
+                example_field_name="event_text",
+                max_examples=3,
+                model_name="gpt-4.1-nano",
+            ),
+        )
+
+        # Test with new data
+        test_data = [
+            ("Workshop on 2024-01-20 at 11:00 AM with Alice",),
+            ("Training session on 2024-01-21 at 3:00 PM with Bob",),
+        ]
+        test_df = self.spark.createDataFrame(test_data, ["text"])
+        test_df.createOrReplaceTempView("test_events")
+
+        df = self.spark.sql(
+            """
+            SELECT parse_event(text) as parsed from test_events
+            """
+        )
+        df_pandas = df.toPandas()
+        assert df_pandas.shape[0] == 2
+        # Parsed column should contain structured data
+        assert "parsed" in df_pandas.columns
+
+    def test_parse_udf_string_response(self):
+        """Test parse_udf with string response format."""
+        self.spark.udf.register(
+            "summarize",
+            parse_udf(
+                instructions="Summarize the text in one sentence",
+                response_format=str,
+                model_name="gpt-4.1-nano",
+            ),
+        )
+
+        text_data = [
+            ("The quick brown fox jumps over the lazy dog multiple times throughout the day",),
+            ("Scientists discovered a new species of butterfly in the Amazon rainforest",),
+        ]
+        dummy_df = self.spark.createDataFrame(text_data, ["text"])
+        dummy_df.createOrReplaceTempView("texts")
+
+        df = self.spark.sql(
+            """
+            SELECT text, summarize(text) as summary from texts
+            """
+        )
+        df_pandas = df.toPandas()
+        assert df_pandas.shape == (2, 2)
+        # Verify string column type
+        assert df.dtypes[1][1] == "string"
 
 
 class TestSchemaMapping(TestCase):
