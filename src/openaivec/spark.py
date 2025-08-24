@@ -123,6 +123,7 @@ Note: This module provides asynchronous support through the pandas extensions.
 
 import asyncio
 import logging
+import os
 from collections.abc import Iterator
 from enum import Enum
 from typing import Union, get_args, get_origin
@@ -131,6 +132,7 @@ import numpy as np
 import pandas as pd
 import tiktoken
 from pydantic import BaseModel
+from pyspark.sql import SparkSession
 from pyspark.sql.pandas.functions import pandas_udf
 from pyspark.sql.types import ArrayType, BooleanType, FloatType, IntegerType, StringType, StructField, StructType
 from pyspark.sql.udf import UserDefinedFunction
@@ -157,12 +159,26 @@ __all__ = [
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
-def setup(api_key: str, responses_model_name: str | None = None, embeddings_model_name: str | None = None):
-    from pyspark.sql import SparkSession
+def setup(
+    spark: SparkSession, api_key: str, responses_model_name: str | None = None, embeddings_model_name: str | None = None
+):
+    """Setup OpenAI authentication and default model names in Spark environment.
+    1. Configures OpenAI API key in SparkContext environment.
+    2. Configures OpenAI API key in local process environment.
+    3. Optionally registers default model names for responses and embeddings in the DI container.
 
-    spark = SparkSession.builder.getOrCreate()
+    Args:
+        spark (SparkSession): The Spark session to configure.
+        api_key (str): OpenAI API key for authentication.
+        responses_model_name (str | None): Default model name for response generation.
+            If provided, registers `ResponsesModelName` in the DI container.
+        embeddings_model_name (str | None): Default model name for embeddings.
+            If provided, registers `EmbeddingsModelName` in the DI container.
+    """
+
     sc = spark.sparkContext
     sc.environment["OPENAI_API_KEY"] = api_key
+    os.environ["OPENAI_API_KEY"] = api_key
 
     if responses_model_name:
         CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName(responses_model_name))
@@ -174,19 +190,36 @@ def setup(api_key: str, responses_model_name: str | None = None, embeddings_mode
 
 
 def setup_azure(
+    spark: SparkSession,
     api_key: str,
     base_url: str,
     api_version: str = "preview",
     responses_model_name: str | None = None,
     embeddings_model_name: str | None = None,
 ):
-    from pyspark.sql import SparkSession
+    """Setup Azure OpenAI authentication and default model names in Spark environment.
+    1. Configures Azure OpenAI API key, base URL, and API version in SparkContext environment.
+    2. Configures Azure OpenAI API key, base URL, and API version in local process environment.
+    3. Optionally registers default model names for responses and embeddings in the DI container.
+    Args:
+        spark (SparkSession): The Spark session to configure.
+        api_key (str): Azure OpenAI API key for authentication.
+        base_url (str): Base URL for the Azure OpenAI resource.
+        api_version (str): API version to use. Defaults to "preview".
+        responses_model_name (str | None): Default model name for response generation.
+            If provided, registers `ResponsesModelName` in the DI container.
+        embeddings_model_name (str | None): Default model name for embeddings.
+            If provided, registers `EmbeddingsModelName` in the DI container.
+    """
 
-    spark = SparkSession.builder.getOrCreate()
     sc = spark.sparkContext
     sc.environment["AZURE_OPENAI_API_KEY"] = api_key
     sc.environment["AZURE_OPENAI_BASE_URL"] = base_url
     sc.environment["AZURE_OPENAI_API_VERSION"] = api_version
+
+    os.environ["AZURE_OPENAI_API_KEY"] = api_key
+    os.environ["AZURE_OPENAI_BASE_URL"] = base_url
+    os.environ["AZURE_OPENAI_API_VERSION"] = api_version
 
     if responses_model_name:
         CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName(responses_model_name))
