@@ -1,45 +1,45 @@
 """Asynchronous Spark UDFs for the OpenAI and Azure OpenAI APIs.
 
 This module provides functions (`responses_udf`, `task_udf`, `embeddings_udf`,
-`count_tokens_udf`, `split_to_chunks_udf`)
+`count_tokens_udf`, `split_to_chunks_udf`, `similarity_udf`, `parse_udf`)
 for creating asynchronous Spark UDFs that communicate with either the public
 OpenAI API or Azure OpenAI using the `openaivec.spark` subpackage.
-It supports UDFs for generating responses and creating embeddings asynchronously.
-The UDFs operate on Spark DataFrames and leverage asyncio for potentially
-improved performance in I/O-bound operations.
+It supports UDFs for generating responses, creating embeddings, parsing text,
+and computing similarities asynchronously. The UDFs operate on Spark DataFrames
+and leverage asyncio for improved performance in I/O-bound operations.
 
-**Performance Optimization**: All AI-powered UDFs (`responses_udf`, `task_udf`, `embeddings_udf`)
+**Performance Optimization**: All AI-powered UDFs (`responses_udf`, `task_udf`, `embeddings_udf`, `parse_udf`)
 automatically cache duplicate inputs within each partition, significantly reducing
 API calls and costs when processing datasets with overlapping content.
 
-__all__ = [
-    "count_tokens_udf",
-    "embeddings_udf",
-    "responses_udf",
-    "similarity_udf",
-    "split_to_chunks_udf",
-    "task_udf",
-]
 
 ## Setup
 
 First, obtain a Spark session and configure authentication:
 
 ```python
-import os
 from pyspark.sql import SparkSession
+from openaivec.spark import setup, setup_azure
 
 spark = SparkSession.builder.getOrCreate()
-sc = spark.sparkContext
 
-# Configure authentication via SparkContext environment variables
 # Option 1: Using OpenAI
-sc.environment["OPENAI_API_KEY"] = "your-openai-api-key"
+setup(
+    spark,
+    api_key="your-openai-api-key",
+    responses_model_name="gpt-4.1-mini",  # Optional: set default model
+    embeddings_model_name="text-embedding-3-small"  # Optional: set default model
+)
 
 # Option 2: Using Azure OpenAI
-# sc.environment["AZURE_OPENAI_API_KEY"] = "your-azure-openai-api-key"
-# sc.environment["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
-# sc.environment["AZURE_OPENAI_API_VERSION"] = "preview"
+# setup_azure(
+#     spark,
+#     api_key="your-azure-openai-api-key",
+#     base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
+#     api_version="preview",
+#     responses_model_name="my-gpt4-deployment",  # Optional: set default deployment
+#     embeddings_model_name="my-embedding-deployment"  # Optional: set default deployment
+# )
 ```
 
 Next, create UDFs and register them:
@@ -83,9 +83,10 @@ spark.udf.register(
     ),
 )
 
-# Register token counting and text chunking UDFs
+# Register token counting, text chunking, and similarity UDFs
 spark.udf.register("count_tokens", count_tokens_udf())
 spark.udf.register("split_chunks", split_to_chunks_udf(max_tokens=512, sep=[".", "!", "?"]))
+spark.udf.register("compute_similarity", similarity_udf())
 ```
 
 You can now invoke the UDFs from Spark SQL:
@@ -97,7 +98,8 @@ SELECT
     sentiment_async(text) AS sentiment,
     embed_async(text) AS embedding,
     count_tokens(text) AS token_count,
-    split_chunks(text) AS chunks
+    split_chunks(text) AS chunks,
+    compute_similarity(embed_async(text1), embed_async(text2)) AS similarity
 FROM your_table;
 ```
 
@@ -150,6 +152,8 @@ __all__ = [
     "responses_udf",
     "task_udf",
     "embeddings_udf",
+    "infer_schema",
+    "parse_udf",
     "split_to_chunks_udf",
     "count_tokens_udf",
     "similarity_udf",
@@ -178,6 +182,7 @@ def setup(
 
     sc = spark.sparkContext
     sc.environment["OPENAI_API_KEY"] = api_key
+
     os.environ["OPENAI_API_KEY"] = api_key
 
     if responses_model_name:
@@ -338,7 +343,7 @@ def responses_udf(
         response_format (type[ResponseFormat]): The desired output format. Either `str` for plain text
             or a Pydantic `BaseModel` for structured JSON output. Defaults to `str`.
         model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
-            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to "gpt-4.1-mini".
+            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to configured model in DI container.
         batch_size (int | None): Number of rows per async batch request within each partition.
             Larger values reduce API call overhead but increase memory usage.
             Defaults to None (automatic batch size optimization that dynamically
@@ -453,7 +458,7 @@ def task_udf(
         task (PreparedTask): A predefined task configuration containing instructions,
             response format, temperature, and top_p settings.
         model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
-            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to "gpt-4.1-mini".
+            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to configured model in DI container.
         batch_size (int | None): Number of rows per async batch request within each partition.
             Larger values reduce API call overhead but increase memory usage.
             Defaults to None (automatic batch size optimization that dynamically
@@ -571,7 +576,7 @@ def parse_udf(
         max_examples (int): Maximum number of examples to retrieve for schema inference.
             Defaults to 100.
         model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
-            For OpenAI, use the model name (e.g, "gpt-4.1-mini"). Defaults to "gpt-4.1-mini".
+            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to configured model in DI container.
         batch_size (int | None): Number of rows per async batch request within each partition.
             Larger values reduce API call overhead but increase memory usage.
             Defaults to None (automatic batch size optimization that dynamically
@@ -648,7 +653,8 @@ def embeddings_udf(
 
     Args:
         model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-embedding-deployment").
-            For OpenAI, use the model name (e.g., "text-embedding-3-small"). Defaults to "text-embedding-3-small".
+            For OpenAI, use the model name (e.g., "text-embedding-3-small").
+            Defaults to configured model in DI container.
         batch_size (int | None): Number of rows per async batch request within each partition.
             Larger values reduce API call overhead but increase memory usage.
             Defaults to None (automatic batch size optimization that dynamically
@@ -737,17 +743,15 @@ def count_tokens_udf() -> UserDefinedFunction:
 
 
 def similarity_udf() -> UserDefinedFunction:
+    """Create a pandas-UDF that computes cosine similarity between embedding vectors.
+
+    Returns:
+        UserDefinedFunction: A Spark pandas UDF that takes two embedding vector columns
+            and returns their cosine similarity as a FloatType column.
+    """
+
     @pandas_udf(FloatType())  # type: ignore[call-overload]
     def fn(a: pd.Series, b: pd.Series) -> pd.Series:
-        """Compute cosine similarity between two vectors.
-
-        Args:
-            a: First vector.
-            b: Second vector.
-
-        Returns:
-            Cosine similarity between the two vectors.
-        """
         # Import pandas_ext to ensure .ai accessor is available in Spark workers
         from openaivec import pandas_ext
 
