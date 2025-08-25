@@ -4,7 +4,7 @@ import warnings
 
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
 
-from openaivec._provider import provide_async_openai_client, provide_openai_client, reset_environment_registrations
+from openaivec._provider import provide_async_openai_client, provide_openai_client, set_default_registrations
 
 
 class TestProvideOpenAIClient(unittest.TestCase):
@@ -22,7 +22,7 @@ class TestProvideOpenAIClient(unittest.TestCase):
                 del os.environ[key]
 
         # Reset environment registrations to ensure fresh state for each test
-        reset_environment_registrations()
+        set_default_registrations()
 
     def tearDown(self):
         """Restore original environment variables and reset environment registrations."""
@@ -33,7 +33,7 @@ class TestProvideOpenAIClient(unittest.TestCase):
                 del os.environ[key]
 
         # Reset environment registrations after test
-        reset_environment_registrations()
+        set_default_registrations()
 
     def set_env_and_reset(self, **env_vars):
         """Helper method to set environment variables and reset registrations."""
@@ -47,7 +47,7 @@ class TestProvideOpenAIClient(unittest.TestCase):
         for key, value in env_vars.items():
             os.environ[key] = value
 
-        reset_environment_registrations()
+        set_default_registrations()
 
     def test_provide_openai_client_with_openai_key(self):
         """Test creating OpenAI client when OPENAI_API_KEY is set."""
@@ -155,7 +155,7 @@ class TestProvideAsyncOpenAIClient(unittest.TestCase):
                 del os.environ[key]
 
         # Reset environment registrations to ensure fresh state for each test
-        reset_environment_registrations()
+        set_default_registrations()
 
     def tearDown(self):
         """Restore original environment variables and reset environment registrations."""
@@ -166,7 +166,7 @@ class TestProvideAsyncOpenAIClient(unittest.TestCase):
                 del os.environ[key]
 
         # Reset environment registrations after test
-        reset_environment_registrations()
+        set_default_registrations()
 
     def set_env_and_reset(self, **env_vars):
         """Helper method to set environment variables and reset registrations."""
@@ -180,7 +180,7 @@ class TestProvideAsyncOpenAIClient(unittest.TestCase):
         for key, value in env_vars.items():
             os.environ[key] = value
 
-        reset_environment_registrations()
+        set_default_registrations()
 
     def test_provide_async_openai_client_with_openai_key(self):
         """Test creating async OpenAI client when OPENAI_API_KEY is set."""
@@ -290,7 +290,7 @@ class TestProviderIntegration(unittest.TestCase):
                 del os.environ[key]
 
         # Reset environment registrations to ensure fresh state for each test
-        reset_environment_registrations()
+        set_default_registrations()
 
     def tearDown(self):
         """Restore original environment variables and reset environment registrations."""
@@ -301,7 +301,7 @@ class TestProviderIntegration(unittest.TestCase):
                 del os.environ[key]
 
         # Reset environment registrations after test
-        reset_environment_registrations()
+        set_default_registrations()
 
     def set_env_and_reset(self, **env_vars):
         """Helper method to set environment variables and reset registrations."""
@@ -315,7 +315,7 @@ class TestProviderIntegration(unittest.TestCase):
         for key, value in env_vars.items():
             os.environ[key] = value
 
-        reset_environment_registrations()
+        set_default_registrations()
 
     def test_both_functions_return_consistent_client_types(self):
         """Test that both functions return consistent client types for the same environment."""
@@ -355,9 +355,6 @@ class TestProviderIntegration(unittest.TestCase):
         # Check that Azure clients are created with correct configuration
         self.assertIsInstance(sync_client, AzureOpenAI)
         self.assertIsInstance(async_client, AsyncAzureOpenAI)
-
-        # We can't easily test the internal configuration without accessing private attributes,
-        # but the fact that they're created without exception indicates proper configuration
 
 
 class TestAzureV1ApiWarning(unittest.TestCase):
@@ -413,3 +410,5 @@ class TestAzureV1ApiWarning(unittest.TestCase):
             pandas_ext.use(legacy_client)
             self.assertGreater(len(w), 0, "Expected warning for legacy Azure URL")
             self.assertIn("v1 API is recommended", str(w[0].message))
+
+        set_default_registrations()
