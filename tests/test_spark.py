@@ -6,6 +6,7 @@ from pyspark.sql.session import SparkSession
 from pyspark.sql.types import ArrayType, FloatType, IntegerType, StringType, StructField, StructType
 
 from openaivec._model import PreparedTask
+from openaivec._provider import set_default_registrations
 from openaivec.spark import (
     _pydantic_to_spark_schema,
     count_tokens_udf,
@@ -33,6 +34,7 @@ class TestSparkUDFs(TestCase):
             .getOrCreate()
         )
         self.spark.sparkContext.setLogLevel("INFO")
+        set_default_registrations()
         setup(
             spark=self.spark,
             api_key=os.environ.get("OPENAI_API_KEY"),

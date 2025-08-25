@@ -303,3 +303,24 @@ class Container:
             self._providers.clear()
             self._instances.clear()
             self._resolving.clear()
+
+    def clear_singletons(self) -> None:
+        """Clear all cached singleton instances from the container.
+
+        Removes all cached singleton instances while keeping the registered
+        providers intact. After calling this method, the next resolve call
+        for any service will create a new instance using the provider function.
+
+        Example:
+            ```python
+            container = Container()
+            container.register(str, lambda: "Hello")
+            instance1 = container.resolve(str)
+            container.clear_singletons()
+            instance2 = container.resolve(str)
+            print(instance1 is instance2)
+            # False - different instances after clearing singletons
+            ```
+        """
+        with self._lock:
+            self._instances.clear()

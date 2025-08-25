@@ -193,6 +193,8 @@ def setup(
 
         CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName(embeddings_model_name))
 
+    CONTAINER.clear_singletons()
+
 
 def setup_azure(
     spark: SparkSession,
@@ -231,6 +233,8 @@ def setup_azure(
 
     if embeddings_model_name:
         CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName(embeddings_model_name))
+
+    CONTAINER.clear_singletons()
 
 
 def _python_type_to_spark(python_type):
