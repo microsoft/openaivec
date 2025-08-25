@@ -247,16 +247,16 @@ class TestPandasExt:
 
     # ===== ASYNC DATAFRAME METHODS =====
 
-    def test_dataframe_aio_responses(self):
+    def test_dataframe_aio_responses(self, sample_dataframe):
         """Test DataFrame.aio.responses method."""
 
         async def run():
-            return await self.df.aio.responses("translate the 'name' field to French")
+            return await sample_dataframe.aio.responses("translate the 'name' field to French")
 
         names_fr = asyncio.run(run())
         assert all(isinstance(x, str) for x in names_fr)
         assert names_fr.shape == (3,)
-        assert names_fr.index.equals(self.df.index)
+        assert names_fr.index.equals(sample_dataframe.index)
 
     def test_dataframe_aio_parse(self):
         """Test DataFrame.aio.parse method with structured output."""
@@ -398,59 +398,59 @@ class TestPandasExt:
         """Test Series.ai.extract with Pydantic models."""
         sample_series = pd.Series(
             [
-                fruit_model(color="red", flavor="sweet", taste="crunchy"),
-                fruit_model(color="yellow", flavor="sweet", taste="soft"),
-                fruit_model(color="red", flavor="sweet", taste="tart"),
+                fruit_model(name="apple", color="red", taste="crunchy"),
+                fruit_model(name="banana", color="yellow", taste="soft"),
+                fruit_model(name="cherry", color="red", taste="tart"),
             ],
             name="fruit",
         )
 
         extracted_df = sample_series.ai.extract()
-        expected_columns = ["fruit_color", "fruit_flavor", "fruit_taste"]
+        expected_columns = ["fruit_name", "fruit_color", "fruit_taste"]
         assert list(extracted_df.columns) == expected_columns
 
     def test_series_extract_dict(self):
         """Test Series.ai.extract with dictionaries."""
         sample_series = pd.Series(
             [
-                {"color": "red", "flavor": "sweet", "taste": "crunchy"},
-                {"color": "yellow", "flavor": "sweet", "taste": "soft"},
-                {"color": "red", "flavor": "sweet", "taste": "tart"},
+                {"name": "apple", "color": "red", "taste": "crunchy"},
+                {"name": "banana", "color": "yellow", "taste": "soft"},
+                {"name": "cherry", "color": "red", "taste": "tart"},
             ],
             name="fruit",
         )
 
         extracted_df = sample_series.ai.extract()
-        expected_columns = ["fruit_color", "fruit_flavor", "fruit_taste"]
+        expected_columns = ["fruit_name", "fruit_color", "fruit_taste"]
         assert list(extracted_df.columns) == expected_columns
 
     def test_series_extract_without_name(self, fruit_model):
         """Test Series.ai.extract without series name."""
         sample_series = pd.Series(
             [
-                fruit_model(color="red", flavor="sweet", taste="crunchy"),
-                fruit_model(color="yellow", flavor="sweet", taste="soft"),
-                fruit_model(color="red", flavor="sweet", taste="tart"),
+                fruit_model(name="apple", color="red", taste="crunchy"),
+                fruit_model(name="banana", color="yellow", taste="soft"),
+                fruit_model(name="cherry", color="red", taste="tart"),
             ]
         )
 
         extracted_df = sample_series.ai.extract()
-        expected_columns = ["color", "flavor", "taste"]  # without prefix
+        expected_columns = ["name", "color", "taste"]  # without prefix
         assert list(extracted_df.columns) == expected_columns
 
     def test_series_extract_with_none(self, fruit_model):
         """Test Series.ai.extract with None values."""
         sample_series = pd.Series(
             [
-                fruit_model(color="red", flavor="sweet", taste="crunchy"),
+                fruit_model(name="apple", color="red", taste="crunchy"),
                 None,
-                fruit_model(color="yellow", flavor="sweet", taste="soft"),
+                fruit_model(name="banana", color="yellow", taste="soft"),
             ],
             name="fruit",
         )
 
         extracted_df = sample_series.ai.extract()
-        expected_columns = ["fruit_color", "fruit_flavor", "fruit_taste"]
+        expected_columns = ["fruit_name", "fruit_color", "fruit_taste"]
         assert list(extracted_df.columns) == expected_columns
         assert extracted_df.iloc[1].isna().all()
 
@@ -458,15 +458,15 @@ class TestPandasExt:
         """Test Series.ai.extract with invalid data types."""
         sample_series = pd.Series(
             [
-                fruit_model(color="red", flavor="sweet", taste="crunchy"),
+                fruit_model(name="apple", color="red", taste="crunchy"),
                 123,  # Invalid row
-                fruit_model(color="yellow", flavor="sweet", taste="soft"),
+                fruit_model(name="banana", color="yellow", taste="soft"),
             ],
             name="fruit",
         )
 
         extracted_df = sample_series.ai.extract()
-        expected_columns = ["fruit_color", "fruit_flavor", "fruit_taste"]
+        expected_columns = ["fruit_name", "fruit_color", "fruit_taste"]
         assert list(extracted_df.columns) == expected_columns
         assert extracted_df.iloc[1].isna().all()
 
@@ -474,13 +474,13 @@ class TestPandasExt:
         """Test DataFrame.ai.extract with Pydantic models."""
         sample_df = pd.DataFrame(
             [
-                {"name": "apple", "fruit": fruit_model(color="red", flavor="sweet", taste="crunchy")},
-                {"name": "banana", "fruit": fruit_model(color="yellow", flavor="sweet", taste="soft")},
-                {"name": "cherry", "fruit": fruit_model(color="red", flavor="sweet", taste="tart")},
+                {"name": "apple", "fruit": fruit_model(name="apple", color="red", taste="crunchy")},
+                {"name": "banana", "fruit": fruit_model(name="banana", color="yellow", taste="soft")},
+                {"name": "cherry", "fruit": fruit_model(name="cherry", color="red", taste="tart")},
             ]
         ).ai.extract("fruit")
 
-        expected_columns = ["name", "fruit_color", "fruit_flavor", "fruit_taste"]
+        expected_columns = ["name", "fruit_name", "fruit_color", "fruit_taste"]
         assert list(sample_df.columns) == expected_columns
 
     def test_dataframe_extract_dict(self):
