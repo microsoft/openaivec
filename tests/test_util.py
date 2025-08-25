@@ -229,19 +229,17 @@ class TestBackoffAsync:
         assert str(cm.value) == "Unhandled exception"
         assert call_count == 1  # No retries for unhandled exception
 
-    def test_backoff_async_with_openai_exceptions(self):
+    def test_backoff_async_with_openai_exceptions(self, mocker):
         """Test backoff with OpenAI exception types."""
         # Import OpenAI exceptions for testing
         try:
-            from unittest.mock import Mock
-
             from openai import InternalServerError, RateLimitError
 
             call_count = 0
 
             # Create a mock response object
-            mock_response = Mock()
-            mock_response.request = Mock()
+            mock_response = mocker.Mock()
+            mock_response.request = mocker.Mock()
             mock_response.status_code = 429  # For RateLimitError
 
             @backoff_async(exceptions=[RateLimitError, InternalServerError], scale=0.01, max_retries=3)

@@ -1,7 +1,6 @@
 import time
 from datetime import datetime, timezone
 from threading import Thread
-from unittest.mock import patch
 
 import pytest
 
@@ -161,10 +160,8 @@ class TestBatchSizeSuggester:
                 time.sleep(0.001)
 
         # Simulate batch size change
-        with patch("openaivec._optimize.datetime") as mock_datetime:
-            change_time = datetime.now(timezone.utc)
-            mock_datetime.now.return_value = change_time
-            suggester._batch_size_changed_at = change_time
+        change_time = datetime.now(timezone.utc)
+        suggester._batch_size_changed_at = change_time
 
         # Add metrics after change
         for i in range(2):
