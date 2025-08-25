@@ -1,17 +1,19 @@
 import asyncio
 import time
-from unittest import TestCase
 
+import pytest
 import tiktoken
 
 from openaivec._util import TextChunker, backoff, backoff_async
 
 
-class TestTextChunker(TestCase):
-    def setUp(self):
+class TestTextChunker:
+    @pytest.fixture(autouse=True)
+    def setup_and_teardown(self):
         self.sep = TextChunker(
             enc=tiktoken.encoding_for_model("text-embedding-3-large"),
         )
+        yield
 
     def test_split(self):
         text = """
@@ -40,10 +42,10 @@ Until version 1.18, Kubernetes followed an N-2 support policy, meaning that the 
         enc = tiktoken.encoding_for_model("text-embedding-3-large")
 
         for chunk in chunks:
-            self.assertLessEqual(len(enc.encode(chunk)), 256)
+            assert len(enc.encode(chunk)) <= 256
 
 
-class TestBackoff(TestCase):
+class TestBackoff:
     def test_backoff_no_exception(self):
         """Test that function executes normally when no exception is raised."""
         call_count = 0
@@ -55,8 +57,8 @@ class TestBackoff(TestCase):
             return "success"
 
         result = success_func()
-        self.assertEqual(result, "success")
-        self.assertEqual(call_count, 1)
+        assert result == "success"
+        assert call_count == 1
 
     def test_backoff_retries_on_exception(self):
         """Test that function retries on specified exception."""
@@ -71,8 +73,8 @@ class TestBackoff(TestCase):
             return "success"
 
         result = fail_twice()
-        self.assertEqual(result, "success")
-        self.assertEqual(call_count, 3)
+        assert result == "success"
+        assert call_count == 3
 
     def test_backoff_multiple_exceptions(self):
         """Test that function retries on multiple exception types."""
@@ -89,8 +91,8 @@ class TestBackoff(TestCase):
             return "success"
 
         result = fail_with_different_errors()
-        self.assertEqual(result, "success")
-        self.assertEqual(call_count, 3)
+        assert result == "success"
+        assert call_count == 3
 
     def test_backoff_max_retries_exceeded(self):
         """Test that function raises exception when max retries exceeded."""
@@ -102,10 +104,10 @@ class TestBackoff(TestCase):
             call_count += 1
             raise ValueError("Always fails")
 
-        with self.assertRaises(ValueError) as cm:
+        with pytest.raises(ValueError) as cm:
             always_fail()
-        self.assertEqual(str(cm.exception), "Always fails")
-        self.assertEqual(call_count, 2)  # Initial call + 1 retry
+        assert str(cm.value) == "Always fails"
+        assert call_count == 2  # Initial call + 1 retry
 
     def test_backoff_unhandled_exception_not_retried(self):
         """Test that unhandled exceptions are not retried."""
@@ -117,10 +119,10 @@ class TestBackoff(TestCase):
             call_count += 1
             raise TypeError("Unhandled exception")
 
-        with self.assertRaises(TypeError) as cm:
+        with pytest.raises(TypeError) as cm:
             raise_unhandled()
-        self.assertEqual(str(cm.exception), "Unhandled exception")
-        self.assertEqual(call_count, 1)  # No retries for unhandled exception
+        assert str(cm.value) == "Unhandled exception"
+        assert call_count == 1  # No retries for unhandled exception
 
     def test_backoff_exponential_delay(self):
         """Test that delay increases exponentially."""
@@ -134,16 +136,16 @@ class TestBackoff(TestCase):
             return "success"
 
         result = track_timing()
-        self.assertEqual(result, "success")
-        self.assertEqual(len(call_times), 3)
+        assert result == "success"
+        assert len(call_times) == 3
 
         # Check that delays are present (but keep them small for test speed)
         for i in range(1, len(call_times)):
             delay = call_times[i] - call_times[i - 1]
-            self.assertGreater(delay, 0)  # Some delay exists
+            assert delay > 0  # Some delay exists
 
 
-class TestBackoffAsync(TestCase):
+class TestBackoffAsync:
     def test_backoff_async_no_exception(self):
         """Test that async function executes normally when no exception is raised."""
         call_count = 0
@@ -156,8 +158,8 @@ class TestBackoffAsync(TestCase):
             return "success"
 
         result = asyncio.run(success_func())
-        self.assertEqual(result, "success")
-        self.assertEqual(call_count, 1)
+        assert result == "success"
+        assert call_count == 1
 
     def test_backoff_async_retries_on_exception(self):
         """Test that async function retries on specified exception."""
@@ -173,8 +175,8 @@ class TestBackoffAsync(TestCase):
             return "success"
 
         result = asyncio.run(fail_twice())
-        self.assertEqual(result, "success")
-        self.assertEqual(call_count, 3)
+        assert result == "success"
+        assert call_count == 3
 
     def test_backoff_async_multiple_exceptions(self):
         """Test that async function retries on multiple exception types."""
@@ -192,8 +194,8 @@ class TestBackoffAsync(TestCase):
             return "success"
 
         result = asyncio.run(fail_with_different_errors())
-        self.assertEqual(result, "success")
-        self.assertEqual(call_count, 3)
+        assert result == "success"
+        assert call_count == 3
 
     def test_backoff_async_max_retries_exceeded(self):
         """Test that async function raises exception when max retries exceeded."""
@@ -206,10 +208,10 @@ class TestBackoffAsync(TestCase):
             await asyncio.sleep(0.01)
             raise ValueError("Always fails")
 
-        with self.assertRaises(ValueError) as cm:
+        with pytest.raises(ValueError) as cm:
             asyncio.run(always_fail())
-        self.assertEqual(str(cm.exception), "Always fails")
-        self.assertEqual(call_count, 2)  # Initial call + 1 retry
+        assert str(cm.value) == "Always fails"
+        assert call_count == 2  # Initial call + 1 retry
 
     def test_backoff_async_unhandled_exception_not_retried(self):
         """Test that unhandled exceptions are not retried in async."""
@@ -222,10 +224,10 @@ class TestBackoffAsync(TestCase):
             await asyncio.sleep(0.01)
             raise TypeError("Unhandled exception")
 
-        with self.assertRaises(TypeError) as cm:
+        with pytest.raises(TypeError) as cm:
             asyncio.run(raise_unhandled())
-        self.assertEqual(str(cm.exception), "Unhandled exception")
-        self.assertEqual(call_count, 1)  # No retries for unhandled exception
+        assert str(cm.value) == "Unhandled exception"
+        assert call_count == 1  # No retries for unhandled exception
 
     def test_backoff_async_with_openai_exceptions(self):
         """Test backoff with OpenAI exception types."""
@@ -256,11 +258,11 @@ class TestBackoffAsync(TestCase):
                 return "success"
 
             result = asyncio.run(simulate_api_errors())
-            self.assertEqual(result, "success")
-            self.assertEqual(call_count, 3)
+            assert result == "success"
+            assert call_count == 3
         except ImportError:
             # Skip test if OpenAI is not installed
-            self.skipTest("OpenAI not installed")
+            pytest.skip("OpenAI not installed")
 
     def test_backoff_production_settings(self):
         """Test backoff with production-like settings for OpenAI API."""
@@ -282,17 +284,17 @@ class TestBackoffAsync(TestCase):
         result = simulate_rate_limit_scenario()
         total_time = time.time() - start_time
 
-        self.assertEqual(result, "success")
-        self.assertEqual(call_count, 3)
-        self.assertEqual(len(call_times), 3)
+        assert result == "success"
+        assert call_count == 3
+        assert len(call_times) == 3
 
         # With scale=1, exponential backoff can vary significantly due to jitter
         # First attempt: immediate, then up to 3s, up to 6s delays
         # Allow up to 15 seconds for 3 attempts with exponential backoff + jitter
-        self.assertLess(total_time, 15)
-        self.assertGreater(total_time, 0.1)  # Should have some delay (adjusted for jitter)
+        assert total_time < 15
+        assert total_time > 0.1  # Should have some delay (adjusted for jitter)
 
         # Verify delays are increasing (roughly)
         if len(call_times) >= 2:
             first_delay = call_times[1] - call_times[0]
-            self.assertGreater(first_delay, 0)
+            assert first_delay > 0

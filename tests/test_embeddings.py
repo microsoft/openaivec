@@ -1,19 +1,21 @@
 import asyncio
 import os
-import unittest
 
 import numpy as np
+import pytest
 from openai import AsyncOpenAI
 
 from openaivec._embeddings import AsyncBatchEmbeddings
 
 
-@unittest.skipIf(not os.getenv("OPENAI_API_KEY"), "OPENAI_API_KEY not set in environment")
-class TestAsyncBatchEmbeddings(unittest.TestCase):
-    def setUp(self):
+@pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="OPENAI_API_KEY not set in environment")
+class TestAsyncBatchEmbeddings:
+    @pytest.fixture(autouse=True)
+    def setup_and_teardown(self):
         self.openai_client = AsyncOpenAI()
         self.model_name = "text-embedding-3-small"
         self.embedding_dim = 1536
+        yield
 
     def test_create_basic(self):
         """Test basic embedding creation with a small batch size."""
@@ -26,12 +28,12 @@ class TestAsyncBatchEmbeddings(unittest.TestCase):
 
         response = asyncio.run(client.create(inputs))
 
-        self.assertEqual(len(response), len(inputs))
+        assert len(response) == len(inputs)
         for embedding in response:
-            self.assertIsInstance(embedding, np.ndarray)
-            self.assertEqual(embedding.shape, (self.embedding_dim,))
-            self.assertEqual(embedding.dtype, np.float32)
-            self.assertTrue(np.all(np.isfinite(embedding)))
+            assert isinstance(embedding, np.ndarray)
+            assert embedding.shape == (self.embedding_dim,)
+            assert embedding.dtype == np.float32
+            assert np.all(np.isfinite(embedding))
 
     def test_create_empty_input(self):
         """Test embedding creation with an empty input list."""
@@ -43,7 +45,7 @@ class TestAsyncBatchEmbeddings(unittest.TestCase):
         inputs = []
         response = asyncio.run(client.create(inputs))
 
-        self.assertEqual(len(response), 0)
+        assert len(response) == 0
 
     def test_create_with_duplicates(self):
         """Test embedding creation with duplicate inputs. Should return correct embeddings in order."""
@@ -56,17 +58,17 @@ class TestAsyncBatchEmbeddings(unittest.TestCase):
 
         response = asyncio.run(client.create(inputs))
 
-        self.assertEqual(len(response), len(inputs))
+        assert len(response) == len(inputs)
         for embedding in response:
-            self.assertIsInstance(embedding, np.ndarray)
-            self.assertEqual(embedding.shape, (self.embedding_dim,))
-            self.assertEqual(embedding.dtype, np.float32)
+            assert isinstance(embedding, np.ndarray)
+            assert embedding.shape == (self.embedding_dim,)
+            assert embedding.dtype == np.float32
 
         unique_inputs_first_occurrence_indices = {text: inputs.index(text) for text in set(inputs)}
         expected_map = {text: response[index] for text, index in unique_inputs_first_occurrence_indices.items()}
 
         for i, text in enumerate(inputs):
-            self.assertTrue(np.allclose(response[i], expected_map[text]))
+            assert np.allclose(response[i], expected_map[text])
 
     def test_create_batch_size_larger_than_unique(self):
         """Test when batch_size is larger than the number of unique inputs."""
@@ -79,13 +81,13 @@ class TestAsyncBatchEmbeddings(unittest.TestCase):
 
         response = asyncio.run(client.create(inputs))
 
-        self.assertEqual(len(response), len(inputs))
+        assert len(response) == len(inputs)
         unique_inputs_first_occurrence_indices = {text: inputs.index(text) for text in set(inputs)}
         expected_map = {text: response[index] for text, index in unique_inputs_first_occurrence_indices.items()}
         for i, text in enumerate(inputs):
-            self.assertTrue(np.allclose(response[i], expected_map[text]))
-            self.assertEqual(response[i].shape, (self.embedding_dim,))
-            self.assertEqual(response[i].dtype, np.float32)
+            assert np.allclose(response[i], expected_map[text])
+            assert response[i].shape == (self.embedding_dim,)
+            assert response[i].dtype == np.float32
 
     def test_create_batch_size_one(self):
         """Test embedding creation with batch_size = 1."""
@@ -98,11 +100,11 @@ class TestAsyncBatchEmbeddings(unittest.TestCase):
 
         response = asyncio.run(client.create(inputs))
 
-        self.assertEqual(len(response), len(inputs))
+        assert len(response) == len(inputs)
         for embedding in response:
-            self.assertIsInstance(embedding, np.ndarray)
-            self.assertEqual(embedding.shape, (self.embedding_dim,))
-            self.assertEqual(embedding.dtype, np.float32)
+            assert isinstance(embedding, np.ndarray)
+            assert embedding.shape == (self.embedding_dim,)
+            assert embedding.dtype == np.float32
 
     def test_initialization_default_concurrency(self):
         """Test initialization uses default max_concurrency."""
@@ -110,7 +112,7 @@ class TestAsyncBatchEmbeddings(unittest.TestCase):
             client=self.openai_client,
             model_name=self.model_name,
         )
-        self.assertEqual(client.cache.max_concurrency, 8)
+        assert client.cache.max_concurrency == 8
 
     def test_initialization_custom_concurrency(self):
         """Test initialization with custom max_concurrency."""
@@ -118,4 +120,4 @@ class TestAsyncBatchEmbeddings(unittest.TestCase):
         client = AsyncBatchEmbeddings.of(
             client=self.openai_client, model_name=self.model_name, max_concurrency=custom_concurrency
         )
-        self.assertEqual(client.cache.max_concurrency, custom_concurrency)
+        assert client.cache.max_concurrency == custom_concurrency

@@ -1,6 +1,8 @@
+import io
 import logging
-import unittest
+import sys
 
+import pytest
 from openai import OpenAI
 from pydantic import BaseModel
 
@@ -9,12 +11,14 @@ from openaivec._prompt import FewShotPromptBuilder
 logging.basicConfig(level=logging.INFO, force=True)
 
 
-class TestAtomicPromptBuilder(unittest.TestCase):
-    def setUp(self):
-        self.client: OpenAI = OpenAI()
-        self.model_name: str = "gpt-4.1-nano"
+class TestAtomicPromptBuilder:
+    @pytest.fixture
+    def setup(self):
+        """Setup for tests."""
+        self.client = OpenAI()
+        self.model_name = "gpt-4.1-nano"
 
-    def test_improve(self):
+    def test_improve(self, setup):
         prompt: str = (
             FewShotPromptBuilder()
             .purpose("Return the smallest category that includes the given word")
@@ -59,7 +63,7 @@ class TestAtomicPromptBuilder(unittest.TestCase):
         # Log the parsed XML result
         logging.info("Parsed XML: %s", prompt)
 
-    def test_improve_ja(self):
+    def test_improve_ja(self, setup):
         prompt: str = (
             FewShotPromptBuilder()
             .purpose("受け取った単語を含む最小のカテゴリ名を返してください。")
@@ -108,14 +112,11 @@ class TestAtomicPromptBuilder(unittest.TestCase):
         )
 
         # Should complete without error if OPENAI_API_KEY is set
-        self.assertIsNotNone(prompt)
+        assert prompt is not None
         logging.info("Improved prompt (DI): %s", prompt)
 
     def test_explain_without_improve(self):
         """Test explain method called without prior improve() call."""
-        import io
-        import sys
-
         # Capture stdout
         captured_output = io.StringIO()
         sys.stdout = captured_output
@@ -132,8 +133,8 @@ class TestAtomicPromptBuilder(unittest.TestCase):
 
         # Check that appropriate message was printed
         output = captured_output.getvalue()
-        self.assertIn("No improvement steps available", output)
+        assert "No improvement steps available" in output
 
         # Builder should still be usable
         prompt = builder.build()
-        self.assertIsNotNone(prompt)
+        assert prompt is not None

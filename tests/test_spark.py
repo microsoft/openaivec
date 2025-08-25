@@ -1,6 +1,6 @@
 import os
-from unittest import TestCase
 
+import pytest
 from pydantic import BaseModel
 from pyspark.sql.session import SparkSession
 from pyspark.sql.types import ArrayType, FloatType, IntegerType, StringType, StructField, StructType
@@ -21,10 +21,12 @@ from openaivec.spark import (
 from openaivec.task import nlp
 
 
-class TestSparkUDFs(TestCase):
+class TestSparkUDFs:
     """Test all Spark UDF functions."""
 
-    def setUp(self):
+    @pytest.fixture(autouse=True)
+    def setup_and_teardown(self):
+        """Setup and teardown for each test."""
         self.spark: SparkSession = (
             SparkSession.builder.appName("TestSparkUDF")
             .master("local[*]")
@@ -42,7 +44,8 @@ class TestSparkUDFs(TestCase):
             embeddings_model_name="text-embedding-3-small",
         )
 
-    def tearDown(self):
+        yield
+
         if self.spark:
             self.spark.stop()
 
@@ -369,7 +372,7 @@ class TestSparkUDFs(TestCase):
         assert df.dtypes[1][1] == "string"
 
 
-class TestSchemaMapping(TestCase):
+class TestSchemaMapping:
     """Test Pydantic to Spark schema mapping functionality."""
 
     def test_pydantic_to_spark_schema(self):
@@ -402,4 +405,4 @@ class TestSchemaMapping(TestCase):
             ]
         )
 
-        self.assertEqual(schema, expected)
+        assert schema == expected
