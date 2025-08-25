@@ -308,26 +308,34 @@ Scale to enterprise datasets with distributed processing:
 First, obtain a Spark session and configure authentication:
 
 ```python
-import os
 from pyspark.sql import SparkSession
+from openaivec.spark import setup, setup_azure
 
 spark = SparkSession.builder.getOrCreate()
-sc = spark.sparkContext
 
-# Configure authentication via SparkContext environment variables
 # Option 1: Using OpenAI
-sc.environment["OPENAI_API_KEY"] = os.environ.get("OPENAI_API_KEY")
+setup(
+    spark,
+    api_key="your-openai-api-key",
+    responses_model_name="gpt-4.1-mini",  # Optional: set default model
+    embeddings_model_name="text-embedding-3-small"  # Optional: set default model
+)
 
 # Option 2: Using Azure OpenAI
-# sc.environment["AZURE_OPENAI_API_KEY"] = os.environ.get("AZURE_OPENAI_API_KEY")
-# sc.environment["AZURE_OPENAI_BASE_URL"] = os.environ.get("AZURE_OPENAI_BASE_URL")
-# sc.environment["AZURE_OPENAI_API_VERSION"] = os.environ.get("AZURE_OPENAI_API_VERSION")
+# setup_azure(
+#     spark,
+#     api_key="your-azure-openai-api-key",
+#     base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
+#     api_version="preview",
+#     responses_model_name="my-gpt4-deployment",  # Optional: set default deployment
+#     embeddings_model_name="my-embedding-deployment"  # Optional: set default deployment
+# )
 ```
 
 Next, create and register UDFs using the provided functions:
 
 ```python
-from openaivec.spark import responses_udf, task_udf, embeddings_udf, count_tokens_udf
+from openaivec.spark import responses_udf, task_udf, embeddings_udf, count_tokens_udf, similarity_udf, parse_udf
 from pydantic import BaseModel
 
 # --- Register Responses UDF (String Output) ---
@@ -361,6 +369,9 @@ spark.udf.register(
 # --- Register Token Counting UDF ---
 spark.udf.register("count_tokens", count_tokens_udf())
 
+# --- Register Similarity UDF ---
+spark.udf.register("compute_similarity", similarity_udf())
+
 # --- Register UDFs with Pre-configured Tasks ---
 from openaivec.task import nlp, customer_support
 
@@ -385,6 +396,17 @@ spark.udf.register(
     responses_udf(
         instructions="Analyze this step by step with detailed reasoning",
         temperature=None  # Required for reasoning models
+    )
+)
+
+# --- Register Parse UDF (Dynamic Schema Inference) ---
+spark.udf.register(
+    "parse_dynamic",
+    parse_udf(
+        instructions="Extract key entities and attributes from the text",
+        example_table_name="sample_texts",  # Infer schema from examples
+        example_field_name="text",
+        max_examples=50
     )
 )
 
@@ -665,17 +687,19 @@ steps:
    - In the notebook, import and use `openaivec.spark` functions as you normally would. For example:
 
      ```python
-     import os
-     from openaivec.spark import responses_udf, embeddings_udf
+     from openaivec.spark import setup_azure, responses_udf, embeddings_udf
 
      # In Microsoft Fabric, spark session is automatically available
      # spark = SparkSession.builder.getOrCreate()
-     sc = spark.sparkContext
-
+     
      # Configure Azure OpenAI authentication
-     sc.environment["AZURE_OPENAI_API_KEY"] = "<your-api-key>"
-     sc.environment["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
-     sc.environment["AZURE_OPENAI_API_VERSION"] = "preview"
+     setup_azure(
+         spark,
+         api_key="<your-api-key>",
+         base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
+         api_version="preview",
+         responses_model_name="my-gpt4-deployment"  # Your Azure deployment name
+     )
 
      # Register UDFs
      spark.udf.register(

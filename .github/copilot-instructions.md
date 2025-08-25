@@ -24,7 +24,10 @@ Entry points:
 - Spark UDF builders in `spark.py`
 - Structured tasks under `task/`
 
-Azure note: Use deployment name as `model`. Warn if base URL not v1. Behavior otherwise mirrors OpenAI.
+Azure note: Use deployment name as `model`. Standard Azure OpenAI configuration uses:
+- Base URL: `https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/`
+- API Version: `"preview"`
+Warn if base URL not v1. Behavior otherwise mirrors OpenAI.
 
 ---
 
@@ -137,7 +140,16 @@ Public exports (`__init__.py`): `BatchResponses`, `AsyncBatchResponses`, `BatchE
 ## 10. Provider / Azure Rules
 
 - Auto-detect provider from env variables; deployment name = model for Azure.
-- Warn (don’t fail) if Azure base URL not v1 format; still proceed.
+- Standard Azure OpenAI configuration:
+  - Base URL: `https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/`
+  - API Version: `"preview"`
+  - Environment variables:
+    ```bash
+    export AZURE_OPENAI_API_KEY="your-azure-key"
+    export AZURE_OPENAI_BASE_URL="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
+    export AZURE_OPENAI_API_VERSION="preview"
+    ```
+- Warn (don't fail) if Azure base URL not v1 format; still proceed.
 - Keep code paths unified; avoid forking logic unless behavior diverges.
 
 ---
@@ -348,6 +360,9 @@ uv run mkdocs serve
 Environment setup notes:
 
 - Set `OPENAI_API_KEY` or Azure trio (`AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_BASE_URL`, `AZURE_OPENAI_API_VERSION`).
+- Standard Azure OpenAI configuration:
+  - `AZURE_OPENAI_BASE_URL="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"`
+  - `AZURE_OPENAI_API_VERSION="preview"`
 - Tests auto-skip live paths when credentials absent.
 - Use separate shell profiles per provider if switching frequently.
-- Azure canonical base URL should end with `/openai/v1/` (e.g. `https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/`); non‑v1 forms emit a warning.
+- Azure canonical base URL must end with `/openai/v1/` (e.g. `https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/`); non‑v1 forms emit a warning.

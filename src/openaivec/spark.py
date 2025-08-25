@@ -1,45 +1,45 @@
 """Asynchronous Spark UDFs for the OpenAI and Azure OpenAI APIs.
 
 This module provides functions (`responses_udf`, `task_udf`, `embeddings_udf`,
-`count_tokens_udf`, `split_to_chunks_udf`)
+`count_tokens_udf`, `split_to_chunks_udf`, `similarity_udf`, `parse_udf`)
 for creating asynchronous Spark UDFs that communicate with either the public
 OpenAI API or Azure OpenAI using the `openaivec.spark` subpackage.
-It supports UDFs for generating responses and creating embeddings asynchronously.
-The UDFs operate on Spark DataFrames and leverage asyncio for potentially
-improved performance in I/O-bound operations.
+It supports UDFs for generating responses, creating embeddings, parsing text,
+and computing similarities asynchronously. The UDFs operate on Spark DataFrames
+and leverage asyncio for improved performance in I/O-bound operations.
 
-**Performance Optimization**: All AI-powered UDFs (`responses_udf`, `task_udf`, `embeddings_udf`)
+**Performance Optimization**: All AI-powered UDFs (`responses_udf`, `task_udf`, `embeddings_udf`, `parse_udf`)
 automatically cache duplicate inputs within each partition, significantly reducing
 API calls and costs when processing datasets with overlapping content.
 
-__all__ = [
-    "count_tokens_udf",
-    "embeddings_udf",
-    "responses_udf",
-    "similarity_udf",
-    "split_to_chunks_udf",
-    "task_udf",
-]
 
 ## Setup
 
 First, obtain a Spark session and configure authentication:
 
 ```python
-import os
 from pyspark.sql import SparkSession
+from openaivec.spark import setup, setup_azure
 
 spark = SparkSession.builder.getOrCreate()
-sc = spark.sparkContext
 
-# Configure authentication via SparkContext environment variables
 # Option 1: Using OpenAI
-sc.environment["OPENAI_API_KEY"] = "your-openai-api-key"
+setup(
+    spark,
+    api_key="your-openai-api-key",
+    responses_model_name="gpt-4.1-mini",  # Optional: set default model
+    embeddings_model_name="text-embedding-3-small"  # Optional: set default model
+)
 
 # Option 2: Using Azure OpenAI
-# sc.environment["AZURE_OPENAI_API_KEY"] = "your-azure-openai-api-key"
-# sc.environment["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
-# sc.environment["AZURE_OPENAI_API_VERSION"] = "preview"
+# setup_azure(
+#     spark,
+#     api_key="your-azure-openai-api-key",
+#     base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
+#     api_version="preview",
+#     responses_model_name="my-gpt4-deployment",  # Optional: set default deployment
+#     embeddings_model_name="my-embedding-deployment"  # Optional: set default deployment
+# )
 ```
 
 Next, create UDFs and register them:
@@ -83,9 +83,10 @@ spark.udf.register(
     ),
 )
 
-# Register token counting and text chunking UDFs
+# Register token counting, text chunking, and similarity UDFs
 spark.udf.register("count_tokens", count_tokens_udf())
 spark.udf.register("split_chunks", split_to_chunks_udf(max_tokens=512, sep=[".", "!", "?"]))
+spark.udf.register("compute_similarity", similarity_udf())
 ```
 
 You can now invoke the UDFs from Spark SQL:
@@ -97,7 +98,8 @@ SELECT
     sentiment_async(text) AS sentiment,
     embed_async(text) AS embedding,
     count_tokens(text) AS token_count,
-    split_chunks(text) AS chunks
+    split_chunks(text) AS chunks,
+    compute_similarity(embed_async(text1), embed_async(text2)) AS similarity
 FROM your_table;
 ```
 
@@ -123,6 +125,7 @@ Note: This module provides asynchronous support through the pandas extensions.
 
 import asyncio
 import logging
+import os
 from collections.abc import Iterator
 from enum import Enum
 from typing import Union, get_args, get_origin
@@ -131,14 +134,17 @@ import numpy as np
 import pandas as pd
 import tiktoken
 from pydantic import BaseModel
+from pyspark.sql import SparkSession
 from pyspark.sql.pandas.functions import pandas_udf
 from pyspark.sql.types import ArrayType, BooleanType, FloatType, IntegerType, StringType, StructField, StructType
 from pyspark.sql.udf import UserDefinedFunction
 from typing_extensions import Literal
 
 from openaivec import pandas_ext
-from openaivec._model import PreparedTask, ResponseFormat
+from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
+from openaivec._provider import CONTAINER
 from openaivec._proxy import AsyncBatchingMapProxy
+from openaivec._schema import InferredSchema, SchemaInferenceInput, SchemaInferer
 from openaivec._serialize import deserialize_base_model, serialize_base_model
 from openaivec._util import TextChunker
 
@@ -146,6 +152,8 @@ __all__ = [
     "responses_udf",
     "task_udf",
     "embeddings_udf",
+    "infer_schema",
+    "parse_udf",
     "split_to_chunks_udf",
     "count_tokens_udf",
     "similarity_udf",
@@ -153,6 +161,80 @@ __all__ = [
 
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+
+
+def setup(
+    spark: SparkSession, api_key: str, responses_model_name: str | None = None, embeddings_model_name: str | None = None
+):
+    """Setup OpenAI authentication and default model names in Spark environment.
+    1. Configures OpenAI API key in SparkContext environment.
+    2. Configures OpenAI API key in local process environment.
+    3. Optionally registers default model names for responses and embeddings in the DI container.
+
+    Args:
+        spark (SparkSession): The Spark session to configure.
+        api_key (str): OpenAI API key for authentication.
+        responses_model_name (str | None): Default model name for response generation.
+            If provided, registers `ResponsesModelName` in the DI container.
+        embeddings_model_name (str | None): Default model name for embeddings.
+            If provided, registers `EmbeddingsModelName` in the DI container.
+    """
+
+    sc = spark.sparkContext
+    sc.environment["OPENAI_API_KEY"] = api_key
+
+    os.environ["OPENAI_API_KEY"] = api_key
+
+    if responses_model_name:
+        CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName(responses_model_name))
+
+    if embeddings_model_name:
+        from openaivec._model import EmbeddingsModelName
+
+        CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName(embeddings_model_name))
+
+    CONTAINER.clear_singletons()
+
+
+def setup_azure(
+    spark: SparkSession,
+    api_key: str,
+    base_url: str,
+    api_version: str = "preview",
+    responses_model_name: str | None = None,
+    embeddings_model_name: str | None = None,
+):
+    """Setup Azure OpenAI authentication and default model names in Spark environment.
+    1. Configures Azure OpenAI API key, base URL, and API version in SparkContext environment.
+    2. Configures Azure OpenAI API key, base URL, and API version in local process environment.
+    3. Optionally registers default model names for responses and embeddings in the DI container.
+    Args:
+        spark (SparkSession): The Spark session to configure.
+        api_key (str): Azure OpenAI API key for authentication.
+        base_url (str): Base URL for the Azure OpenAI resource.
+        api_version (str): API version to use. Defaults to "preview".
+        responses_model_name (str | None): Default model name for response generation.
+            If provided, registers `ResponsesModelName` in the DI container.
+        embeddings_model_name (str | None): Default model name for embeddings.
+            If provided, registers `EmbeddingsModelName` in the DI container.
+    """
+
+    sc = spark.sparkContext
+    sc.environment["AZURE_OPENAI_API_KEY"] = api_key
+    sc.environment["AZURE_OPENAI_BASE_URL"] = base_url
+    sc.environment["AZURE_OPENAI_API_VERSION"] = api_version
+
+    os.environ["AZURE_OPENAI_API_KEY"] = api_key
+    os.environ["AZURE_OPENAI_BASE_URL"] = base_url
+    os.environ["AZURE_OPENAI_API_VERSION"] = api_version
+
+    if responses_model_name:
+        CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName(responses_model_name))
+
+    if embeddings_model_name:
+        CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName(embeddings_model_name))
+
+    CONTAINER.clear_singletons()
 
 
 def _python_type_to_spark(python_type):
@@ -233,7 +315,7 @@ def _safe_dump(x: BaseModel | None) -> dict:
 def responses_udf(
     instructions: str,
     response_format: type[ResponseFormat] = str,
-    model_name: str = "gpt-4.1-mini",
+    model_name: str = CONTAINER.resolve(ResponsesModelName).value,
     batch_size: int | None = None,
     temperature: float | None = 0.0,
     top_p: float = 1.0,
@@ -265,7 +347,7 @@ def responses_udf(
         response_format (type[ResponseFormat]): The desired output format. Either `str` for plain text
             or a Pydantic `BaseModel` for structured JSON output. Defaults to `str`.
         model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
-            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to "gpt-4.1-mini".
+            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to configured model in DI container.
         batch_size (int | None): Number of rows per async batch request within each partition.
             Larger values reduce API call overhead but increase memory usage.
             Defaults to None (automatic batch size optimization that dynamically
@@ -363,7 +445,7 @@ def responses_udf(
 
 def task_udf(
     task: PreparedTask[ResponseFormat],
-    model_name: str = "gpt-4.1-mini",
+    model_name: str = CONTAINER.resolve(ResponsesModelName).value,
     batch_size: int | None = None,
     max_concurrency: int = 8,
     **api_kwargs,
@@ -380,7 +462,7 @@ def task_udf(
         task (PreparedTask): A predefined task configuration containing instructions,
             response format, temperature, and top_p settings.
         model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
-            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to "gpt-4.1-mini".
+            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to configured model in DI container.
         batch_size (int | None): Number of rows per async batch request within each partition.
             Larger values reduce API call overhead but increase memory usage.
             Defaults to None (automatic batch size optimization that dynamically
@@ -416,78 +498,142 @@ def task_udf(
         **Automatic Caching**: Duplicate inputs within each partition are cached,
         reducing API calls and costs significantly on datasets with repeated content.
     """
-    # Serialize task parameters for Spark serialization compatibility
-    task_instructions = task.instructions
-    task_temperature = task.temperature
-    task_top_p = task.top_p
+    return responses_udf(
+        instructions=task.instructions,
+        response_format=task.response_format,
+        model_name=model_name,
+        batch_size=batch_size,
+        temperature=task.temperature,
+        top_p=task.top_p,
+        max_concurrency=max_concurrency,
+        **api_kwargs,
+    )
 
-    if issubclass(task.response_format, BaseModel):
-        task_response_format_json = serialize_base_model(task.response_format)
 
-        # Deserialize the response format from JSON
-        response_format = deserialize_base_model(task_response_format_json)
-        spark_schema = _pydantic_to_spark_schema(response_format)
+def infer_schema(
+    instructions: str,
+    example_table_name: str,
+    example_field_name: str,
+    max_examples: int = 100,
+) -> InferredSchema:
+    """Infer the schema for a response format based on example data.
 
-        @pandas_udf(returnType=spark_schema)  # type: ignore[call-overload]
-        def task_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
-            pandas_ext.responses_model(model_name)
-            cache = AsyncBatchingMapProxy[str, response_format](
-                batch_size=batch_size,
-                max_concurrency=max_concurrency,
-            )
+    This function retrieves examples from a Spark table and infers the schema
+    for the response format using the provided instructions. It is useful when
+    you want to dynamically generate a schema based on existing data.
 
-            try:
-                for part in col:
-                    predictions: pd.Series = asyncio.run(
-                        part.aio.responses_with_cache(
-                            instructions=task_instructions,
-                            response_format=response_format,
-                            temperature=task_temperature,
-                            top_p=task_top_p,
-                            cache=cache,
-                            **api_kwargs,
-                        )
-                    )
-                    yield pd.DataFrame(predictions.map(_safe_dump).tolist())
-            finally:
-                asyncio.run(cache.clear())
+    Args:
+        instructions (str): Instructions for the model to infer the schema.
+        example_table_name (str | None): Name of the Spark table containing example data.
+        example_field_name (str | None): Name of the field in the table to use as examples.
+        max_examples (int): Maximum number of examples to retrieve for schema inference.
 
-        return task_udf  # type: ignore[return-value]
+    Returns:
+        InferredSchema: An object containing the inferred schema and response format.
+    """
 
-    elif issubclass(task.response_format, str):
+    from pyspark.sql import SparkSession
 
-        @pandas_udf(returnType=StringType())  # type: ignore[call-overload]
-        def task_string_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
-            pandas_ext.responses_model(model_name)
-            cache = AsyncBatchingMapProxy[str, str](
-                batch_size=batch_size,
-                max_concurrency=max_concurrency,
-            )
+    spark = SparkSession.builder.getOrCreate()
+    examples: list[str] = (
+        spark.table(example_table_name).rdd.map(lambda row: row[example_field_name]).takeSample(False, max_examples)
+    )
 
-            try:
-                for part in col:
-                    predictions: pd.Series = asyncio.run(
-                        part.aio.responses_with_cache(
-                            instructions=task_instructions,
-                            response_format=str,
-                            temperature=task_temperature,
-                            top_p=task_top_p,
-                            cache=cache,
-                            **api_kwargs,
-                        )
-                    )
-                    yield predictions.map(_safe_cast_str)
-            finally:
-                asyncio.run(cache.clear())
+    input = SchemaInferenceInput(
+        purpose=instructions,
+        examples=examples,
+    )
+    inferer = CONTAINER.resolve(SchemaInferer)
+    return inferer.infer_schema(input)
 
-        return task_string_udf  # type: ignore[return-value]
 
-    else:
-        raise ValueError(f"Unsupported response_format in task: {task.response_format}")
+def parse_udf(
+    instructions: str,
+    response_format: type[ResponseFormat] | None = None,
+    example_table_name: str | None = None,
+    example_field_name: str | None = None,
+    max_examples: int = 100,
+    model_name: str = CONTAINER.resolve(ResponsesModelName).value,
+    batch_size: int | None = None,
+    temperature: float | None = 0.0,
+    top_p: float = 1.0,
+    max_concurrency: int = 8,
+    **api_kwargs,
+) -> UserDefinedFunction:
+    """Create an asynchronous Spark pandas UDF for parsing responses.
+    This function allows users to create UDFs that parse responses based on
+    provided instructions and either a predefined response format or example data.
+    It supports both structured responses using Pydantic models and plain text responses.
+    Each partition maintains its own cache to eliminate duplicate API calls within
+    the partition, significantly reducing API usage and costs when processing
+    datasets with overlapping content.
+
+    Args:
+        instructions (str): The system prompt or instructions for the model.
+        response_format (type[ResponseFormat] | None): The desired output format.
+            Either `str` for plain text or a Pydantic `BaseModel` for structured JSON output.
+            If not provided, the schema will be inferred from example data.
+        example_table_name (str | None): Name of the Spark table containing example data.
+            If provided, `example_field_name` must also be specified.
+        example_field_name (str | None): Name of the field in the table to use as examples.
+            If provided, `example_table_name` must also be specified.
+        max_examples (int): Maximum number of examples to retrieve for schema inference.
+            Defaults to 100.
+        model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
+            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to configured model in DI container.
+        batch_size (int | None): Number of rows per async batch request within each partition.
+            Larger values reduce API call overhead but increase memory usage.
+            Defaults to None (automatic batch size optimization that dynamically
+            adjusts based on execution time, targeting 30-60 seconds per batch).
+            Set to a positive integer (e.g., 32-128) for fixed batch size
+        temperature (float | None): Sampling temperature (0.0 to 2.0). Defaults to 0.0.
+        top_p (float): Nucleus sampling parameter. Defaults to 1.0.
+        max_concurrency (int): Maximum number of concurrent API requests **PER EXECUTOR**.
+            Total cluster concurrency = max_concurrency × number_of_executors.
+            Higher values increase throughput but may hit OpenAI rate limits.
+            Recommended: 4-12 per executor. Defaults to 8.
+    Additional Keyword Args:
+        Arbitrary OpenAI Responses API parameters (e.g. ``frequency_penalty``, ``presence_penalty``,
+        ``seed``, ``max_output_tokens``, etc.) are forwarded verbatim to the underlying API calls.
+        These parameters are applied to all API requests made by the UDF and override any
+        parameters set in the response_format or example data.
+    Returns:
+        UserDefinedFunction: A Spark pandas UDF configured to parse responses asynchronously.
+            Output schema is `StringType` for str response format or a struct derived from
+            the response_format for BaseModel.
+    Raises:
+        ValueError: If neither `response_format` nor `example_table_name` and `example_field_name` are provided.
+    """
+
+    if not response_format and not (example_field_name and example_table_name):
+        raise ValueError("Either response_format or example_table_name and example_field_name must be provided.")
+
+    schema: InferredSchema | None = None
+
+    if not response_format:
+        schema = infer_schema(
+            instructions=instructions,
+            example_table_name=example_table_name,
+            example_field_name=example_field_name,
+            max_examples=max_examples,
+        )
+
+    return responses_udf(
+        instructions=schema.inference_prompt if schema else instructions,
+        response_format=schema.model if schema else response_format,
+        model_name=model_name,
+        batch_size=batch_size,
+        temperature=temperature,
+        top_p=top_p,
+        max_concurrency=max_concurrency,
+        **api_kwargs,
+    )
 
 
 def embeddings_udf(
-    model_name: str = "text-embedding-3-small", batch_size: int | None = None, max_concurrency: int = 8
+    model_name: str = CONTAINER.resolve(EmbeddingsModelName).value,
+    batch_size: int | None = None,
+    max_concurrency: int = 8,
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF for generating embeddings.
 
@@ -511,7 +657,8 @@ def embeddings_udf(
 
     Args:
         model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-embedding-deployment").
-            For OpenAI, use the model name (e.g., "text-embedding-3-small"). Defaults to "text-embedding-3-small".
+            For OpenAI, use the model name (e.g., "text-embedding-3-small").
+            Defaults to configured model in DI container.
         batch_size (int | None): Number of rows per async batch request within each partition.
             Larger values reduce API call overhead but increase memory usage.
             Defaults to None (automatic batch size optimization that dynamically
@@ -600,17 +747,15 @@ def count_tokens_udf() -> UserDefinedFunction:
 
 
 def similarity_udf() -> UserDefinedFunction:
+    """Create a pandas-UDF that computes cosine similarity between embedding vectors.
+
+    Returns:
+        UserDefinedFunction: A Spark pandas UDF that takes two embedding vector columns
+            and returns their cosine similarity as a FloatType column.
+    """
+
     @pandas_udf(FloatType())  # type: ignore[call-overload]
     def fn(a: pd.Series, b: pd.Series) -> pd.Series:
-        """Compute cosine similarity between two vectors.
-
-        Args:
-            a: First vector.
-            b: Second vector.
-
-        Returns:
-            Cosine similarity between the two vectors.
-        """
         # Import pandas_ext to ensure .ai accessor is available in Spark workers
         from openaivec import pandas_ext
 
