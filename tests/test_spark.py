@@ -1,3 +1,4 @@
+import os
 from unittest import TestCase
 
 from pydantic import BaseModel
@@ -12,6 +13,7 @@ from openaivec.spark import (
     infer_schema,
     parse_udf,
     responses_udf,
+    setup,
     similarity_udf,
     task_udf,
 )
@@ -31,6 +33,12 @@ class TestSparkUDFs(TestCase):
             .getOrCreate()
         )
         self.spark.sparkContext.setLogLevel("INFO")
+        setup(
+            spark=self.spark,
+            api_key=os.environ.get("OPENAI_API_KEY"),
+            responses_model_name="gpt-4.1-mini",
+            embeddings_model_name="text-embedding-3-small",
+        )
 
     def tearDown(self):
         if self.spark:
