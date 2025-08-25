@@ -48,7 +48,7 @@ class TestSparkUDFs(TestCase):
         """Test responses_udf with string response format."""
         self.spark.udf.register(
             "repeat",
-            responses_udf("Repeat twice input string.", model_name="gpt-4.1-nano"),
+            responses_udf("Repeat twice input string."),
         )
         dummy_df = self.spark.range(31)
         dummy_df.createOrReplaceTempView("dummy")
@@ -75,7 +75,6 @@ class TestSparkUDFs(TestCase):
             responses_udf(
                 instructions="return the color and taste of given fruit",
                 response_format=Fruit,
-                model_name="gpt-4.1-nano",
             ),
         )
 
@@ -96,7 +95,7 @@ class TestSparkUDFs(TestCase):
         """Test task_udf with predefined BaseModel task."""
         self.spark.udf.register(
             "analyze_sentiment",
-            task_udf(task=nlp.SENTIMENT_ANALYSIS, model_name="gpt-4.1-nano"),
+            task_udf(task=nlp.SENTIMENT_ANALYSIS),
         )
 
         text_data = [
@@ -127,7 +126,7 @@ class TestSparkUDFs(TestCase):
 
         self.spark.udf.register(
             "repeat_text",
-            task_udf(task=simple_task, model_name="gpt-4.1-nano"),
+            task_udf(task=simple_task),
         )
 
         text_data = [("hello",), ("world",), ("test",)]
@@ -160,7 +159,7 @@ class TestSparkUDFs(TestCase):
 
         self.spark.udf.register(
             "analyze_text",
-            task_udf(task=structured_task, model_name="gpt-4.1-nano"),
+            task_udf(task=structured_task),
         )
 
         text_data = [("hello",), ("world",), ("testing",)]
@@ -276,7 +275,6 @@ class TestSparkUDFs(TestCase):
             parse_udf(
                 instructions="Extract product information from the text",
                 response_format=ParsedData,
-                model_name="gpt-4.1-nano",
             ),
         )
 
@@ -320,7 +318,6 @@ class TestSparkUDFs(TestCase):
                 example_table_name="events",
                 example_field_name="event_text",
                 max_examples=3,
-                model_name="gpt-4.1-nano",
             ),
         )
 
@@ -349,7 +346,6 @@ class TestSparkUDFs(TestCase):
             parse_udf(
                 instructions="Summarize the text in one sentence",
                 response_format=str,
-                model_name="gpt-4.1-nano",
             ),
         )
 
