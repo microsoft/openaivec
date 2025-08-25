@@ -1,8 +1,6 @@
-import asyncio
 from logging import Handler, StreamHandler, basicConfig
 
 import pytest
-from openai import AsyncOpenAI, OpenAI
 from pydantic import BaseModel
 
 from openaivec import BatchResponses
@@ -13,11 +11,12 @@ _h: Handler = StreamHandler()
 basicConfig(handlers=[_h], level="DEBUG")
 
 
+@pytest.mark.requires_api
 class TestVectorizedResponsesOpenAI:
     @pytest.fixture(autouse=True)
-    def setup_and_teardown(self):
-        self.openai_client = OpenAI()
-        self.model_name = "gpt-4.1-mini"
+    def setup_client(self, openai_client, responses_model_name):
+        self.openai_client = openai_client
+        self.model_name = responses_model_name
         yield
 
     def test_predict_str(self):
@@ -61,15 +60,33 @@ class TestVectorizedResponsesOpenAI:
 
         assert all(isinstance(item, Fruit) for item in response)
 
+    @pytest.mark.parametrize("batch_size", [1, 2, 4])
+    def test_predict_with_batch_sizes(self, batch_size):
+        """Test BatchResponses with different batch sizes."""
+        system_message = "just repeat the user message"
+        client = BatchResponses(
+            client=self.openai_client,
+            model_name=self.model_name,
+            system_message=system_message,
+        )
 
+        test_inputs = ["test1", "test2", "test3", "test4"][:batch_size]
+        response: list[str] = client._predict_chunk(test_inputs)
+
+        assert len(response) == len(test_inputs)
+        assert all(isinstance(item, str) for item in response)
+
+
+@pytest.mark.requires_api
+@pytest.mark.asyncio
 class TestAsyncBatchResponses:
     @pytest.fixture(autouse=True)
-    def setup_and_teardown(self):
-        self.openai_client = AsyncOpenAI()
-        self.model_name = "gpt-4.1-nano"
+    def setup_client(self, async_openai_client):
+        self.openai_client = async_openai_client
+        self.model_name = "gpt-4.1-mini"
         yield
 
-    def test_parse_str(self):
+    async def test_parse_str(self):
         system_message = """
         just repeat the user message
         """.strip()
@@ -79,10 +96,10 @@ class TestAsyncBatchResponses:
             system_message=system_message,
             batch_size=1,
         )
-        response: list[str] = asyncio.run(client.parse(["apple", "orange", "banana", "pineapple"]))
+        response: list[str] = await client.parse(["apple", "orange", "banana", "pineapple"])
         assert response == ["apple", "orange", "banana", "pineapple"]
 
-    def test_parse_structured(self):
+    async def test_parse_structured(self):
         system_message = """
         return the color and taste of given fruit
         #example
@@ -110,7 +127,7 @@ class TestAsyncBatchResponses:
             response_format=Fruit,
             batch_size=1,
         )
-        response: list[Fruit] = asyncio.run(client.parse(input_fruits))
+        response: list[Fruit] = await client.parse(input_fruits)
         assert len(response) == len(input_fruits)
         for i, item in enumerate(response):
             assert isinstance(item, Fruit)
@@ -120,7 +137,7 @@ class TestAsyncBatchResponses:
             assert isinstance(item.taste, str)
             assert len(item.taste) > 0
 
-    def test_parse_structured_empty_input(self):
+    async def test_parse_structured_empty_input(self):
         system_message = """
         return the color and taste of given fruit
         """
@@ -137,10 +154,10 @@ class TestAsyncBatchResponses:
             response_format=Fruit,
             batch_size=1,
         )
-        response: list[Fruit] = asyncio.run(client.parse([]))
+        response: list[Fruit] = await client.parse([])
         assert response == []
 
-    def test_parse_structured_batch_size(self):
+    async def test_parse_structured_batch_size(self):
         system_message = """
         return the color and taste of given fruit
         #example
@@ -168,7 +185,7 @@ class TestAsyncBatchResponses:
             response_format=Fruit,
             batch_size=2,
         )
-        response_bs2: list[Fruit] = asyncio.run(client_bs2.parse(input_fruits))
+        response_bs2: list[Fruit] = await client_bs2.parse(input_fruits)
         assert len(response_bs2) == len(input_fruits)
         for i, item in enumerate(response_bs2):
             assert isinstance(item, Fruit)
@@ -185,7 +202,7 @@ class TestAsyncBatchResponses:
             response_format=Fruit,
             batch_size=4,
         )
-        response_bs4: list[Fruit] = asyncio.run(client_bs4.parse(input_fruits))
+        response_bs4: list[Fruit] = await client_bs4.parse(input_fruits)
         assert len(response_bs4) == len(input_fruits)
         for i, item in enumerate(response_bs4):
             assert isinstance(item, Fruit)

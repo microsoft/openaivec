@@ -50,32 +50,22 @@ class TestBatchSizeSuggester:
         assert suggester.step_ratio == 0.2
         assert suggester.sample_size == 5
 
-    def test_validation_min_batch_size_invalid(self):
-        with pytest.raises(ValueError, match="min_batch_size must be > 0"):
-            BatchSizeSuggester(min_batch_size=0)
-
-    def test_validation_current_batch_size_too_small(self):
-        with pytest.raises(ValueError, match="current_batch_size must be >= min_batch_size"):
-            BatchSizeSuggester(current_batch_size=5, min_batch_size=10)
-
-    def test_validation_sample_size_invalid(self):
-        with pytest.raises(ValueError, match="sample_size must be > 0"):
-            BatchSizeSuggester(sample_size=0)
-
-    def test_validation_step_ratio_invalid(self):
-        with pytest.raises(ValueError, match="step_ratio must be > 0"):
-            BatchSizeSuggester(step_ratio=0)
-
-    def test_validation_duration_invalid(self):
-        with pytest.raises(ValueError, match="min_duration and max_duration must be > 0"):
-            BatchSizeSuggester(min_duration=0)
-
-        with pytest.raises(ValueError, match="min_duration and max_duration must be > 0"):
-            BatchSizeSuggester(max_duration=0)
-
-    def test_validation_duration_order(self):
-        with pytest.raises(ValueError, match="min_duration must be < max_duration"):
-            BatchSizeSuggester(min_duration=60, max_duration=30)
+    @pytest.mark.parametrize(
+        "kwargs,expected_match",
+        [
+            ({"min_batch_size": 0}, "min_batch_size must be > 0"),
+            ({"current_batch_size": 5, "min_batch_size": 10}, "current_batch_size must be >= min_batch_size"),
+            ({"sample_size": 0}, "sample_size must be > 0"),
+            ({"step_ratio": 0}, "step_ratio must be > 0"),
+            ({"min_duration": 0}, "min_duration and max_duration must be > 0"),
+            ({"max_duration": 0}, "min_duration and max_duration must be > 0"),
+            ({"min_duration": 60, "max_duration": 30}, "min_duration must be < max_duration"),
+        ],
+    )
+    def test_validation_errors(self, kwargs, expected_match):
+        """Test various validation error scenarios."""
+        with pytest.raises(ValueError, match=expected_match):
+            BatchSizeSuggester(**kwargs)
 
     def test_record_success(self):
         suggester = BatchSizeSuggester()
@@ -183,62 +173,40 @@ class TestBatchSizeSuggester:
 
         assert suggester.suggest_batch_size() == 10  # No change
 
-    def test_suggest_batch_size_increase_when_too_fast(self):
+    @pytest.mark.parametrize(
+        "scenario,sleep_duration,expected_size,should_change",
+        [
+            ("increase_when_too_fast", 0.1, 11, True),  # 0.1s < 0.5s min_duration
+            ("decrease_when_too_slow", 1.5, 9, True),  # 1.5s > 1.0s max_duration
+            ("no_change_in_range", 0.75, 10, False),  # 0.75s in range [0.5, 1.0]
+        ],
+    )
+    def test_suggest_batch_size_scenarios(self, scenario, sleep_duration, expected_size, should_change):
+        """Test batch size suggestion in different duration scenarios."""
+        min_batch_size = 5 if scenario == "decrease_when_too_slow" else 10
+
         suggester = BatchSizeSuggester(
             current_batch_size=10,
+            min_batch_size=min_batch_size,
             min_duration=0.5,  # 0.5 seconds (test scale)
             max_duration=1.0,  # 1.0 seconds (test scale)
             step_ratio=0.1,
             sample_size=3,
         )
 
-        # Add metrics with short duration (< min_duration)
+        # Add metrics with specified duration
         for i in range(3):
             with suggester.record(batch_size=10):
-                time.sleep(0.1)  # 0.1 seconds < 0.5 min_duration
+                time.sleep(sleep_duration)
 
         new_size = suggester.suggest_batch_size()
-        assert new_size == 11  # 10 * (1 + 0.1) = 11
-        assert suggester.current_batch_size == 11
-        assert suggester._batch_size_changed_at is not None
+        assert new_size == expected_size
+        assert suggester.current_batch_size == expected_size
 
-    def test_suggest_batch_size_decrease_when_too_slow(self):
-        suggester = BatchSizeSuggester(
-            current_batch_size=10,
-            min_batch_size=5,  # Allow decrease below 10
-            min_duration=0.5,  # 0.5 seconds (test scale)
-            max_duration=1.0,  # 1.0 seconds (test scale)
-            step_ratio=0.1,
-            sample_size=3,
-        )
-
-        # Add metrics with long duration (> max_duration)
-        for i in range(3):
-            with suggester.record(batch_size=10):
-                time.sleep(1.5)  # 1.5 seconds > 1.0 max_duration
-
-        new_size = suggester.suggest_batch_size()
-        assert new_size == 9  # 10 * (1 - 0.1) = 9
-        assert suggester.current_batch_size == 9
-
-    def test_suggest_batch_size_no_change_in_range(self):
-        suggester = BatchSizeSuggester(
-            current_batch_size=10,
-            min_duration=0.5,  # 0.5 seconds (test scale)
-            max_duration=1.0,  # 1.0 seconds (test scale)
-            step_ratio=0.1,
-            sample_size=3,
-        )
-
-        # Add metrics with duration in range
-        for i in range(3):
-            with suggester.record(batch_size=10):
-                time.sleep(0.75)  # 0.75 seconds (between 0.5 and 1.0)
-
-        new_size = suggester.suggest_batch_size()
-        assert new_size == 10  # No change
-        assert suggester.current_batch_size == 10
-        assert suggester._batch_size_changed_at is None
+        if should_change:
+            assert suggester._batch_size_changed_at is not None
+        else:
+            assert suggester._batch_size_changed_at is None
 
     def test_suggest_batch_size_respects_minimum(self):
         suggester = BatchSizeSuggester(

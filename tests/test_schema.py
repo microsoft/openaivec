@@ -1,19 +1,17 @@
-import os
 from enum import Enum
 from typing import get_args, get_origin
 
-from openai import OpenAI
+import pytest
 from pydantic import BaseModel
 
 from openaivec._dynamic import EnumSpec, FieldSpec, ObjectSpec  # internal types for constructing test schemas
 from openaivec._schema import InferredSchema, SchemaInferenceInput, SchemaInferer  # type: ignore
 
-SCHEMA_TEST_MODEL = "gpt-4.1-mini"
 
-
-class TestSchemaInferer:
-    # Minimal datasets: one normal case + one for retry logic
-    DATASETS: dict[str, SchemaInferenceInput] = {
+@pytest.fixture(scope="session")
+def cached_inferred_schemas(openai_client, responses_model_name):
+    """Cache expensive schema inference operations for the entire test session."""
+    datasets = {
         "basic_support": SchemaInferenceInput(
             examples=[
                 "Order #1234: customer requested refund due to damaged packaging.",
@@ -31,17 +29,21 @@ class TestSchemaInferer:
         ),
     }
 
-    INFERRED: dict[str, InferredSchema] = {}
+    inferer = SchemaInferer(client=openai_client, model_name=responses_model_name)
+    inferred = {}
+    for name, ds in datasets.items():
+        inferred[name] = inferer.infer_schema(ds, max_retries=2)
 
-    @classmethod
-    def setup_class(cls):  # pytest class setup
-        """Infer schemas for all datasets once (live API) to reuse across tests."""
-        if "OPENAI_API_KEY" not in os.environ:
-            raise RuntimeError("OPENAI_API_KEY not set (tests require real API per project policy)")
-        client = OpenAI()
-        inferer = SchemaInferer(client=client, model_name=SCHEMA_TEST_MODEL)
-        for name, ds in cls.DATASETS.items():
-            cls.INFERRED[name] = inferer.infer_schema(ds, max_retries=2)
+    return inferred, datasets
+
+
+@pytest.mark.requires_api
+@pytest.mark.slow
+class TestSchemaInferer:
+    @pytest.fixture(autouse=True)
+    def setup_cached_data(self, cached_inferred_schemas):
+        """Setup cached inference data for all tests."""
+        self.inferred_schemas, self.datasets = cached_inferred_schemas
 
     def test_inference_basic(self):
         allowed_types = {
@@ -58,7 +60,7 @@ class TestSchemaInferer:
             "enum_array",
             "object_array",
         }
-        for inferred in self.INFERRED.values():
+        for inferred in self.inferred_schemas.values():
             assert isinstance(inferred.object_spec, ObjectSpec)
             assert isinstance(inferred.object_spec.fields, list)
             assert len(inferred.object_spec.fields) >= 0
@@ -72,18 +74,18 @@ class TestSchemaInferer:
                     assert f.enum_spec is None
 
     def test_build_model(self):
-        inferred = self.INFERRED["basic_support"]
+        inferred = self.inferred_schemas["basic_support"]
         model_cls = inferred.build_model()
         assert issubclass(model_cls, BaseModel)
         props = model_cls.model_json_schema().get("properties", {})
         assert props
 
-    def test_retry(self):
+    @pytest.mark.slow
+    def test_retry(self, openai_client, responses_model_name):
         # Simple retry test without complex mocking
         # Just verify the retry functionality works with actual API calls
-        ds = self.DATASETS["retry_case"]
-        client = OpenAI()
-        inferer = SchemaInferer(client=client, model_name=SCHEMA_TEST_MODEL)
+        ds = self.datasets["retry_case"]
+        inferer = SchemaInferer(client=openai_client, model_name=responses_model_name)
         suggestion = inferer.infer_schema(ds, max_retries=3)
 
         # Verify the suggestion is valid
@@ -95,13 +97,13 @@ class TestSchemaInferer:
                 assert len(f.enum_spec.values) > 0
                 assert len(f.enum_spec.values) <= 24
 
-    def test_structuring_basic(self):
-        inferred = self.INFERRED["basic_support"]
-        raw = self.DATASETS["basic_support"].examples[0]
-        client = OpenAI()
+    @pytest.mark.slow
+    def test_structuring_basic(self, openai_client, responses_model_name):
+        inferred = self.inferred_schemas["basic_support"]
+        raw = self.datasets["basic_support"].examples[0]
         model_cls = inferred.build_model()
-        parsed = client.responses.parse(
-            model=SCHEMA_TEST_MODEL,
+        parsed = openai_client.responses.parse(
+            model=responses_model_name,
             instructions=inferred.inference_prompt,
             input=raw,
             text_format=model_cls,
@@ -111,7 +113,7 @@ class TestSchemaInferer:
 
     def test_field_descriptions_in_model(self):
         """Test that field descriptions from FieldSpec are reflected in generated Pydantic model."""
-        inferred = self.INFERRED["basic_support"]
+        inferred = self.inferred_schemas["basic_support"]
         model_cls = inferred.build_model()
         # Get the model schema which includes field descriptions
         schema_json = model_cls.model_json_schema()

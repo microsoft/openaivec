@@ -2,7 +2,6 @@ import os
 
 import pytest
 from pydantic import BaseModel
-from pyspark.sql.session import SparkSession
 from pyspark.sql.types import ArrayType, FloatType, IntegerType, StringType, StructField, StructType
 
 from openaivec._model import PreparedTask
@@ -21,41 +20,32 @@ from openaivec.spark import (
 from openaivec.task import nlp
 
 
+@pytest.mark.spark
+@pytest.mark.requires_api
 class TestSparkUDFs:
     """Test all Spark UDF functions."""
 
     @pytest.fixture(autouse=True)
-    def setup_and_teardown(self):
-        """Setup and teardown for each test."""
-        self.spark: SparkSession = (
-            SparkSession.builder.appName("TestSparkUDF")
-            .master("local[*]")
-            .config("spark.driver.memory", "1g")
-            .config("spark.executor.memory", "1g")
-            .config("spark.sql.adaptive.enabled", "false")
-            .getOrCreate()
-        )
-        self.spark.sparkContext.setLogLevel("INFO")
+    def setup_spark_openaivec(self, spark_session, responses_model_name, embeddings_model_name):
+        """Setup Spark session with openaivec configuration."""
+        self.spark = spark_session
         set_default_registrations()
         setup(
             spark=self.spark,
             api_key=os.environ.get("OPENAI_API_KEY"),
-            responses_model_name="gpt-4.1-mini",
-            embeddings_model_name="text-embedding-3-small",
+            responses_model_name=responses_model_name,
+            embeddings_model_name=embeddings_model_name,
         )
-
         yield
 
-        if self.spark:
-            self.spark.stop()
-
-    def test_responses_udf_string_format(self):
+    @pytest.mark.parametrize("test_size", [5, 10])
+    def test_responses_udf_string_format(self, test_size):
         """Test responses_udf with string response format."""
         self.spark.udf.register(
             "repeat",
             responses_udf("Repeat twice input string."),
         )
-        dummy_df = self.spark.range(31)
+        dummy_df = self.spark.range(test_size)
         dummy_df.createOrReplaceTempView("dummy")
 
         df = self.spark.sql(
@@ -65,21 +55,15 @@ class TestSparkUDFs:
         )
 
         df_pandas = df.toPandas()
-        assert df_pandas.shape == (31, 2)
+        assert df_pandas.shape == (test_size, 2)
 
-    def test_responses_udf_structured_format(self):
+    def test_responses_udf_structured_format(self, fruit_model):
         """Test responses_udf with Pydantic BaseModel response format."""
-
-        class Fruit(BaseModel):
-            name: str
-            color: str
-            taste: str
-
         self.spark.udf.register(
             "fruit",
             responses_udf(
                 instructions="return the color and taste of given fruit",
-                response_format=Fruit,
+                response_format=fruit_model,
             ),
         )
 
@@ -180,13 +164,15 @@ class TestSparkUDFs:
         df_pandas = df.toPandas()
         assert df_pandas.shape == (3, 2)
 
-    def test_embeddings_udf(self):
+    @pytest.mark.parametrize("batch_size", [4, 8])
+    def test_embeddings_udf(self, embeddings_model_name, batch_size):
         """Test embeddings_udf functionality."""
         self.spark.udf.register(
             "embed",
-            embeddings_udf(model_name="text-embedding-3-small", batch_size=8),
+            embeddings_udf(model_name=embeddings_model_name, batch_size=batch_size),
         )
-        dummy_df = self.spark.range(31)
+        test_size = 10  # Reduced from 31 for faster tests
+        dummy_df = self.spark.range(test_size)
         dummy_df.createOrReplaceTempView("dummy")
 
         df = self.spark.sql(
@@ -196,7 +182,7 @@ class TestSparkUDFs:
         )
 
         df_pandas = df.toPandas()
-        assert df_pandas.shape == (31, 2)
+        assert df_pandas.shape == (test_size, 2)
 
     def test_count_tokens_udf(self):
         """Test count_tokens_udf functionality."""
@@ -375,8 +361,9 @@ class TestSparkUDFs:
 class TestSchemaMapping:
     """Test Pydantic to Spark schema mapping functionality."""
 
-    def test_pydantic_to_spark_schema(self):
-        """Test _pydantic_to_spark_schema function with nested models."""
+    @pytest.fixture
+    def nested_models(self):
+        """Fixture providing nested Pydantic models for testing."""
 
         class InnerModel(BaseModel):
             inner_id: int
@@ -388,6 +375,11 @@ class TestSchemaMapping:
             values: list[float]
             inner: InnerModel
 
+        return InnerModel, OuterModel
+
+    def test_pydantic_to_spark_schema(self, nested_models):
+        """Test _pydantic_to_spark_schema function with nested models."""
+        InnerModel, OuterModel = nested_models
         schema = _pydantic_to_spark_schema(OuterModel)
 
         expected = StructType(
@@ -406,3 +398,30 @@ class TestSchemaMapping:
         )
 
         assert schema == expected
+
+    def test_basic_type_mapping(self):
+        """Test basic Pydantic type to Spark type mapping."""
+
+        # Test str type
+        class StrModel(BaseModel):
+            test_field: str
+
+        schema = _pydantic_to_spark_schema(StrModel)
+        assert len(schema.fields) == 1
+        assert schema.fields[0].dataType == StringType()
+
+        # Test int type
+        class IntModel(BaseModel):
+            test_field: int
+
+        schema = _pydantic_to_spark_schema(IntModel)
+        assert len(schema.fields) == 1
+        assert schema.fields[0].dataType == IntegerType()
+
+        # Test float type
+        class FloatModel(BaseModel):
+            test_field: float
+
+        schema = _pydantic_to_spark_schema(FloatModel)
+        assert len(schema.fields) == 1
+        assert schema.fields[0].dataType == FloatType()

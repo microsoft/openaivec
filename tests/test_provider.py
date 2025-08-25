@@ -9,29 +9,17 @@ from openaivec._provider import provide_async_openai_client, provide_openai_clie
 
 class TestProvideOpenAIClient:
     @pytest.fixture(autouse=True)
-    def setup_and_teardown(self):
-        """Save original environment variables and reset environment registrations."""
-        self.original_env = {
-            "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
-            "AZURE_OPENAI_API_KEY": os.environ.get("AZURE_OPENAI_API_KEY"),
-            "AZURE_OPENAI_BASE_URL": os.environ.get("AZURE_OPENAI_BASE_URL"),
-            "AZURE_OPENAI_API_VERSION": os.environ.get("AZURE_OPENAI_API_VERSION"),
-        }
-        # Clear all environment variables
-        for key in self.original_env:
+    def setup_and_teardown(self, reset_environment):
+        """Use shared environment reset fixture."""
+        # Clear all environment variables at start
+        env_keys = ["OPENAI_API_KEY", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_BASE_URL", "AZURE_OPENAI_API_VERSION"]
+        for key in env_keys:
             if key in os.environ:
                 del os.environ[key]
 
         # Reset environment registrations to ensure fresh state for each test
         set_default_registrations()
         yield
-        # Teardown
-        for key, value in self.original_env.items():
-            if value is not None:
-                os.environ[key] = value
-            elif key in os.environ:
-                del os.environ[key]
-
         # Reset environment registrations after test
         set_default_registrations()
 
@@ -142,29 +130,17 @@ class TestProvideOpenAIClient:
 
 class TestProvideAsyncOpenAIClient:
     @pytest.fixture(autouse=True)
-    def setup_and_teardown(self):
-        """Save original environment variables and reset environment registrations."""
-        self.original_env = {
-            "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
-            "AZURE_OPENAI_API_KEY": os.environ.get("AZURE_OPENAI_API_KEY"),
-            "AZURE_OPENAI_BASE_URL": os.environ.get("AZURE_OPENAI_BASE_URL"),
-            "AZURE_OPENAI_API_VERSION": os.environ.get("AZURE_OPENAI_API_VERSION"),
-        }
-        # Clear all environment variables
-        for key in self.original_env:
+    def setup_and_teardown(self, reset_environment):
+        """Use shared environment reset fixture."""
+        # Clear all environment variables at start
+        env_keys = ["OPENAI_API_KEY", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_BASE_URL", "AZURE_OPENAI_API_VERSION"]
+        for key in env_keys:
             if key in os.environ:
                 del os.environ[key]
 
         # Reset environment registrations to ensure fresh state for each test
         set_default_registrations()
         yield
-        # Teardown
-        for key, value in self.original_env.items():
-            if value is not None:
-                os.environ[key] = value
-            elif key in os.environ:
-                del os.environ[key]
-
         # Reset environment registrations after test
         set_default_registrations()
 
@@ -273,33 +249,22 @@ class TestProvideAsyncOpenAIClient:
             provide_async_openai_client()
 
 
+@pytest.mark.integration
 class TestProviderIntegration:
     """Integration tests for both provider functions."""
 
     @pytest.fixture(autouse=True)
-    def setup_and_teardown(self):
-        """Save original environment variables and reset environment registrations."""
-        self.original_env = {
-            "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
-            "AZURE_OPENAI_API_KEY": os.environ.get("AZURE_OPENAI_API_KEY"),
-            "AZURE_OPENAI_BASE_URL": os.environ.get("AZURE_OPENAI_BASE_URL"),
-            "AZURE_OPENAI_API_VERSION": os.environ.get("AZURE_OPENAI_API_VERSION"),
-        }
-        # Clear all environment variables
-        for key in self.original_env:
+    def setup_and_teardown(self, reset_environment):
+        """Use shared environment reset fixture."""
+        # Clear all environment variables at start
+        env_keys = ["OPENAI_API_KEY", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_BASE_URL", "AZURE_OPENAI_API_VERSION"]
+        for key in env_keys:
             if key in os.environ:
                 del os.environ[key]
 
         # Reset environment registrations to ensure fresh state for each test
         set_default_registrations()
         yield
-        # Teardown
-        for key, value in self.original_env.items():
-            if value is not None:
-                os.environ[key] = value
-            elif key in os.environ:
-                del os.environ[key]
-
         # Reset environment registrations after test
         set_default_registrations()
 
@@ -393,6 +358,28 @@ class TestAzureV1ApiWarning:
                 assert len(w) > 0, f"Expected warning for URL: {url}"
                 assert "v1 API is recommended" in str(w[0].message)
                 assert "learn.microsoft.com" in str(w[0].message)
+
+    @pytest.mark.parametrize(
+        "legacy_url,should_warn",
+        [
+            ("https://test.openai.azure.com/", True),
+            ("https://test.services.ai.azure.com/", True),
+            ("https://test.services.ai.azure.com/openai/v1/", False),
+        ],
+    )
+    def test_azure_v1_warning_parametrized(self, legacy_url, should_warn):
+        """Test Azure v1 API URL warning with different URL patterns."""
+        from openaivec._provider import _check_azure_v1_api_url
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _check_azure_v1_api_url(legacy_url)
+
+            if should_warn:
+                assert len(w) > 0, f"Expected warning for URL: {legacy_url}"
+                assert "v1 API is recommended" in str(w[0].message)
+            else:
+                assert len(w) == 0, f"Unexpected warning for URL: {legacy_url}"
 
     def test_pandas_ext_use_azure_warning(self):
         """Test that pandas_ext.use() shows warning for legacy Azure URLs."""
