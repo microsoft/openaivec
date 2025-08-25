@@ -1,37 +1,25 @@
 import os
-import unittest
 import warnings
 
+import pytest
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
 
 from openaivec._provider import provide_async_openai_client, provide_openai_client, set_default_registrations
 
 
-class TestProvideOpenAIClient(unittest.TestCase):
-    def setUp(self):
-        """Save original environment variables and reset environment registrations."""
-        self.original_env = {
-            "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
-            "AZURE_OPENAI_API_KEY": os.environ.get("AZURE_OPENAI_API_KEY"),
-            "AZURE_OPENAI_BASE_URL": os.environ.get("AZURE_OPENAI_BASE_URL"),
-            "AZURE_OPENAI_API_VERSION": os.environ.get("AZURE_OPENAI_API_VERSION"),
-        }
-        # Clear all environment variables
-        for key in self.original_env:
+class TestProvideOpenAIClient:
+    @pytest.fixture(autouse=True)
+    def setup_and_teardown(self, reset_environment):
+        """Use shared environment reset fixture."""
+        # Clear all environment variables at start
+        env_keys = ["OPENAI_API_KEY", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_BASE_URL", "AZURE_OPENAI_API_VERSION"]
+        for key in env_keys:
             if key in os.environ:
                 del os.environ[key]
 
         # Reset environment registrations to ensure fresh state for each test
         set_default_registrations()
-
-    def tearDown(self):
-        """Restore original environment variables and reset environment registrations."""
-        for key, value in self.original_env.items():
-            if value is not None:
-                os.environ[key] = value
-            elif key in os.environ:
-                del os.environ[key]
-
+        yield
         # Reset environment registrations after test
         set_default_registrations()
 
@@ -55,7 +43,7 @@ class TestProvideOpenAIClient(unittest.TestCase):
 
         client = provide_openai_client()
 
-        self.assertIsInstance(client, OpenAI)
+        assert isinstance(client, OpenAI)
 
     def test_provide_openai_client_with_azure_keys(self):
         """Test creating Azure OpenAI client when Azure environment variables are set."""
@@ -67,7 +55,7 @@ class TestProvideOpenAIClient(unittest.TestCase):
 
         client = provide_openai_client()
 
-        self.assertIsInstance(client, AzureOpenAI)
+        assert isinstance(client, AzureOpenAI)
 
     def test_provide_openai_client_prioritizes_openai_over_azure(self):
         """Test that OpenAI client is preferred when both sets of keys are available."""
@@ -80,7 +68,7 @@ class TestProvideOpenAIClient(unittest.TestCase):
 
         client = provide_openai_client()
 
-        self.assertIsInstance(client, OpenAI)
+        assert isinstance(client, OpenAI)
 
     def test_provide_openai_client_with_incomplete_azure_config(self):
         """Test error when Azure config is incomplete - missing API key."""
@@ -89,10 +77,10 @@ class TestProvideOpenAIClient(unittest.TestCase):
         )
         # Missing AZURE_OPENAI_API_KEY
 
-        with self.assertRaises(ValueError) as context:
+        with pytest.raises(ValueError) as context:
             provide_openai_client()
 
-        self.assertIn("No valid OpenAI or Azure OpenAI environment variables found", str(context.exception))
+        assert "No valid OpenAI or Azure OpenAI environment variables found" in str(context.value)
 
     def test_provide_openai_client_with_azure_keys_default_version(self):
         """Test creating Azure OpenAI client with default API version when not specified."""
@@ -103,11 +91,11 @@ class TestProvideOpenAIClient(unittest.TestCase):
 
         client = provide_openai_client()
 
-        self.assertIsInstance(client, AzureOpenAI)
+        assert isinstance(client, AzureOpenAI)
 
     def test_provide_openai_client_with_no_environment_variables(self):
         """Test error when no environment variables are set."""
-        with self.assertRaises(ValueError) as context:
+        with pytest.raises(ValueError) as context:
             provide_openai_client()
 
         expected_message = (
@@ -115,7 +103,7 @@ class TestProvideOpenAIClient(unittest.TestCase):
             "Please set either OPENAI_API_KEY or AZURE_OPENAI_API_KEY, "
             "AZURE_OPENAI_BASE_URL, and AZURE_OPENAI_API_VERSION."
         )
-        self.assertEqual(str(context.exception), expected_message)
+        assert str(context.value) == expected_message
 
     def test_provide_openai_client_with_empty_openai_key(self):
         """Test that empty OPENAI_API_KEY is treated as not set."""
@@ -128,7 +116,7 @@ class TestProvideOpenAIClient(unittest.TestCase):
 
         client = provide_openai_client()
 
-        self.assertIsInstance(client, AzureOpenAI)
+        assert isinstance(client, AzureOpenAI)
 
     def test_provide_openai_client_with_empty_azure_keys(self):
         """Test that empty Azure keys are treated as not set."""
@@ -136,35 +124,23 @@ class TestProvideOpenAIClient(unittest.TestCase):
         os.environ["AZURE_OPENAI_BASE_URL"] = "https://test.services.ai.azure.com/openai/v1/"
         os.environ["AZURE_OPENAI_API_VERSION"] = "preview"
 
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             provide_openai_client()
 
 
-class TestProvideAsyncOpenAIClient(unittest.TestCase):
-    def setUp(self):
-        """Save original environment variables and reset environment registrations."""
-        self.original_env = {
-            "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
-            "AZURE_OPENAI_API_KEY": os.environ.get("AZURE_OPENAI_API_KEY"),
-            "AZURE_OPENAI_BASE_URL": os.environ.get("AZURE_OPENAI_BASE_URL"),
-            "AZURE_OPENAI_API_VERSION": os.environ.get("AZURE_OPENAI_API_VERSION"),
-        }
-        # Clear all environment variables
-        for key in self.original_env:
+class TestProvideAsyncOpenAIClient:
+    @pytest.fixture(autouse=True)
+    def setup_and_teardown(self, reset_environment):
+        """Use shared environment reset fixture."""
+        # Clear all environment variables at start
+        env_keys = ["OPENAI_API_KEY", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_BASE_URL", "AZURE_OPENAI_API_VERSION"]
+        for key in env_keys:
             if key in os.environ:
                 del os.environ[key]
 
         # Reset environment registrations to ensure fresh state for each test
         set_default_registrations()
-
-    def tearDown(self):
-        """Restore original environment variables and reset environment registrations."""
-        for key, value in self.original_env.items():
-            if value is not None:
-                os.environ[key] = value
-            elif key in os.environ:
-                del os.environ[key]
-
+        yield
         # Reset environment registrations after test
         set_default_registrations()
 
@@ -188,7 +164,7 @@ class TestProvideAsyncOpenAIClient(unittest.TestCase):
 
         client = provide_async_openai_client()
 
-        self.assertIsInstance(client, AsyncOpenAI)
+        assert isinstance(client, AsyncOpenAI)
 
     def test_provide_async_openai_client_with_azure_keys(self):
         """Test creating async Azure OpenAI client when Azure environment variables are set."""
@@ -200,7 +176,7 @@ class TestProvideAsyncOpenAIClient(unittest.TestCase):
 
         client = provide_async_openai_client()
 
-        self.assertIsInstance(client, AsyncAzureOpenAI)
+        assert isinstance(client, AsyncAzureOpenAI)
 
     def test_provide_async_openai_client_prioritizes_openai_over_azure(self):
         """Test that async OpenAI client is preferred when both sets of keys are available."""
@@ -213,17 +189,17 @@ class TestProvideAsyncOpenAIClient(unittest.TestCase):
 
         client = provide_async_openai_client()
 
-        self.assertIsInstance(client, AsyncOpenAI)
+        assert isinstance(client, AsyncOpenAI)
 
     def test_provide_async_openai_client_with_incomplete_azure_config(self):
         """Test error when Azure config is incomplete - missing endpoint."""
         self.set_env_and_reset(AZURE_OPENAI_API_KEY="test-azure-key", AZURE_OPENAI_API_VERSION="preview")
         # Missing AZURE_OPENAI_BASE_URL
 
-        with self.assertRaises(ValueError) as context:
+        with pytest.raises(ValueError) as context:
             provide_async_openai_client()
 
-        self.assertIn("No valid OpenAI or Azure OpenAI environment variables found", str(context.exception))
+        assert "No valid OpenAI or Azure OpenAI environment variables found" in str(context.value)
 
     def test_provide_async_openai_client_with_azure_keys_default_version(self):
         """Test creating async Azure OpenAI client with default API version when not specified."""
@@ -234,11 +210,11 @@ class TestProvideAsyncOpenAIClient(unittest.TestCase):
 
         client = provide_async_openai_client()
 
-        self.assertIsInstance(client, AsyncAzureOpenAI)
+        assert isinstance(client, AsyncAzureOpenAI)
 
     def test_provide_async_openai_client_with_no_environment_variables(self):
         """Test error when no environment variables are set."""
-        with self.assertRaises(ValueError) as context:
+        with pytest.raises(ValueError) as context:
             provide_async_openai_client()
 
         expected_message = (
@@ -246,7 +222,7 @@ class TestProvideAsyncOpenAIClient(unittest.TestCase):
             "Please set either OPENAI_API_KEY or AZURE_OPENAI_API_KEY, "
             "AZURE_OPENAI_BASE_URL, and AZURE_OPENAI_API_VERSION."
         )
-        self.assertEqual(str(context.exception), expected_message)
+        assert str(context.value) == expected_message
 
     def test_provide_async_openai_client_with_empty_openai_key(self):
         """Test that empty OPENAI_API_KEY is treated as not set."""
@@ -259,7 +235,7 @@ class TestProvideAsyncOpenAIClient(unittest.TestCase):
 
         client = provide_async_openai_client()
 
-        self.assertIsInstance(client, AsyncAzureOpenAI)
+        assert isinstance(client, AsyncAzureOpenAI)
 
     def test_provide_async_openai_client_with_empty_azure_keys(self):
         """Test that empty Azure keys are treated as not set."""
@@ -269,37 +245,26 @@ class TestProvideAsyncOpenAIClient(unittest.TestCase):
             AZURE_OPENAI_API_VERSION="preview",
         )
 
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             provide_async_openai_client()
 
 
-class TestProviderIntegration(unittest.TestCase):
+@pytest.mark.integration
+class TestProviderIntegration:
     """Integration tests for both provider functions."""
 
-    def setUp(self):
-        """Save original environment variables and reset environment registrations."""
-        self.original_env = {
-            "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
-            "AZURE_OPENAI_API_KEY": os.environ.get("AZURE_OPENAI_API_KEY"),
-            "AZURE_OPENAI_BASE_URL": os.environ.get("AZURE_OPENAI_BASE_URL"),
-            "AZURE_OPENAI_API_VERSION": os.environ.get("AZURE_OPENAI_API_VERSION"),
-        }
-        # Clear all environment variables
-        for key in self.original_env:
+    @pytest.fixture(autouse=True)
+    def setup_and_teardown(self, reset_environment):
+        """Use shared environment reset fixture."""
+        # Clear all environment variables at start
+        env_keys = ["OPENAI_API_KEY", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_BASE_URL", "AZURE_OPENAI_API_VERSION"]
+        for key in env_keys:
             if key in os.environ:
                 del os.environ[key]
 
         # Reset environment registrations to ensure fresh state for each test
         set_default_registrations()
-
-    def tearDown(self):
-        """Restore original environment variables and reset environment registrations."""
-        for key, value in self.original_env.items():
-            if value is not None:
-                os.environ[key] = value
-            elif key in os.environ:
-                del os.environ[key]
-
+        yield
         # Reset environment registrations after test
         set_default_registrations()
 
@@ -325,8 +290,8 @@ class TestProviderIntegration(unittest.TestCase):
         sync_client = provide_openai_client()
         async_client = provide_async_openai_client()
 
-        self.assertIsInstance(sync_client, OpenAI)
-        self.assertIsInstance(async_client, AsyncOpenAI)
+        assert isinstance(sync_client, OpenAI)
+        assert isinstance(async_client, AsyncOpenAI)
 
         # Clear and test with Azure environment
         self.set_env_and_reset(
@@ -338,8 +303,8 @@ class TestProviderIntegration(unittest.TestCase):
         sync_client = provide_openai_client()
         async_client = provide_async_openai_client()
 
-        self.assertIsInstance(sync_client, AzureOpenAI)
-        self.assertIsInstance(async_client, AsyncAzureOpenAI)
+        assert isinstance(sync_client, AzureOpenAI)
+        assert isinstance(async_client, AsyncAzureOpenAI)
 
     def test_azure_client_configuration(self):
         """Test that Azure clients are configured with correct parameters."""
@@ -353,11 +318,11 @@ class TestProviderIntegration(unittest.TestCase):
         async_client = provide_async_openai_client()
 
         # Check that Azure clients are created with correct configuration
-        self.assertIsInstance(sync_client, AzureOpenAI)
-        self.assertIsInstance(async_client, AsyncAzureOpenAI)
+        assert isinstance(sync_client, AzureOpenAI)
+        assert isinstance(async_client, AsyncAzureOpenAI)
 
 
-class TestAzureV1ApiWarning(unittest.TestCase):
+class TestAzureV1ApiWarning:
     """Test Azure v1 API URL warning functionality."""
 
     def test_check_azure_v1_api_url_no_warning_for_v1_url(self):
@@ -374,7 +339,7 @@ class TestAzureV1ApiWarning(unittest.TestCase):
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always")
                 _check_azure_v1_api_url(url)
-                self.assertEqual(len(w), 0, f"Unexpected warning for URL: {url}")
+                assert len(w) == 0, f"Unexpected warning for URL: {url}"
 
     def test_check_azure_v1_api_url_warning_for_legacy_url(self):
         """Test that legacy API URLs trigger warnings."""
@@ -390,9 +355,31 @@ class TestAzureV1ApiWarning(unittest.TestCase):
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always")
                 _check_azure_v1_api_url(url)
-                self.assertGreater(len(w), 0, f"Expected warning for URL: {url}")
-                self.assertIn("v1 API is recommended", str(w[0].message))
-                self.assertIn("learn.microsoft.com", str(w[0].message))
+                assert len(w) > 0, f"Expected warning for URL: {url}"
+                assert "v1 API is recommended" in str(w[0].message)
+                assert "learn.microsoft.com" in str(w[0].message)
+
+    @pytest.mark.parametrize(
+        "legacy_url,should_warn",
+        [
+            ("https://test.openai.azure.com/", True),
+            ("https://test.services.ai.azure.com/", True),
+            ("https://test.services.ai.azure.com/openai/v1/", False),
+        ],
+    )
+    def test_azure_v1_warning_parametrized(self, legacy_url, should_warn):
+        """Test Azure v1 API URL warning with different URL patterns."""
+        from openaivec._provider import _check_azure_v1_api_url
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _check_azure_v1_api_url(legacy_url)
+
+            if should_warn:
+                assert len(w) > 0, f"Expected warning for URL: {legacy_url}"
+                assert "v1 API is recommended" in str(w[0].message)
+            else:
+                assert len(w) == 0, f"Unexpected warning for URL: {legacy_url}"
 
     def test_pandas_ext_use_azure_warning(self):
         """Test that pandas_ext.use() shows warning for legacy Azure URLs."""
@@ -408,7 +395,7 @@ class TestAzureV1ApiWarning(unittest.TestCase):
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             pandas_ext.use(legacy_client)
-            self.assertGreater(len(w), 0, "Expected warning for legacy Azure URL")
-            self.assertIn("v1 API is recommended", str(w[0].message))
+            assert len(w) > 0, "Expected warning for legacy Azure URL"
+            assert "v1 API is recommended" in str(w[0].message)
 
         set_default_registrations()

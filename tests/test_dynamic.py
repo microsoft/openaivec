@@ -355,58 +355,51 @@ def test_build_model_error_cases(fields: list[FieldSpec], expected_substring: st
 # ----------------------------- Additional Coverage (previously uncovered) -----------------------------
 
 
-def test_enum_size_boundary_ok():
-    values = [f"v{i}" for i in range(_MAX_ENUM_VALUES)]
+@pytest.mark.parametrize(
+    "field_type,field_name,object_name,num_values,should_raise,expected_error",
+    [
+        ("enum", "boundary", "EnumBoundary", _MAX_ENUM_VALUES, False, None),
+        ("enum", "overflow", "EnumOverflow", _MAX_ENUM_VALUES + 1, True, "supports at most"),
+        (
+            "enum_array",
+            "overflow_list",
+            "EnumArrayOverflow",
+            _MAX_ENUM_VALUES + 1,
+            True,
+            "enum_array type supports at most",
+        ),
+    ],
+)
+def test_enum_size_boundaries(field_type, field_name, object_name, num_values, should_raise, expected_error):
+    """Test enum size boundaries for both enum and enum_array types."""
+    values = [f"v{i}" for i in range(num_values)]
     spec = ObjectSpec(
-        name="EnumBoundary",
+        name=object_name,
         fields=[
             FieldSpec(
-                name="boundary",
-                type="enum",
-                description="boundary ok",
-                enum_spec=EnumSpec(name="BoundaryEnum", values=values),
+                name=field_name,
+                type=field_type,
+                description="size test",
+                enum_spec=EnumSpec(name="TestEnum", values=values),
             )
         ],
     )
-    Model = _build_model(spec)
-    enum_type = Model.model_fields["boundary"].annotation
-    assert len(list(enum_type)) == _MAX_ENUM_VALUES
 
+    if should_raise:
+        with pytest.raises(ValueError) as ei:
+            _build_model(spec)
+        assert expected_error in str(ei.value)
+    else:
+        Model = _build_model(spec)
+        enum_type = Model.model_fields[field_name].annotation
+        if field_type == "enum":
+            assert len(list(enum_type)) == _MAX_ENUM_VALUES
+        else:  # enum_array
+            from typing import get_args, get_origin
 
-def test_enum_size_overflow():
-    values = [f"v{i}" for i in range(_MAX_ENUM_VALUES + 1)]
-    spec = ObjectSpec(
-        name="EnumOverflow",
-        fields=[
-            FieldSpec(
-                name="overflow",
-                type="enum",
-                description="overflow",
-                enum_spec=EnumSpec(name="OverflowEnum", values=values),
-            )
-        ],
-    )
-    with pytest.raises(ValueError) as ei:
-        _build_model(spec)
-    assert "supports at most" in str(ei.value)
-
-
-def test_enum_array_size_overflow():
-    values = [f"v{i}" for i in range(_MAX_ENUM_VALUES + 1)]
-    spec = ObjectSpec(
-        name="EnumArrayOverflow",
-        fields=[
-            FieldSpec(
-                name="overflow_list",
-                type="enum_array",
-                description="overflow",
-                enum_spec=EnumSpec(name="OverflowEnum", values=values),
-            )
-        ],
-    )
-    with pytest.raises(ValueError) as ei:
-        _build_model(spec)
-    assert "enum_array type supports at most" in str(ei.value)
+            assert get_origin(enum_type) is list
+            inner_enum = get_args(enum_type)[0]
+            assert len(list(inner_enum)) == _MAX_ENUM_VALUES
 
 
 def test_enum_array_invalid_name_pattern():
@@ -426,32 +419,23 @@ def test_enum_array_invalid_name_pattern():
     assert "enum_spec.name" in str(ei.value)
 
 
-def test_object_spec_invalid_name():
+@pytest.mark.parametrize(
+    "field_type,field_name,object_name,bad_nested_name",
+    [
+        ("object", "child", "RootBadObject", "bad_name"),
+        ("object_array", "children", "RootBadObjectArray", "1Bad"),
+    ],
+)
+def test_object_spec_invalid_names(field_type, field_name, object_name, bad_nested_name):
+    """Test that invalid nested object spec names are rejected."""
     spec = ObjectSpec(
-        name="RootBadObject",
+        name=object_name,
         fields=[
             FieldSpec(
-                name="child",
-                type="object",
-                description="child invalid name",
-                object_spec=ObjectSpec(name="bad_name", fields=[]),
-            )
-        ],
-    )
-    with pytest.raises(ValueError) as ei:
-        _build_model(spec)
-    assert "object_spec.name" in str(ei.value)
-
-
-def test_object_array_spec_invalid_name():
-    spec = ObjectSpec(
-        name="RootBadObjectArray",
-        fields=[
-            FieldSpec(
-                name="children",
-                type="object_array",
-                description="children invalid name",
-                object_spec=ObjectSpec(name="1Bad", fields=[]),
+                name=field_name,
+                type=field_type,
+                description="invalid nested name test",
+                object_spec=ObjectSpec(name=bad_nested_name, fields=[]),
             )
         ],
     )

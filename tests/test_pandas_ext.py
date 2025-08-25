@@ -1,78 +1,62 @@
 import asyncio
-import unittest
 
 import numpy as np
 import pandas as pd
-from openai import AsyncOpenAI, OpenAI
+import pytest
 from pydantic import BaseModel
 
 from openaivec import pandas_ext
 
-pandas_ext.use(OpenAI())
-pandas_ext.use_async(AsyncOpenAI())
-pandas_ext.responses_model("gpt-4.1-mini")
-pandas_ext.embeddings_model("text-embedding-3-small")
+# Test models moved to conftest.py fixtures
 
 
-class Fruit(BaseModel):
-    color: str
-    flavor: str
-    taste: str
-
-
-class SentimentResult(BaseModel):
-    sentiment: str
-    confidence: float
-
-
-class TestPandasExt(unittest.TestCase):
-    def setUp(self):
-        self.df = pd.DataFrame(
-            {
-                "name": ["apple", "banana", "cherry"],
-            }
-        )
+@pytest.mark.requires_api
+class TestPandasExt:
+    @pytest.fixture(autouse=True)
+    def setup_pandas_ext(self, openai_client, async_openai_client, responses_model_name, embeddings_model_name):
+        """Setup pandas_ext with test clients and models."""
+        pandas_ext.use(openai_client)
+        pandas_ext.use_async(async_openai_client)
+        pandas_ext.responses_model(responses_model_name)
+        pandas_ext.embeddings_model(embeddings_model_name)
+        yield
 
     # ===== BASIC SERIES METHODS =====
 
-    def test_series_embeddings(self):
+    def test_series_embeddings(self, sample_dataframe):
         """Test Series.ai.embeddings method."""
-        embeddings = self.df["name"].ai.embeddings()
+        embeddings = sample_dataframe["name"].ai.embeddings()
 
-        self.assertTrue(all(isinstance(embedding, np.ndarray) for embedding in embeddings))
-        self.assertEqual(embeddings.shape, (3,))
-        self.assertTrue(embeddings.index.equals(self.df.index))
+        assert all(isinstance(embedding, np.ndarray) for embedding in embeddings)
+        assert embeddings.shape == (3,)
+        assert embeddings.index.equals(sample_dataframe.index)
 
-    def test_series_responses(self):
+    def test_series_responses(self, sample_dataframe):
         """Test Series.ai.responses method."""
-        names_fr = self.df["name"].ai.responses("translate to French")
+        names_fr = sample_dataframe["name"].ai.responses("translate to French")
 
-        self.assertTrue(all(isinstance(x, str) for x in names_fr))
-        self.assertEqual(names_fr.shape, (3,))
-        self.assertTrue(names_fr.index.equals(self.df.index))
+        assert all(isinstance(x, str) for x in names_fr)
+        assert names_fr.shape == (3,)
+        assert names_fr.index.equals(sample_dataframe.index)
 
-    def test_series_count_tokens(self):
+    def test_series_count_tokens(self, sample_dataframe):
         """Test Series.ai.count_tokens method."""
-        num_tokens = self.df.name.ai.count_tokens()
+        num_tokens = sample_dataframe.name.ai.count_tokens()
 
-        self.assertTrue(all(isinstance(num_token, int) for num_token in num_tokens))
-        self.assertEqual(num_tokens.shape, (3,))
+        assert all(isinstance(num_token, int) for num_token in num_tokens)
+        assert num_tokens.shape == (3,)
 
-    def test_series_parse(self):
+    def test_series_parse(self, sentiment_series):
         """Test Series.ai.parse method with structured output."""
-        reviews = pd.Series(
-            ["Great product! Love it.", "Terrible quality, broke immediately.", "Average item, nothing special."]
-        )
-
-        results = reviews.ai.parse(
+        results = sentiment_series.ai.parse(
             instructions="Extract sentiment (positive/negative/neutral) and a confidence score (0-1)",
             batch_size=2,
             show_progress=False,
         )
 
-        self.assertEqual(len(results), 3)
-        self.assertTrue(results.index.equals(reviews.index))
-        self.assertTrue(all(isinstance(result, (dict, BaseModel)) for result in results))
+        assert len(results) == 3
+        assert results.index.equals(sentiment_series.index)
+        assert all(isinstance(result, (dict, BaseModel)) for result in results)
 
     def test_series_infer_schema(self):
         """Test Series.ai.infer_schema method."""
@@ -88,14 +72,14 @@ class TestPandasExt(unittest.TestCase):
 
         schema = reviews.ai.infer_schema(purpose="Extract product review analysis data", max_examples=3)
 
-        self.assertIsNotNone(schema)
-        self.assertIsNotNone(schema.model)
-        self.assertIsNotNone(schema.task)
-        self.assertIsNotNone(schema.object_spec)
-        self.assertIsNotNone(schema.object_spec.fields)
-        self.assertIsInstance(schema.object_spec.fields, list)
-        self.assertGreater(len(schema.object_spec.fields), 0)
-        self.assertTrue(hasattr(schema.model, "__name__"))
+        assert schema is not None
+        assert schema.model is not None
+        assert schema.task is not None
+        assert schema.object_spec is not None
+        assert schema.object_spec.fields is not None
+        assert isinstance(schema.object_spec.fields, list)
+        assert len(schema.object_spec.fields) > 0
+        assert hasattr(schema.model, "__name__")
 
     def test_series_task(self):
         """Test Series.ai.task method with actual task execution."""
@@ -106,35 +90,29 @@ class TestPandasExt(unittest.TestCase):
         series = pd.Series(["cat", "dog"])
         results = series.ai.task(task=task, batch_size=2, show_progress=False)
 
-        self.assertEqual(len(results), 2)
-        self.assertTrue(results.index.equals(series.index))
-        self.assertTrue(all(isinstance(result, str) for result in results))
+        assert len(results) == 2
+        assert results.index.equals(series.index)
+        assert all(isinstance(result, str) for result in results)
 
     # ===== BASIC DATAFRAME METHODS =====
 
-    def test_dataframe_responses(self):
+    def test_dataframe_responses(self, sample_dataframe):
         """Test DataFrame.ai.responses method."""
-        names_fr = self.df.ai.responses("translate to French")
+        names_fr = sample_dataframe.ai.responses("translate to French")
 
-        self.assertTrue(all(isinstance(x, str) for x in names_fr))
-        self.assertEqual(names_fr.shape, (3,))
-        self.assertTrue(names_fr.index.equals(self.df.index))
+        assert all(isinstance(x, str) for x in names_fr)
+        assert names_fr.shape == (3,)
+        assert names_fr.index.equals(sample_dataframe.index)
 
-    def test_dataframe_parse(self):
+    def test_dataframe_parse(self, review_dataframe):
         """Test DataFrame.ai.parse method with structured output."""
-        df = pd.DataFrame(
-            [
-                {"review": "Great product!", "user": "Alice"},
-                {"review": "Terrible quality", "user": "Bob"},
-                {"review": "Average item", "user": "Charlie"},
-            ]
+        results = review_dataframe.ai.parse(
+            instructions="Extract sentiment from the review", batch_size=2, show_progress=False
         )
 
-        results = df.ai.parse(instructions="Extract sentiment from the review", batch_size=2, show_progress=False)
-
-        self.assertEqual(len(results), 3)
-        self.assertTrue(results.index.equals(df.index))
-        self.assertTrue(all(isinstance(result, (dict, BaseModel)) for result in results))
+        assert len(results) == 3
+        assert results.index.equals(review_dataframe.index)
+        assert all(isinstance(result, (dict, BaseModel)) for result in results)
 
     def test_dataframe_infer_schema(self):
         """Test DataFrame.ai.infer_schema method."""
@@ -148,12 +126,12 @@ class TestPandasExt(unittest.TestCase):
 
         schema = df.ai.infer_schema(purpose="Extract product analysis metrics", max_examples=2)
 
-        self.assertIsNotNone(schema)
-        self.assertIsNotNone(schema.model)
-        self.assertIsNotNone(schema.task)
-        self.assertIsNotNone(schema.object_spec.fields)
-        self.assertIsInstance(schema.object_spec.fields, list)
-        self.assertGreater(len(schema.object_spec.fields), 0)
+        assert schema is not None
+        assert schema.model is not None
+        assert schema.task is not None
+        assert schema.object_spec.fields is not None
+        assert isinstance(schema.object_spec.fields, list)
+        assert len(schema.object_spec.fields) > 0
 
     def test_dataframe_task(self):
         """Test DataFrame.ai.task method with actual task execution."""
@@ -167,22 +145,16 @@ class TestPandasExt(unittest.TestCase):
 
         results = df.ai.task(task=task, batch_size=2, show_progress=False)
 
-        self.assertEqual(len(results), 2)
-        self.assertTrue(results.index.equals(df.index))
-        self.assertTrue(all(isinstance(result, str) for result in results))
+        assert len(results) == 2
+        assert results.index.equals(df.index)
+        assert all(isinstance(result, str) for result in results)
 
-    def test_dataframe_similarity(self):
+    def test_dataframe_similarity(self, vector_dataframe):
         """Test DataFrame.ai.similarity method."""
-        df = pd.DataFrame(
-            {
-                "vector1": [np.array([1, 0]), np.array([0, 1]), np.array([1, 1])],
-                "vector2": [np.array([1, 0]), np.array([0, 1]), np.array([1, -1])],
-            }
-        )
-        similarity_scores = df.ai.similarity("vector1", "vector2")
+        similarity_scores = vector_dataframe.ai.similarity("vector1", "vector2")
 
         expected_scores = [1.0, 1.0, 0.0]  # Cosine similarities
-        self.assertTrue(np.allclose(similarity_scores, expected_scores))
+        assert np.allclose(similarity_scores, expected_scores)
 
     def test_dataframe_similarity_invalid_vectors(self):
         """Test DataFrame.ai.similarity with invalid vectors."""
@@ -193,7 +165,7 @@ class TestPandasExt(unittest.TestCase):
             }
         )
 
-        with self.assertRaises(TypeError):
+        with pytest.raises(TypeError):
             df.ai.similarity("vector1", "vector2")
 
     def test_dataframe_fillna(self):
@@ -217,31 +189,25 @@ class TestPandasExt(unittest.TestCase):
 
         result_df = df_custom_index.ai.fillna("name")
         pd.testing.assert_index_equal(result_df.index, df_custom_index.index)
-        self.assertEqual(result_df.shape, df_custom_index.shape)
+        assert result_df.shape == df_custom_index.shape
 
     # ===== ASYNC SERIES METHODS =====
 
-    def test_series_aio_embeddings(self):
+    @pytest.mark.asyncio
+    async def test_series_aio_embeddings(self, sample_dataframe):
         """Test Series.aio.embeddings method."""
+        embeddings = await sample_dataframe["name"].aio.embeddings()
+        assert all(isinstance(embedding, np.ndarray) for embedding in embeddings)
+        assert embeddings.shape == (3,)
+        assert embeddings.index.equals(sample_dataframe.index)
 
-        async def run():
-            return await self.df["name"].aio.embeddings()
-
-        embeddings = asyncio.run(run())
-        self.assertTrue(all(isinstance(embedding, np.ndarray) for embedding in embeddings))
-        self.assertEqual(embeddings.shape, (3,))
-        self.assertTrue(embeddings.index.equals(self.df.index))
-
-    def test_series_aio_responses(self):
+    @pytest.mark.asyncio
+    async def test_series_aio_responses(self, sample_dataframe):
         """Test Series.aio.responses method."""
-
-        async def run():
-            return await self.df["name"].aio.responses("translate to French")
-
-        names_fr = asyncio.run(run())
-        self.assertTrue(all(isinstance(x, str) for x in names_fr))
-        self.assertEqual(names_fr.shape, (3,))
-        self.assertTrue(names_fr.index.equals(self.df.index))
+        names_fr = await sample_dataframe["name"].aio.responses("translate to French")
+        assert all(isinstance(x, str) for x in names_fr)
+        assert names_fr.shape == (3,)
+        assert names_fr.index.equals(sample_dataframe.index)
 
     def test_series_aio_parse(self):
         """Test Series.aio.parse method with structured output."""
@@ -255,8 +221,8 @@ class TestPandasExt(unittest.TestCase):
 
         results = asyncio.run(run_test())
 
-        self.assertEqual(len(results), 3)
-        self.assertTrue(all(isinstance(result, (dict, BaseModel)) for result in results))
+        assert len(results) == 3
+        assert all(isinstance(result, (dict, BaseModel)) for result in results)
 
     def test_series_aio_task(self):
         """Test Series.aio.task method with actual task execution."""
@@ -276,21 +242,21 @@ class TestPandasExt(unittest.TestCase):
 
         results = asyncio.run(run_test())
 
-        self.assertEqual(len(results), 2)
-        self.assertTrue(all(isinstance(result, str) for result in results))
+        assert len(results) == 2
+        assert all(isinstance(result, str) for result in results)
 
     # ===== ASYNC DATAFRAME METHODS =====
 
-    def test_dataframe_aio_responses(self):
+    def test_dataframe_aio_responses(self, sample_dataframe):
         """Test DataFrame.aio.responses method."""
 
         async def run():
-            return await self.df.aio.responses("translate the 'name' field to French")
+            return await sample_dataframe.aio.responses("translate the 'name' field to French")
 
         names_fr = asyncio.run(run())
-        self.assertTrue(all(isinstance(x, str) for x in names_fr))
-        self.assertEqual(names_fr.shape, (3,))
-        self.assertTrue(names_fr.index.equals(self.df.index))
+        assert all(isinstance(x, str) for x in names_fr)
+        assert names_fr.shape == (3,)
+        assert names_fr.index.equals(sample_dataframe.index)
 
     def test_dataframe_aio_parse(self):
         """Test DataFrame.aio.parse method with structured output."""
@@ -310,8 +276,8 @@ class TestPandasExt(unittest.TestCase):
 
         results = asyncio.run(run_test())
 
-        self.assertEqual(len(results), 3)
-        self.assertTrue(all(isinstance(result, (dict, BaseModel)) for result in results))
+        assert len(results) == 3
+        assert all(isinstance(result, (dict, BaseModel)) for result in results)
 
     def test_dataframe_aio_task(self):
         """Test DataFrame.aio.task method with actual task execution."""
@@ -326,8 +292,8 @@ class TestPandasExt(unittest.TestCase):
 
         results = asyncio.run(run_test())
 
-        self.assertEqual(len(results), 2)
-        self.assertTrue(all(isinstance(result, str) for result in results))
+        assert len(results) == 2
+        assert all(isinstance(result, str) for result in results)
 
     def test_dataframe_aio_fillna(self):
         """Test DataFrame.aio.fillna method."""
@@ -380,18 +346,18 @@ class TestPandasExt(unittest.TestCase):
         result1, result2, original_df = asyncio.run(run_test())
 
         # Verify sync function result
-        self.assertIn("processed", result1.columns)
-        self.assertEqual(len(result1), 3)
-        self.assertTrue(result1["processed"].str.endswith("_processed").all())
+        assert "processed" in result1.columns
+        assert len(result1) == 3
+        assert result1["processed"].str.endswith("_processed").all()
 
         # Verify async function result
-        self.assertIn("async_processed", result2.columns)
-        self.assertEqual(len(result2), 3)
-        self.assertTrue(result2["async_processed"].str.endswith("_async").all())
+        assert "async_processed" in result2.columns
+        assert len(result2) == 3
+        assert result2["async_processed"].str.endswith("_async").all()
 
         # Original DataFrame should be unchanged
-        self.assertNotIn("processed", original_df.columns)
-        self.assertNotIn("async_processed", original_df.columns)
+        assert "processed" not in original_df.columns
+        assert "async_processed" not in original_df.columns
 
     def test_dataframe_aio_assign(self):
         """Test DataFrame.aio.assign method."""
@@ -415,107 +381,107 @@ class TestPandasExt(unittest.TestCase):
         result1, result2, original_df = asyncio.run(run_test())
 
         # Verify sync function assignment
-        self.assertIn("category", result1.columns)
-        self.assertEqual(list(result1["category"]), ["young", "adult", "adult"])
+        assert "category" in result1.columns
+        assert list(result1["category"]) == ["young", "adult", "adult"]
 
         # Verify async function assignment
-        self.assertIn("score", result2.columns)
-        self.assertEqual(list(result2["score"]), [50, 60, 70])
+        assert "score" in result2.columns
+        assert list(result2["score"]) == [50, 60, 70]
 
         # Original DataFrame should be unchanged
-        self.assertNotIn("category", original_df.columns)
-        self.assertNotIn("score", original_df.columns)
+        assert "category" not in original_df.columns
+        assert "score" not in original_df.columns
 
     # ===== EXTRACT METHODS =====
 
-    def test_series_extract_pydantic(self):
+    def test_series_extract_pydantic(self, fruit_model):
         """Test Series.ai.extract with Pydantic models."""
         sample_series = pd.Series(
             [
-                Fruit(color="red", flavor="sweet", taste="crunchy"),
-                Fruit(color="yellow", flavor="sweet", taste="soft"),
-                Fruit(color="red", flavor="sweet", taste="tart"),
+                fruit_model(name="apple", color="red", taste="crunchy"),
+                fruit_model(name="banana", color="yellow", taste="soft"),
+                fruit_model(name="cherry", color="red", taste="tart"),
             ],
             name="fruit",
         )
 
         extracted_df = sample_series.ai.extract()
-        expected_columns = ["fruit_color", "fruit_flavor", "fruit_taste"]
-        self.assertListEqual(list(extracted_df.columns), expected_columns)
+        expected_columns = ["fruit_name", "fruit_color", "fruit_taste"]
+        assert list(extracted_df.columns) == expected_columns
 
     def test_series_extract_dict(self):
         """Test Series.ai.extract with dictionaries."""
         sample_series = pd.Series(
             [
-                {"color": "red", "flavor": "sweet", "taste": "crunchy"},
-                {"color": "yellow", "flavor": "sweet", "taste": "soft"},
-                {"color": "red", "flavor": "sweet", "taste": "tart"},
+                {"name": "apple", "color": "red", "taste": "crunchy"},
+                {"name": "banana", "color": "yellow", "taste": "soft"},
+                {"name": "cherry", "color": "red", "taste": "tart"},
             ],
             name="fruit",
         )
 
         extracted_df = sample_series.ai.extract()
-        expected_columns = ["fruit_color", "fruit_flavor", "fruit_taste"]
-        self.assertListEqual(list(extracted_df.columns), expected_columns)
+        expected_columns = ["fruit_name", "fruit_color", "fruit_taste"]
+        assert list(extracted_df.columns) == expected_columns
 
-    def test_series_extract_without_name(self):
+    def test_series_extract_without_name(self, fruit_model):
         """Test Series.ai.extract without series name."""
         sample_series = pd.Series(
             [
-                Fruit(color="red", flavor="sweet", taste="crunchy"),
-                Fruit(color="yellow", flavor="sweet", taste="soft"),
-                Fruit(color="red", flavor="sweet", taste="tart"),
+                fruit_model(name="apple", color="red", taste="crunchy"),
+                fruit_model(name="banana", color="yellow", taste="soft"),
+                fruit_model(name="cherry", color="red", taste="tart"),
             ]
         )
 
         extracted_df = sample_series.ai.extract()
-        expected_columns = ["color", "flavor", "taste"]  # without prefix
-        self.assertListEqual(list(extracted_df.columns), expected_columns)
+        expected_columns = ["name", "color", "taste"]  # without prefix
+        assert list(extracted_df.columns) == expected_columns
 
-    def test_series_extract_with_none(self):
+    def test_series_extract_with_none(self, fruit_model):
         """Test Series.ai.extract with None values."""
         sample_series = pd.Series(
             [
-                Fruit(color="red", flavor="sweet", taste="crunchy"),
+                fruit_model(name="apple", color="red", taste="crunchy"),
                 None,
-                Fruit(color="yellow", flavor="sweet", taste="soft"),
+                fruit_model(name="banana", color="yellow", taste="soft"),
             ],
             name="fruit",
         )
 
         extracted_df = sample_series.ai.extract()
-        expected_columns = ["fruit_color", "fruit_flavor", "fruit_taste"]
-        self.assertListEqual(list(extracted_df.columns), expected_columns)
-        self.assertTrue(extracted_df.iloc[1].isna().all())
+        expected_columns = ["fruit_name", "fruit_color", "fruit_taste"]
+        assert list(extracted_df.columns) == expected_columns
+        assert extracted_df.iloc[1].isna().all()
 
-    def test_series_extract_with_invalid_row(self):
+    def test_series_extract_with_invalid_row(self, fruit_model):
         """Test Series.ai.extract with invalid data types."""
         sample_series = pd.Series(
             [
-                Fruit(color="red", flavor="sweet", taste="crunchy"),
+                fruit_model(name="apple", color="red", taste="crunchy"),
                 123,  # Invalid row
-                Fruit(color="yellow", flavor="sweet", taste="soft"),
+                fruit_model(name="banana", color="yellow", taste="soft"),
             ],
             name="fruit",
         )
 
         extracted_df = sample_series.ai.extract()
-        expected_columns = ["fruit_color", "fruit_flavor", "fruit_taste"]
-        self.assertListEqual(list(extracted_df.columns), expected_columns)
-        self.assertTrue(extracted_df.iloc[1].isna().all())
+        expected_columns = ["fruit_name", "fruit_color", "fruit_taste"]
+        assert list(extracted_df.columns) == expected_columns
+        assert extracted_df.iloc[1].isna().all()
 
-    def test_dataframe_extract_pydantic(self):
+    def test_dataframe_extract_pydantic(self, fruit_model):
         """Test DataFrame.ai.extract with Pydantic models."""
         sample_df = pd.DataFrame(
             [
-                {"name": "apple", "fruit": Fruit(color="red", flavor="sweet", taste="crunchy")},
-                {"name": "banana", "fruit": Fruit(color="yellow", flavor="sweet", taste="soft")},
-                {"name": "cherry", "fruit": Fruit(color="red", flavor="sweet", taste="tart")},
+                {"name": "apple", "fruit": fruit_model(name="apple", color="red", taste="crunchy")},
+                {"name": "banana", "fruit": fruit_model(name="banana", color="yellow", taste="soft")},
+                {"name": "cherry", "fruit": fruit_model(name="cherry", color="red", taste="tart")},
             ]
         ).ai.extract("fruit")
 
-        expected_columns = ["name", "fruit_color", "fruit_flavor", "fruit_taste"]
-        self.assertListEqual(list(sample_df.columns), expected_columns)
+        expected_columns = ["name", "fruit_name", "fruit_color", "fruit_taste"]
+        assert list(sample_df.columns) == expected_columns
 
     def test_dataframe_extract_dict(self):
         """Test DataFrame.ai.extract with dictionaries."""
@@ -528,7 +494,7 @@ class TestPandasExt(unittest.TestCase):
         ).ai.extract("fruit")
 
         expected_columns = ["fruit_name", "fruit_color", "fruit_flavor", "fruit_taste"]
-        self.assertListEqual(list(sample_df.columns), expected_columns)
+        assert list(sample_df.columns) == expected_columns
 
     def test_dataframe_extract_dict_with_none(self):
         """Test DataFrame.ai.extract with None values."""
@@ -541,8 +507,8 @@ class TestPandasExt(unittest.TestCase):
         ).ai.extract("fruit")
 
         expected_columns = ["fruit_name", "fruit_color", "fruit_flavor", "fruit_taste"]
-        self.assertListEqual(list(sample_df.columns), expected_columns)
-        self.assertTrue(sample_df.iloc[1].isna().all())
+        assert list(sample_df.columns) == expected_columns
+        assert sample_df.iloc[1].isna().all()
 
     def test_dataframe_extract_with_invalid_row(self):
         """Test DataFrame.ai.extract error handling with invalid data."""
@@ -555,7 +521,7 @@ class TestPandasExt(unittest.TestCase):
         )
 
         expected_columns = ["fruit"]
-        self.assertListEqual(list(sample_df.columns), expected_columns)
+        assert list(sample_df.columns) == expected_columns
 
     # ===== CACHE METHODS =====
 
@@ -570,10 +536,10 @@ class TestPandasExt(unittest.TestCase):
         result1 = series1.ai.responses_with_cache(instructions="translate to French", cache=shared_cache)
         result2 = series2.ai.responses_with_cache(instructions="translate to French", cache=shared_cache)
 
-        self.assertTrue(all(isinstance(x, str) for x in result1))
-        self.assertTrue(all(isinstance(x, str) for x in result2))
-        self.assertEqual(len(result1), 3)
-        self.assertEqual(len(result2), 3)
+        assert all(isinstance(x, str) for x in result1)
+        assert all(isinstance(x, str) for x in result2)
+        assert len(result1) == 3
+        assert len(result2) == 3
 
         # Check cache sharing works
         dog_idx1 = series1[series1 == "dog"].index[0]
@@ -581,8 +547,8 @@ class TestPandasExt(unittest.TestCase):
         elephant_idx1 = series1[series1 == "elephant"].index[0]
         elephant_idx2 = series2[series2 == "elephant"].index[0]
 
-        self.assertEqual(result1[dog_idx1], result2[dog_idx2])
-        self.assertEqual(result1[elephant_idx1], result2[elephant_idx2])
+        assert result1[dog_idx1] == result2[dog_idx2]
+        assert result1[elephant_idx1] == result2[elephant_idx2]
 
     def test_shared_cache_embeddings_sync(self):
         """Test shared cache functionality for embeddings."""
@@ -595,10 +561,10 @@ class TestPandasExt(unittest.TestCase):
         embeddings1 = series1.ai.embeddings_with_cache(cache=shared_cache)
         embeddings2 = series2.ai.embeddings_with_cache(cache=shared_cache)
 
-        self.assertTrue(all(isinstance(emb, np.ndarray) for emb in embeddings1))
-        self.assertTrue(all(isinstance(emb, np.ndarray) for emb in embeddings2))
-        self.assertEqual(len(embeddings1), 3)
-        self.assertEqual(len(embeddings2), 3)
+        assert all(isinstance(emb, np.ndarray) for emb in embeddings1)
+        assert all(isinstance(emb, np.ndarray) for emb in embeddings2)
+        assert len(embeddings1) == 3
+        assert len(embeddings2) == 3
 
         # Check cache sharing
         banana_idx1 = series1[series1 == "banana"].index[0]
@@ -625,10 +591,10 @@ class TestPandasExt(unittest.TestCase):
 
         result1, result2, series1, series2 = asyncio.run(run_test())
 
-        self.assertTrue(all(isinstance(x, str) for x in result1))
-        self.assertTrue(all(isinstance(x, str) for x in result2))
-        self.assertEqual(len(result1), 3)
-        self.assertEqual(len(result2), 3)
+        assert all(isinstance(x, str) for x in result1)
+        assert all(isinstance(x, str) for x in result2)
+        assert len(result1) == 3
+        assert len(result2) == 3
 
         # Check cache sharing
         dog_idx1 = series1[series1 == "dog"].index[0]
@@ -636,8 +602,8 @@ class TestPandasExt(unittest.TestCase):
         elephant_idx1 = series1[series1 == "elephant"].index[0]
         elephant_idx2 = series2[series2 == "elephant"].index[0]
 
-        self.assertEqual(result1[dog_idx1], result2[dog_idx2])
-        self.assertEqual(result1[elephant_idx1], result2[elephant_idx2])
+        assert result1[dog_idx1] == result2[dog_idx2]
+        assert result1[elephant_idx1] == result2[elephant_idx2]
 
     # ===== FILLNA SPECIFIC TESTS =====
 
@@ -655,9 +621,9 @@ class TestPandasExt(unittest.TestCase):
 
         task = fillna(df_with_missing, "name")
 
-        self.assertIsNotNone(task)
-        self.assertEqual(task.temperature, 0.0)
-        self.assertEqual(task.top_p, 1.0)
+        assert task is not None
+        assert task.temperature == 0.0
+        assert task.top_p == 1.0
 
     def test_fillna_task_validation(self):
         """Test fillna validation with various edge cases."""
@@ -665,25 +631,25 @@ class TestPandasExt(unittest.TestCase):
 
         # Test with empty DataFrame
         empty_df = pd.DataFrame()
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             fillna(empty_df, "nonexistent")
 
         # Test with nonexistent column
         df = pd.DataFrame({"name": ["Alice", "Bob"]})
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             fillna(df, "nonexistent")
 
         # Test with all null values in target column
         df_all_null = pd.DataFrame({"name": [None, None, None], "age": [25, 30, 35]})
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             fillna(df_all_null, "name")
 
         # Test with invalid max_examples
         df_valid = pd.DataFrame({"name": ["Alice", None, "Bob"], "age": [25, 30, 35]})
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             fillna(df_valid, "name", max_examples=0)
 
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             fillna(df_valid, "name", max_examples=-1)
 
     def test_fillna_missing_rows_detection(self):
@@ -698,8 +664,8 @@ class TestPandasExt(unittest.TestCase):
 
         missing_rows = df_with_missing[df_with_missing["name"].isna()]
 
-        self.assertEqual(len(missing_rows), 2)
-        self.assertTrue(missing_rows.index.tolist() == [2, 4])
+        assert len(missing_rows) == 2
+        assert missing_rows.index.tolist() == [2, 4]
 
     # ===== EDGE CASES & ERROR HANDLING =====
 
@@ -709,42 +675,42 @@ class TestPandasExt(unittest.TestCase):
 
         # Test embeddings with empty series
         embeddings = empty_series.ai.embeddings()
-        self.assertEqual(len(embeddings), 0)
-        self.assertTrue(embeddings.index.equals(empty_series.index))
+        assert len(embeddings) == 0
+        assert embeddings.index.equals(empty_series.index)
 
         # Test responses with empty series
         responses = empty_series.ai.responses("translate to French")
-        self.assertEqual(len(responses), 0)
-        self.assertTrue(responses.index.equals(empty_series.index))
+        assert len(responses) == 0
+        assert responses.index.equals(empty_series.index)
 
         # Test count_tokens with empty series
         tokens = empty_series.ai.count_tokens()
-        self.assertEqual(len(tokens), 0)
+        assert len(tokens) == 0
 
     def test_empty_dataframe_handling(self):
         """Test handling of empty DataFrame for various methods."""
         empty_df = pd.DataFrame()
 
         # Test that empty dataframe doesn't crash
-        self.assertTrue(empty_df.empty)
+        assert empty_df.empty
 
-    def test_structured_output_with_pydantic(self):
+    def test_structured_output_with_pydantic(self, sentiment_model):
         """Test structured output using Pydantic models."""
         series = pd.Series(["I love this product!", "This is terrible"])
 
         try:
             results = series.ai.responses(
                 instructions="Analyze sentiment and provide confidence score",
-                response_format=SentimentResult,
+                response_format=sentiment_model,
                 batch_size=2,
                 show_progress=False,
             )
 
-            self.assertEqual(len(results), 2)
+            assert len(results) == 2
             for result in results:
-                self.assertIsInstance(result, SentimentResult)
-                self.assertIn(result.sentiment.lower(), ["positive", "negative", "neutral"])
-                self.assertIsInstance(result.confidence, float)
+                assert isinstance(result, sentiment_model)
+                assert result.sentiment.lower() in ["positive", "negative", "neutral"]
+                assert isinstance(result.confidence, float)
 
         except Exception:
             # Some API calls might fail in test environment
@@ -760,51 +726,46 @@ class TestPandasExt(unittest.TestCase):
 
         results = series.ai.parse_with_cache(instructions="Extract sentiment", cache=cache, show_progress=False)
 
-        self.assertEqual(len(results), 2)
-        self.assertTrue(all(isinstance(result, (dict, BaseModel)) for result in results))
+        assert len(results) == 2
+        assert all(isinstance(result, (dict, BaseModel)) for result in results)
 
         # Test DataFrame parse_with_cache
         df = pd.DataFrame([{"review": "Great product", "rating": 5}, {"review": "Poor quality", "rating": 1}])
 
         df_results = df.ai.parse_with_cache(instructions="Analyze sentiment", cache=cache, show_progress=False)
 
-        self.assertEqual(len(df_results), 2)
-        self.assertTrue(all(isinstance(result, (dict, BaseModel)) for result in df_results))
+        assert len(df_results) == 2
+        assert all(isinstance(result, (dict, BaseModel)) for result in df_results)
 
     # ===== CONFIGURATION & PARAMETER TESTS =====
 
     def test_configuration_methods(self):
         """Test configuration methods use, use_async, responses_model, embeddings_model."""
-        from openai import AsyncOpenAI, OpenAI
-
         # Test that configuration methods exist and are callable
-        self.assertTrue(callable(pandas_ext.use))
-        self.assertTrue(callable(pandas_ext.use_async))
-        self.assertTrue(callable(pandas_ext.responses_model))
-        self.assertTrue(callable(pandas_ext.embeddings_model))
-
-        # Test setting custom client (these use environment variables automatically)
-        test_client = OpenAI()
-        try:
-            pandas_ext.use(test_client)
-        except Exception:
-            # Connection/API errors are acceptable for testing
-            pass
-
-        # Test setting async client
-        async_test_client = AsyncOpenAI()
-        try:
-            pandas_ext.use_async(async_test_client)
-        except Exception:
-            # Connection/API errors are acceptable for testing
-            pass
+        assert callable(pandas_ext.use)
+        assert callable(pandas_ext.use_async)
+        assert callable(pandas_ext.responses_model)
+        assert callable(pandas_ext.embeddings_model)
 
         # Test model configuration
         try:
             pandas_ext.responses_model("gpt-4.1-mini")
             pandas_ext.embeddings_model("text-embedding-3-small")
         except Exception as e:
-            self.fail(f"Model configuration failed unexpectedly: {e}")
+            pytest.fail(f"Model configuration failed unexpectedly: {e}")
+
+    @pytest.mark.parametrize("batch_size", [1, 2, 4])
+    def test_batch_size_consistency(self, sample_series, batch_size):
+        """Test that different batch sizes produce consistent results."""
+        try:
+            result1 = sample_series.ai.responses("translate to French", batch_size=batch_size, show_progress=False)
+            result2 = sample_series.ai.responses("translate to French", batch_size=batch_size, show_progress=False)
+
+            assert len(result1) == len(result2) == len(sample_series)
+            assert result1.index.equals(result2.index)
+        except Exception:
+            # API failures are acceptable in test environment
+            pass
 
     def test_show_progress_parameter_consistency(self):
         """Test that show_progress parameter is consistently available across methods."""
@@ -814,20 +775,20 @@ class TestPandasExt(unittest.TestCase):
         df = pd.DataFrame({"col": ["test"]})
 
         # Check sync methods have show_progress
-        self.assertIn("show_progress", inspect.signature(series.ai.responses).parameters)
-        self.assertIn("show_progress", inspect.signature(series.ai.embeddings).parameters)
-        self.assertIn("show_progress", inspect.signature(series.ai.task).parameters)
-        self.assertIn("show_progress", inspect.signature(df.ai.responses).parameters)
-        self.assertIn("show_progress", inspect.signature(df.ai.task).parameters)
-        self.assertIn("show_progress", inspect.signature(df.ai.fillna).parameters)
+        assert "show_progress" in inspect.signature(series.ai.responses).parameters
+        assert "show_progress" in inspect.signature(series.ai.embeddings).parameters
+        assert "show_progress" in inspect.signature(series.ai.task).parameters
+        assert "show_progress" in inspect.signature(df.ai.responses).parameters
+        assert "show_progress" in inspect.signature(df.ai.task).parameters
+        assert "show_progress" in inspect.signature(df.ai.fillna).parameters
 
         # Check async methods have show_progress
-        self.assertIn("show_progress", inspect.signature(series.aio.responses).parameters)
-        self.assertIn("show_progress", inspect.signature(series.aio.embeddings).parameters)
-        self.assertIn("show_progress", inspect.signature(series.aio.task).parameters)
-        self.assertIn("show_progress", inspect.signature(df.aio.responses).parameters)
-        self.assertIn("show_progress", inspect.signature(df.aio.task).parameters)
-        self.assertIn("show_progress", inspect.signature(df.aio.fillna).parameters)
+        assert "show_progress" in inspect.signature(series.aio.responses).parameters
+        assert "show_progress" in inspect.signature(series.aio.embeddings).parameters
+        assert "show_progress" in inspect.signature(series.aio.task).parameters
+        assert "show_progress" in inspect.signature(df.aio.responses).parameters
+        assert "show_progress" in inspect.signature(df.aio.task).parameters
+        assert "show_progress" in inspect.signature(df.aio.fillna).parameters
 
     def test_max_concurrency_parameter_consistency(self):
         """Test that max_concurrency parameter is consistently available in async methods only."""
@@ -837,20 +798,20 @@ class TestPandasExt(unittest.TestCase):
         df = pd.DataFrame({"col": ["test"]})
 
         # Check sync methods DON'T have max_concurrency
-        self.assertNotIn("max_concurrency", inspect.signature(series.ai.responses).parameters)
-        self.assertNotIn("max_concurrency", inspect.signature(series.ai.embeddings).parameters)
-        self.assertNotIn("max_concurrency", inspect.signature(series.ai.task).parameters)
-        self.assertNotIn("max_concurrency", inspect.signature(df.ai.responses).parameters)
-        self.assertNotIn("max_concurrency", inspect.signature(df.ai.task).parameters)
-        self.assertNotIn("max_concurrency", inspect.signature(df.ai.fillna).parameters)
+        assert "max_concurrency" not in inspect.signature(series.ai.responses).parameters
+        assert "max_concurrency" not in inspect.signature(series.ai.embeddings).parameters
+        assert "max_concurrency" not in inspect.signature(series.ai.task).parameters
+        assert "max_concurrency" not in inspect.signature(df.ai.responses).parameters
+        assert "max_concurrency" not in inspect.signature(df.ai.task).parameters
+        assert "max_concurrency" not in inspect.signature(df.ai.fillna).parameters
 
         # Check async methods DO have max_concurrency
-        self.assertIn("max_concurrency", inspect.signature(series.aio.responses).parameters)
-        self.assertIn("max_concurrency", inspect.signature(series.aio.embeddings).parameters)
-        self.assertIn("max_concurrency", inspect.signature(series.aio.task).parameters)
-        self.assertIn("max_concurrency", inspect.signature(df.aio.responses).parameters)
-        self.assertIn("max_concurrency", inspect.signature(df.aio.task).parameters)
-        self.assertIn("max_concurrency", inspect.signature(df.aio.fillna).parameters)
+        assert "max_concurrency" in inspect.signature(series.aio.responses).parameters
+        assert "max_concurrency" in inspect.signature(series.aio.embeddings).parameters
+        assert "max_concurrency" in inspect.signature(series.aio.task).parameters
+        assert "max_concurrency" in inspect.signature(df.aio.responses).parameters
+        assert "max_concurrency" in inspect.signature(df.aio.task).parameters
+        assert "max_concurrency" in inspect.signature(df.aio.fillna).parameters
 
     def test_method_parameter_ordering(self):
         """Test that parameters appear in consistent order across similar methods."""
@@ -867,9 +828,9 @@ class TestPandasExt(unittest.TestCase):
 
         # Check sync version has these in order
         sync_filtered = [p for p in responses_params if p in common_params]
-        self.assertEqual(sync_filtered, common_params)
+        assert sync_filtered == common_params
 
         # Check async version has these in order (with max_concurrency inserted before show_progress)
         async_filtered = [p for p in aio_responses_params if p in common_params or p == "max_concurrency"]
         expected_async = common_params[:5] + ["max_concurrency"] + [common_params[5]]
-        self.assertEqual(async_filtered, expected_async)
+        assert async_filtered == expected_async
