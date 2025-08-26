@@ -1,7 +1,7 @@
 """Internal schema inference & dynamic model materialization utilities.
 
 This (non-public) module converts a small *representative* sample of free‑text
-examples plus a *purpose* statement into:
+examples plus *instructions* into:
 
 1. A vetted hierarchical object specification (``ObjectSpec``) whose recursively
      defined ``fields`` (``FieldSpec``) capture reliably extractable signals.
@@ -110,7 +110,7 @@ class InferredSchema(BaseModel):
     object_spec: ObjectSpec = Field(
         description=(
             "Root ObjectSpec (recursive). Each contained object's field list is unique-name ordered and derived "
-            "strictly from observable, repeatable signals aligned with the purpose."
+            "strictly from observable, repeatable signals aligned with the instructions."
         )
     )
     inference_prompt: str = Field(

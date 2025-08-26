@@ -453,7 +453,7 @@ class OpenAIVecSeriesAccessor:
     ) -> pd.Series:
         """Parse Series values using an LLM with a provided cache.
         This method allows you to parse the Series content into structured data
-        using an LLM, optionally inferring a schema based on the provided purpose.
+        using an LLM, optionally inferring a schema based on the provided instructions.
 
         Args:
             instructions (str): System prompt for the LLM.
@@ -500,7 +500,7 @@ class OpenAIVecSeriesAccessor:
         """Parse Series values using an LLM with optional schema inference.
 
         This method allows you to parse the Series content into structured data
-        using an LLM, optionally inferring a schema based on the provided purpose.
+        using an LLM, optionally inferring a schema based on the provided instructions.
 
         Args:
             instructions (str): System prompt for the LLM.
@@ -548,7 +548,7 @@ class OpenAIVecSeriesAccessor:
 
         Returns:
             InferredSchema: An object containing:
-                - purpose: Normalized statement of the extraction objective
+                - instructions: Normalized statement of the extraction objective
                 - fields: List of field specifications with names, types, and descriptions
                 - inference_prompt: Reusable prompt for future extractions
                 - model: Dynamically generated Pydantic model for parsing
@@ -844,7 +844,7 @@ class OpenAIVecDataFrameAccessor:
 
         This method allows you to parse each DataFrame row (serialized as JSON)
         into structured data using an LLM, optionally inferring a schema based
-        on the provided purpose.
+        on the provided instructions.
 
         Args:
             instructions (str): System prompt for the LLM.
@@ -890,7 +890,7 @@ class OpenAIVecDataFrameAccessor:
 
         This method allows you to parse each DataFrame row (serialized as JSON)
         into structured data using an LLM, optionally inferring a schema based
-        on the provided purpose.
+        on the provided instructions.
 
         Args:
             instructions (str): System prompt for the LLM.
@@ -938,7 +938,7 @@ class OpenAIVecDataFrameAccessor:
 
         Returns:
             InferredSchema: An object containing:
-                - purpose: Normalized statement of the extraction objective
+                - instructions: Normalized statement of the extraction objective
                 - fields: List of field specifications with names, types, and descriptions
                 - inference_prompt: Reusable prompt for future extractions
                 - model: Dynamically generated Pydantic model for parsing
@@ -1477,7 +1477,7 @@ class AsyncOpenAIVecSeriesAccessor:
         """Parse Series values using an LLM with a provided cache (asynchronously).
 
         This method allows you to parse the Series content into structured data
-        using an LLM, optionally inferring a schema based on the provided purpose.
+        using an LLM, optionally inferring a schema based on the provided instructions.
 
         Args:
             instructions (str): System prompt for the LLM.
@@ -1530,7 +1530,7 @@ class AsyncOpenAIVecSeriesAccessor:
         """Parse Series values using an LLM with optional schema inference (asynchronously).
 
         This method allows you to parse the Series content into structured data
-        using an LLM, optionally inferring a schema based on the provided purpose.
+        using an LLM, optionally inferring a schema based on the provided instructions.
 
         Args:
             instructions (str): System prompt for the LLM.
@@ -1807,7 +1807,7 @@ class AsyncOpenAIVecDataFrameAccessor:
 
         This method allows you to parse each DataFrame row (serialized as JSON)
         into structured data using an LLM, optionally inferring a schema based
-        on the provided purpose.
+        on the provided instructions.
 
         Args:
             instructions (str): System prompt for the LLM.
@@ -1857,7 +1857,7 @@ class AsyncOpenAIVecDataFrameAccessor:
 
         This method allows you to parse each DataFrame row (serialized as JSON)
         into structured data using an LLM, optionally inferring a schema based
-        on the provided purpose.
+        on the provided instructions.
 
         Args:
             instructions (str): System prompt for the LLM.
