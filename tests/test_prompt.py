@@ -21,7 +21,7 @@ class TestAtomicPromptBuilder:
     def test_improve(self, setup):
         prompt: str = (
             FewShotPromptBuilder()
-            .purpose("Return the smallest category that includes the given word")
+            .instructions("Return the smallest category that includes the given word")
             .caution("Never use proper nouns as categories")
             .example("Apple", "Fruit")
             .example("Car", "Vehicle")
@@ -66,7 +66,7 @@ class TestAtomicPromptBuilder:
     def test_improve_ja(self, setup):
         prompt: str = (
             FewShotPromptBuilder()
-            .purpose("受け取った単語を含む最小のカテゴリ名を返してください。")
+            .instructions("受け取った単語を含む最小のカテゴリ名を返してください。")
             .caution("カテゴリ名に固有名詞を使用しないでください")
             .caution("単語としてはWikipediaに載るような、あらゆる単語が想定されるので注意が必要です。")
             .example("りんご", "果物")
@@ -88,7 +88,7 @@ class TestAtomicPromptBuilder:
 
         prompt: str = (
             FewShotPromptBuilder()
-            .purpose("Return the smallest category that includes the given word")
+            .instructions("Return the smallest category that includes the given word")
             .caution("Never use proper nouns as categories")
             .example("Apple", Fruit(name="Apple", color="Red"))
             .example("Peach", Fruit(name="Peach", color="Pink"))
@@ -102,7 +102,7 @@ class TestAtomicPromptBuilder:
         """Test improve method using DI container (no explicit client/model_name)."""
         prompt: str = (
             FewShotPromptBuilder()
-            .purpose("Classify the given text by sentiment")
+            .instructions("Classify the given text by sentiment")
             .caution("Consider context and nuance")
             .example("I love this!", "positive")
             .example("This is terrible", "negative")
@@ -123,7 +123,7 @@ class TestAtomicPromptBuilder:
 
         builder = (
             FewShotPromptBuilder()
-            .purpose("Test purpose")
+            .instructions("Test purpose")
             .example("input", "output")
             .explain()  # Should handle gracefully
         )

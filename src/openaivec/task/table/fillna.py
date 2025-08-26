@@ -98,7 +98,7 @@ def get_instructions(df: pd.DataFrame, target_column_name: str, max_examples: in
 
     builder = (
         FewShotPromptBuilder()
-        .purpose("Fill missing values in the target column based on the context provided by other columns.")
+        .instructions("Fill missing values in the target column based on the context provided by other columns.")
         .caution("Ensure that the filled values are consistent with the data in other columns.")
     )
 

@@ -70,7 +70,7 @@ class TestPandasExt:
             ]
         )
 
-        schema = reviews.ai.infer_schema(purpose="Extract product review analysis data", max_examples=3)
+        schema = reviews.ai.infer_schema(instructions="Extract product review analysis data", max_examples=3)
 
         assert schema is not None
         assert schema.model is not None
@@ -124,7 +124,7 @@ class TestPandasExt:
             ]
         )
 
-        schema = df.ai.infer_schema(purpose="Extract product analysis metrics", max_examples=2)
+        schema = df.ai.infer_schema(instructions="Extract product analysis metrics", max_examples=2)
 
         assert schema is not None
         assert schema.model is not None

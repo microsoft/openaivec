@@ -514,7 +514,7 @@ from openaivec import FewShotPromptBuilder
 
 prompt: str = (
     FewShotPromptBuilder()
-    .purpose("Return the smallest category that includes the given word")
+    .instructions("Return the smallest category that includes the given word")
     .caution("Never use proper nouns as categories")
     .example("Apple", "Fruit")
     .example("Car", "Vehicle")
@@ -531,7 +531,7 @@ The output will be:
 ```xml
 
 <Prompt>
-    <Purpose>Return the smallest category that includes the given word</Purpose>
+    <Instructions>Return the smallest category that includes the given word</Instructions>
     <Cautions>
         <Caution>Never use proper nouns as categories</Caution>
     </Cautions>
@@ -579,7 +579,7 @@ client = OpenAI(...)
 model_name = "<your-model-name>"
 improved_prompt: str = (
     FewShotPromptBuilder()
-    .purpose("Return the smallest category that includes the given word")
+    .instructions("Return the smallest category that includes the given word")
     .caution("Never use proper nouns as categories")
     # Examples which has contradictions, ambiguities, or redundancies
     .example("Apple", "Fruit")
@@ -598,11 +598,11 @@ Then we will get the improved prompt with extra examples, improved purpose, and 
 
 ```xml
 <Prompt>
-    <Purpose>Classify a given word into its most relevant category by considering its context and potential meanings.
+    <Instructions>Classify a given word into its most relevant category by considering its context and potential meanings.
         The input is a word accompanied by context, and the output is the appropriate category based on that context.
         This is useful for disambiguating words with multiple meanings, ensuring accurate understanding and
         categorization.
-    </Purpose>
+    </Instructions>
     <Cautions>
         <Caution>Ensure the context of the word is clear to avoid incorrect categorization.</Caution>
         <Caution>Be aware of words with multiple meanings and provide the most relevant category.</Caution>

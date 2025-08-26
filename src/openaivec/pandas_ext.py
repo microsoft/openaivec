@@ -475,7 +475,7 @@ class OpenAIVecSeriesAccessor:
 
         schema: InferredSchema | None = None
         if response_format is None:
-            schema = self.infer_schema(purpose=instructions, max_examples=max_examples, **api_kwargs)
+            schema = self.infer_schema(instructions=instructions, max_examples=max_examples, **api_kwargs)
 
         return self.responses_with_cache(
             instructions=schema.inference_prompt if schema else instructions,
@@ -529,7 +529,7 @@ class OpenAIVecSeriesAccessor:
             **api_kwargs,
         )
 
-    def infer_schema(self, purpose: str, max_examples: int = 100, **api_kwargs) -> InferredSchema:
+    def infer_schema(self, instructions: str, max_examples: int = 100, **api_kwargs) -> InferredSchema:
         """Infer a structured data schema from Series content using AI.
 
         This method analyzes a sample of the Series values to automatically infer
@@ -538,7 +538,7 @@ class OpenAIVecSeriesAccessor:
         potential enum values based on patterns found in the data.
 
         Args:
-            purpose (str): Plain language description of how the extracted
+            instructions (str): Plain language description of how the extracted
                 structured data will be used (e.g., "Extract customer sentiment
                 signals for analytics", "Parse product features for search").
                 This guides field relevance and helps exclude irrelevant information.
@@ -580,7 +580,7 @@ class OpenAIVecSeriesAccessor:
         inferer = CONTAINER.resolve(SchemaInferer)
 
         input: SchemaInferenceInput = SchemaInferenceInput(
-            examples=self._obj.sample(n=min(max_examples, len(self._obj))).tolist(), purpose=purpose, **api_kwargs
+            examples=self._obj.sample(n=min(max_examples, len(self._obj))).tolist(), instructions=instructions, **api_kwargs
         )
         return inferer.infer_schema(input)
 
@@ -919,7 +919,7 @@ class OpenAIVecDataFrameAccessor:
             **api_kwargs,
         )
 
-    def infer_schema(self, purpose: str, max_examples: int = 100) -> InferredSchema:
+    def infer_schema(self, instructions: str, max_examples: int = 100) -> InferredSchema:
         """Infer a structured data schema from DataFrame rows using AI.
 
         This method analyzes a sample of DataFrame rows to automatically infer
@@ -928,7 +928,7 @@ class OpenAIVecDataFrameAccessor:
         field types, and potential categorical values.
 
         Args:
-            purpose (str): Plain language description of how the extracted
+            instructions (str): Plain language description of how the extracted
                 structured data will be used (e.g., "Extract operational metrics
                 for dashboard", "Parse customer attributes for segmentation").
                 This guides field relevance and helps exclude irrelevant information.
@@ -971,7 +971,7 @@ class OpenAIVecDataFrameAccessor:
             Spark operations.
         """
         return _df_rows_to_json_series(self._obj).ai.infer_schema(
-            purpose=purpose,
+            purpose=instructions,
             max_examples=max_examples,
         )
 
@@ -1504,7 +1504,7 @@ class AsyncOpenAIVecSeriesAccessor:
         schema: InferredSchema | None = None
         if response_format is None:
             # Use synchronous schema inference
-            schema = self._obj.ai.infer_schema(purpose=instructions, max_examples=max_examples)
+            schema = self._obj.ai.infer_schema(instructions=instructions, max_examples=max_examples)
 
         return await self.responses_with_cache(
             instructions=schema.inference_prompt if schema else instructions,
