@@ -875,7 +875,7 @@ class OpenAIVecDataFrameAccessor:
             **api_kwargs,
         )
 
-    def infer_schema(self, instructions: str, max_examples: int = 100) -> InferredSchema:
+    def infer_schema(self, instructions: str, max_examples: int = 100, **api_kwargs) -> InferredSchema:
         """Infer a structured data schema from DataFrame rows using AI.
 
         This method analyzes a sample of DataFrame rows to automatically infer
@@ -929,6 +929,7 @@ class OpenAIVecDataFrameAccessor:
         return _df_rows_to_json_series(self._obj).ai.infer_schema(
             instructions=instructions,
             max_examples=max_examples,
+            **api_kwargs,
         )
 
     def extract(self, column: str) -> pd.DataFrame:
