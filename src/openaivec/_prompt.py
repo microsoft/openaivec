@@ -3,7 +3,7 @@ This module provides a builder for creating few‑shot prompts, which are
 used to train large language models (LLMs) by providing them with
 examples of input/output pairs. The builder allows for the
 construction of a prompt in a structured way, including setting the
-purpose, adding cautions, and providing examples.
+instructions, adding cautions, and providing examples.
 
 ```python
 from openaivec.prompt import FewShotPromptBuilder
@@ -213,7 +213,7 @@ _PROMPT: str = """
         This ambiguity could lead to confusion about the task. In this iteration, we refined the instructions to
         clearly specify that the goal is to determine the correct category for a given word based on its context.",
       "prompt": {
-        "purpose": "Determine the correct category for a given word by analyzing its context for clear meaning.",
+        "instructions": "Determine the correct category for a given word by analyzing its context for clear meaning.",
         "cautions": [
           "Ensure the word's context is provided to avoid ambiguity.",
           "Consider multiple meanings of the word and choose the most relevant category."
@@ -467,7 +467,7 @@ class FewShotPromptBuilder:
             FewShotPromptBuilder: The current builder instance containing the refined prompt and iteration history.
 
         Raises:
-            ValueError: If the prompt is not valid (missing purpose or examples).
+            ValueError: If the prompt is not valid (missing instructions or examples).
         """
         # Validate before making API call to provide early feedback
         self._validate()

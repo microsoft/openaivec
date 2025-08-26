@@ -495,7 +495,7 @@ spark.udf.register(
 
 Building prompt is a crucial step in using LLMs.
 In particular, providing a few examples in a prompt can significantly improve an LLM’s performance,
-a technique known as "few-shot learning." Typically, a few-shot prompt consists of a purpose, cautions,
+a technique known as "few-shot learning." Typically, a few-shot prompt consists of instructions, cautions,
 and examples.
 
 📓 **[Advanced prompting techniques →](https://microsoft.github.io/openaivec/examples/prompt/)**
@@ -504,7 +504,7 @@ The `FewShotPromptBuilder` helps you create structured, high-quality prompts wit
 
 ### Basic Usage
 
-`FewShotPromptBuilder` requires simply a purpose, cautions, and examples, and `build` method will
+`FewShotPromptBuilder` requires simply instructions, cautions, and examples, and `build` method will
 return rendered prompt with XML format.
 
 Here is an example:
@@ -594,7 +594,7 @@ improved_prompt: str = (
 print(improved_prompt)
 ```
 
-Then we will get the improved prompt with extra examples, improved purpose, and cautions:
+Then we will get the improved prompt with extra examples, improved instructions, and cautions:
 
 ```xml
 <Prompt>

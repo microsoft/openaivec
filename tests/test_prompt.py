@@ -123,7 +123,7 @@ class TestAtomicPromptBuilder:
 
         builder = (
             FewShotPromptBuilder()
-            .instructions("Test purpose")
+            .instructions("Test instructions")
             .example("input", "output")
             .explain()  # Should handle gracefully
         )
