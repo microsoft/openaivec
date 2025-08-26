@@ -435,7 +435,7 @@ class OpenAIVecSeriesAccessor:
         self,
         instructions: str,
         cache: BatchingMapProxy[str, ResponseFormat],
-        response_format: ResponseFormat = None,
+        response_format: type[ResponseFormat] | None = None,
         max_examples: int = 100,
         **api_kwargs,
     ) -> pd.Series:
@@ -447,7 +447,7 @@ class OpenAIVecSeriesAccessor:
             instructions (str): System prompt for the LLM.
             cache (BatchingMapProxy[str, BaseModel]): Explicit cache instance for
                 batching and deduplication control.
-            response_format (type[BaseModel] | None): Pydantic model or built-in type
+            response_format (type[ResponseFormat] | None): Pydantic model or built-in type
                 for structured output. If None, schema is inferred.
             max_examples (int): Maximum number of examples to use for schema inference.
                 Defaults to 100.
@@ -474,7 +474,7 @@ class OpenAIVecSeriesAccessor:
     def parse(
         self,
         instructions: str,
-        response_format: ResponseFormat = None,
+        response_format: type[ResponseFormat] | None = None,
         max_examples: int = 100,
         batch_size: int | None = None,
         show_progress: bool = False,
@@ -487,7 +487,7 @@ class OpenAIVecSeriesAccessor:
 
         Args:
             instructions (str): System prompt for the LLM.
-            response_format (type[BaseModel] | None): Pydantic model or built-in type
+            response_format (type[ResponseFormat] | None): Pydantic model or built-in type
                 for structured output. If None, schema is inferred.
             max_examples (int): Maximum number of examples to use for schema inference.
                 Defaults to 100.
@@ -800,7 +800,7 @@ class OpenAIVecDataFrameAccessor:
         self,
         instructions: str,
         cache: BatchingMapProxy[str, ResponseFormat],
-        response_format: ResponseFormat = None,
+        response_format: type[ResponseFormat] | None = None,
         max_examples: int = 100,
         **api_kwargs,
     ) -> pd.Series:
@@ -814,7 +814,7 @@ class OpenAIVecDataFrameAccessor:
             instructions (str): System prompt for the LLM.
             cache (BatchingMapProxy[str, ResponseFormat]): Explicit cache instance for
                 batching and deduplication control.
-            response_format (type[BaseModel] | None): Pydantic model or built-in type
+            response_format (type[ResponseFormat] | None): Pydantic model or built-in type
                 for structured output. If None, schema is inferred.
             max_examples (int): Maximum number of examples to use for schema inference.
                 Defaults to 100.
@@ -839,7 +839,7 @@ class OpenAIVecDataFrameAccessor:
     def parse(
         self,
         instructions: str,
-        response_format: ResponseFormat = None,
+        response_format: type[ResponseFormat] | None = None,
         max_examples: int = 100,
         batch_size: int | None = None,
         show_progress: bool = False,
@@ -853,7 +853,7 @@ class OpenAIVecDataFrameAccessor:
 
         Args:
             instructions (str): System prompt for the LLM.
-            response_format (type[BaseModel] | None): Pydantic model or built-in type
+            response_format (type[ResponseFormat] | None): Pydantic model or built-in type
                 for structured output. If None, schema is inferred.
             max_examples (int): Maximum number of examples to use for schema inference.
                 Defaults to 100.
@@ -1410,7 +1410,7 @@ class AsyncOpenAIVecSeriesAccessor:
         self,
         instructions: str,
         cache: AsyncBatchingMapProxy[str, ResponseFormat],
-        response_format: ResponseFormat = None,
+        response_format: type[ResponseFormat] | None = None,
         max_examples: int = 100,
         **api_kwargs,
     ) -> pd.Series:
@@ -1423,7 +1423,7 @@ class AsyncOpenAIVecSeriesAccessor:
             instructions (str): System prompt for the LLM.
             cache (AsyncBatchingMapProxy[str, ResponseFormat]): Explicit cache instance for
                 batching and deduplication control.
-            response_format (type[BaseModel] | None): Pydantic model or built-in type
+            response_format (type[ResponseFormat] | None): Pydantic model or built-in type
                 for structured output. If None, schema is inferred.
             max_examples (int): Maximum number of examples to use for schema inference.
                 Defaults to 100.
@@ -1455,7 +1455,7 @@ class AsyncOpenAIVecSeriesAccessor:
     async def parse(
         self,
         instructions: str,
-        response_format: ResponseFormat = None,
+        response_format: type[ResponseFormat] | None = None,
         max_examples: int = 100,
         batch_size: int | None = None,
         max_concurrency: int = 8,
@@ -1469,7 +1469,7 @@ class AsyncOpenAIVecSeriesAccessor:
 
         Args:
             instructions (str): System prompt for the LLM.
-            response_format (type[BaseModel] | None): Pydantic model or built-in type
+            response_format (type[ResponseFormat] | None): Pydantic model or built-in type
                 for structured output. If None, schema is inferred.
             max_examples (int): Maximum number of examples to use for schema inference.
                 Defaults to 100.
@@ -1714,7 +1714,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         self,
         instructions: str,
         cache: AsyncBatchingMapProxy[str, ResponseFormat],
-        response_format: ResponseFormat = None,
+        response_format: type[ResponseFormat] | None = None,
         max_examples: int = 100,
         **api_kwargs,
     ) -> pd.Series:
@@ -1728,7 +1728,7 @@ class AsyncOpenAIVecDataFrameAccessor:
             instructions (str): System prompt for the LLM.
             cache (AsyncBatchingMapProxy[str, ResponseFormat]): Explicit cache instance for
                 batching and deduplication control.
-            response_format (type[BaseModel] | None): Pydantic model or built-in type
+            response_format (type[ResponseFormat] | None): Pydantic model or built-in type
                 for structured output. If None, schema is inferred.
             max_examples (int): Maximum number of examples to use for schema inference.
                 Defaults to 100.
@@ -1756,7 +1756,7 @@ class AsyncOpenAIVecDataFrameAccessor:
     async def parse(
         self,
         instructions: str,
-        response_format: ResponseFormat = None,
+        response_format: type[ResponseFormat] | None = None,
         max_examples: int = 100,
         batch_size: int | None = None,
         max_concurrency: int = 8,
@@ -1771,7 +1771,7 @@ class AsyncOpenAIVecDataFrameAccessor:
 
         Args:
             instructions (str): System prompt for the LLM.
-            response_format (type[BaseModel] | None): Pydantic model or built-in type
+            response_format (type[ResponseFormat] | None): Pydantic model or built-in type
                 for structured output. If None, schema is inferred.
             max_examples (int): Maximum number of examples to use for schema inference.
                 Defaults to 100.
