@@ -1,7 +1,7 @@
 import warnings
 from dataclasses import dataclass, field
 from logging import Logger, getLogger
-from typing import Any, Generic, cast
+from typing import Generic, cast
 
 from openai import AsyncOpenAI, BadRequestError, InternalServerError, OpenAI, RateLimitError
 from openai.types.responses import ParsedResponse
@@ -163,6 +163,7 @@ class BatchResponses(Generic[ResponseFormat]):
     system_message: str
     response_format: type[ResponseFormat] = str  # type: ignore[assignment]
     cache: BatchingMapProxy[str, ResponseFormat] = field(default_factory=lambda: BatchingMapProxy(batch_size=None))
+    api_kwargs: dict[str, int | float | str | bool] = field(default_factory=dict)
     _vectorized_system_message: str = field(init=False)
     _model_json_schema: dict = field(init=False)
 
@@ -190,16 +191,14 @@ class BatchResponses(Generic[ResponseFormat]):
         Returns:
             BatchResponses: Configured instance backed by a batching proxy.
         """
-        instance = cls(
+        return cls(
             client=client,
             model_name=model_name,
             system_message=system_message,
             response_format=response_format,
             cache=BatchingMapProxy(batch_size=batch_size),
+            api_kwargs=api_kwargs,
         )
-        # Store api_kwargs for use in _request_llm
-        object.__setattr__(instance, "_api_kwargs", api_kwargs)
-        return instance
 
     @classmethod
     def of_task(
@@ -217,16 +216,14 @@ class BatchResponses(Generic[ResponseFormat]):
         Returns:
             BatchResponses: Configured instance backed by a batching proxy.
         """
-        instance = cls(
+        return cls(
             client=client,
             model_name=model_name,
             system_message=task.instructions,
             response_format=task.response_format,
             cache=BatchingMapProxy(batch_size=batch_size),
+            api_kwargs=task.api_kwargs,
         )
-        # Store task's api_kwargs for use in _request_llm
-        object.__setattr__(instance, "_api_kwargs", task.api_kwargs)
-        return instance
 
     def __post_init__(self):
         object.__setattr__(
@@ -237,9 +234,7 @@ class BatchResponses(Generic[ResponseFormat]):
 
     @observe(_LOGGER)
     @backoff(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
-    def _request_llm(
-        self, user_messages: list[Message[str]], **extra_api_params: Any
-    ) -> ParsedResponse[Response[ResponseFormat]]:
+    def _request_llm(self, user_messages: list[Message[str]]) -> ParsedResponse[Response[ResponseFormat]]:
         """Make a single call to the OpenAI JSON‑mode endpoint.
 
         Args:
@@ -263,53 +258,22 @@ class BatchResponses(Generic[ResponseFormat]):
         class ResponseT(BaseModel):
             assistant_messages: list[MessageT]
 
-        # Build base API parameters (cannot be overridden by caller)
-        api_params: dict[str, Any] = {
-            "model": self.model_name,
-            "instructions": self._vectorized_system_message,
-            "input": Request(user_messages=user_messages).model_dump_json(),
-            "text_format": ResponseT,
-        }
-
-        # Merge stored api_kwargs first (from constructor)
-        if hasattr(self, "_api_kwargs"):
-            for k, v in self._api_kwargs.items():
-                if k not in {"model", "instructions", "input", "text_format"}:
-                    api_params[k] = v
-
-        # Then merge extra_api_params (caller can override stored values)
-        # Handle temperature specially - if None, omit entirely for reasoning models
-        if "temperature" in extra_api_params:
-            temperature = extra_api_params.pop("temperature")
-            if temperature is not None:
-                api_params["temperature"] = temperature
-            elif "temperature" in api_params:
-                del api_params["temperature"]
-
-        # Handle top_p
-        if "top_p" in extra_api_params:
-            top_p = extra_api_params.pop("top_p")
-            if top_p is not None:
-                api_params["top_p"] = top_p
-            elif "top_p" in api_params:
-                del api_params["top_p"]
-
-        # Merge remaining user supplied params, excluding protected keys
-        for k, v in extra_api_params.items():
-            if k in {"model", "instructions", "input", "text_format"}:
-                continue  # ignore attempts to override core batching contract
-            api_params[k] = v
-
         try:
-            completion: ParsedResponse[ResponseT] = self.client.responses.parse(**api_params)
+            response: ParsedResponse[ResponseT] = self.client.responses.parse(
+                instructions=self._vectorized_system_message,
+                model=self.model_name,
+                input=Request(user_messages=user_messages).model_dump_json(),
+                text_format=ResponseT,
+                **self.api_kwargs,
+            )
         except BadRequestError as e:
-            _handle_temperature_error(e, self.model_name, api_params.get("temperature", 0.0))
+            _handle_temperature_error(e, self.model_name, self.api_kwargs.get("temperature", 0.0))
             raise  # Re-raise if it wasn't a temperature error
 
-        return cast(ParsedResponse[Response[ResponseFormat]], completion)
+        return cast(ParsedResponse[Response[ResponseFormat]], response)
 
     @observe(_LOGGER)
-    def _predict_chunk(self, user_messages: list[str], **api_kwargs: Any) -> list[ResponseFormat | None]:
+    def _predict_chunk(self, user_messages: list[str]) -> list[ResponseFormat | None]:
         """Helper executed for every unique minibatch.
 
             This method:
@@ -321,7 +285,7 @@ class BatchResponses(Generic[ResponseFormat]):
         only on its arguments – which allows safe reuse.
         """
         messages = [Message(id=i, body=message) for i, message in enumerate(user_messages)]
-        responses: ParsedResponse[Response[ResponseFormat]] = self._request_llm(messages, **api_kwargs)
+        responses: ParsedResponse[Response[ResponseFormat]] = self._request_llm(messages)
         if not responses.output_parsed:
             return [None] * len(messages)
         response_dict = {message.id: message.body for message in responses.output_parsed.assistant_messages}
@@ -329,28 +293,16 @@ class BatchResponses(Generic[ResponseFormat]):
         return sorted_responses
 
     @observe(_LOGGER)
-    def parse(self, inputs: list[str], **api_kwargs: Any) -> list[ResponseFormat | None]:
+    def parse(self, inputs: list[str]) -> list[ResponseFormat | None]:
         """Batched predict.
-
-        Accepts arbitrary keyword arguments that are forwarded to the underlying
-        ``OpenAI.responses.parse`` call for future‑proofing (e.g., ``max_output_tokens``,
-        penalties, etc.). ``top_p`` and ``temperature`` default to the instance's
-        configured values but can be overridden explicitly.
 
         Args:
             inputs (list[str]): Prompts that require responses. Duplicates are de‑duplicated.
-            **api_kwargs: Extra keyword args forwarded to the OpenAI Responses API.
 
         Returns:
             list[ResponseFormat | None]: Assistant responses aligned to ``inputs``.
         """
-        if not api_kwargs:
-            return self.cache.map(inputs, self._predict_chunk)  # type: ignore[return-value]
-
-        def _predict_with(xs: list[str]) -> list[ResponseFormat | None]:
-            return self._predict_chunk(xs, **api_kwargs)
-
-        return self.cache.map(inputs, _predict_with)  # type: ignore[return-value]
+        return self.cache.map(inputs, self._predict_chunk)  # type: ignore[return-value]
 
 
 @dataclass(frozen=True)
@@ -404,6 +356,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
     cache: AsyncBatchingMapProxy[str, ResponseFormat] = field(
         default_factory=lambda: AsyncBatchingMapProxy(batch_size=None, max_concurrency=8)
     )
+    api_kwargs: dict[str, int | float | str | bool] = field(default_factory=dict)
     _vectorized_system_message: str = field(init=False)
     _model_json_schema: dict = field(init=False)
 
@@ -433,16 +386,14 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         Returns:
             AsyncBatchResponses: Configured instance backed by an async batching proxy.
         """
-        instance = cls(
+        return cls(
             client=client,
             model_name=model_name,
             system_message=system_message,
             response_format=response_format,
             cache=AsyncBatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency),
+            api_kwargs=api_kwargs,
         )
-        # Store api_kwargs for use in _request_llm
-        object.__setattr__(instance, "_api_kwargs", api_kwargs)
-        return instance
 
     @classmethod
     def of_task(
@@ -466,16 +417,14 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         Returns:
             AsyncBatchResponses: Configured instance backed by an async batching proxy.
         """
-        instance = cls(
+        return cls(
             client=client,
             model_name=model_name,
             system_message=task.instructions,
             response_format=task.response_format,
             cache=AsyncBatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency),
+            api_kwargs=task.api_kwargs,
         )
-        # Store task's api_kwargs for use in _request_llm
-        object.__setattr__(instance, "_api_kwargs", task.api_kwargs)
-        return instance
 
     def __post_init__(self):
         object.__setattr__(
@@ -486,9 +435,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
 
     @backoff_async(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
     @observe(_LOGGER)
-    async def _request_llm(
-        self, user_messages: list[Message[str]], **extra_api_params: Any
-    ) -> ParsedResponse[Response[ResponseFormat]]:
+    async def _request_llm(self, user_messages: list[Message[str]]) -> ParsedResponse[Response[ResponseFormat]]:
         """Make a single async call to the OpenAI JSON‑mode endpoint.
 
         Args:
@@ -509,53 +456,22 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         class ResponseT(BaseModel):
             assistant_messages: list[MessageT]
 
-        # Build base API parameters (cannot be overridden by caller)
-        api_params: dict[str, Any] = {
-            "model": self.model_name,
-            "instructions": self._vectorized_system_message,
-            "input": Request(user_messages=user_messages).model_dump_json(),
-            "text_format": ResponseT,
-        }
-
-        # Merge stored api_kwargs first (from constructor)
-        if hasattr(self, "_api_kwargs"):
-            for k, v in self._api_kwargs.items():
-                if k not in {"model", "instructions", "input", "text_format"}:
-                    api_params[k] = v
-
-        # Then merge extra_api_params (caller can override stored values)
-        # Handle temperature specially - if None, omit entirely for reasoning models
-        if "temperature" in extra_api_params:
-            temperature = extra_api_params.pop("temperature")
-            if temperature is not None:
-                api_params["temperature"] = temperature
-            elif "temperature" in api_params:
-                del api_params["temperature"]
-
-        # Handle top_p
-        if "top_p" in extra_api_params:
-            top_p = extra_api_params.pop("top_p")
-            if top_p is not None:
-                api_params["top_p"] = top_p
-            elif "top_p" in api_params:
-                del api_params["top_p"]
-
-        # Merge remaining user supplied params, excluding protected keys
-        for k, v in extra_api_params.items():
-            if k in {"model", "instructions", "input", "text_format"}:
-                continue
-            api_params[k] = v
-
         try:
-            completion: ParsedResponse[ResponseT] = await self.client.responses.parse(**api_params)
+            response: ParsedResponse[ResponseT] = await self.client.responses.parse(
+                instructions=self._vectorized_system_message,
+                model=self.model_name,
+                input=Request(user_messages=user_messages).model_dump_json(),
+                text_format=ResponseT,
+                **self.api_kwargs,
+            )
         except BadRequestError as e:
-            _handle_temperature_error(e, self.model_name, api_params.get("temperature", 0.0))
+            _handle_temperature_error(e, self.model_name, self.api_kwargs.get("temperature", 0.0))
             raise  # Re-raise if it wasn't a temperature error
 
-        return cast(ParsedResponse[Response[ResponseFormat]], completion)
+        return cast(ParsedResponse[Response[ResponseFormat]], response)
 
     @observe(_LOGGER)
-    async def _predict_chunk(self, user_messages: list[str], **api_kwargs: Any) -> list[ResponseFormat | None]:
+    async def _predict_chunk(self, user_messages: list[str]) -> list[ResponseFormat | None]:
         """Async helper executed for every unique minibatch.
 
             This method:
@@ -566,7 +482,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         The function is pure – it has no side‑effects and the result depends only on its arguments.
         """
         messages = [Message(id=i, body=message) for i, message in enumerate(user_messages)]
-        responses: ParsedResponse[Response[ResponseFormat]] = await self._request_llm(messages, **api_kwargs)  # type: ignore[call-issue]
+        responses: ParsedResponse[Response[ResponseFormat]] = await self._request_llm(messages)
         if not responses.output_parsed:
             return [None] * len(messages)
         response_dict = {message.id: message.body for message in responses.output_parsed.assistant_messages}
@@ -575,25 +491,13 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         return sorted_responses
 
     @observe(_LOGGER)
-    async def parse(self, inputs: list[str], **api_kwargs: Any) -> list[ResponseFormat | None]:
+    async def parse(self, inputs: list[str]) -> list[ResponseFormat | None]:
         """Batched predict (async).
-
-        Accepts arbitrary keyword arguments forwarded to ``AsyncOpenAI.responses.parse``.
-        ``top_p`` and ``temperature`` default to instance configuration but can be
-        overridden per call. This prepares for future API parameters without
-        changing the public surface again.
 
         Args:
             inputs (list[str]): Prompts that require responses. Duplicates are de‑duplicated.
-            **api_kwargs: Extra keyword args for the OpenAI Responses API.
 
         Returns:
             list[ResponseFormat | None]: Assistant responses aligned to ``inputs``.
         """
-        if not api_kwargs:
-            return await self.cache.map(inputs, self._predict_chunk)  # type: ignore[return-value]
-
-        async def _predict_with(xs: list[str]) -> list[ResponseFormat | None]:
-            return await self._predict_chunk(xs, **api_kwargs)
-
-        return await self.cache.map(inputs, _predict_with)  # type: ignore[return-value]
+        return await self.cache.map(inputs, self._predict_chunk)  # type: ignore[return-value]
