@@ -545,7 +545,7 @@ def infer_schema(
     )
 
     input = SchemaInferenceInput(
-        purpose=instructions,
+        instructions=instructions,
         examples=examples,
     )
     inferer = CONTAINER.resolve(SchemaInferer)

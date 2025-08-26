@@ -453,7 +453,7 @@ class OpenAIVecSeriesAccessor:
     ) -> pd.Series:
         """Parse Series values using an LLM with a provided cache.
         This method allows you to parse the Series content into structured data
-        using an LLM, optionally inferring a schema based on the provided purpose.
+        using an LLM, optionally inferring a schema based on the provided instructions.
 
         Args:
             instructions (str): System prompt for the LLM.
@@ -475,7 +475,7 @@ class OpenAIVecSeriesAccessor:
 
         schema: InferredSchema | None = None
         if response_format is None:
-            schema = self.infer_schema(purpose=instructions, max_examples=max_examples, **api_kwargs)
+            schema = self.infer_schema(instructions=instructions, max_examples=max_examples, **api_kwargs)
 
         return self.responses_with_cache(
             instructions=schema.inference_prompt if schema else instructions,
@@ -500,7 +500,7 @@ class OpenAIVecSeriesAccessor:
         """Parse Series values using an LLM with optional schema inference.
 
         This method allows you to parse the Series content into structured data
-        using an LLM, optionally inferring a schema based on the provided purpose.
+        using an LLM, optionally inferring a schema based on the provided instructions.
 
         Args:
             instructions (str): System prompt for the LLM.
@@ -529,7 +529,7 @@ class OpenAIVecSeriesAccessor:
             **api_kwargs,
         )
 
-    def infer_schema(self, purpose: str, max_examples: int = 100, **api_kwargs) -> InferredSchema:
+    def infer_schema(self, instructions: str, max_examples: int = 100, **api_kwargs) -> InferredSchema:
         """Infer a structured data schema from Series content using AI.
 
         This method analyzes a sample of the Series values to automatically infer
@@ -538,7 +538,7 @@ class OpenAIVecSeriesAccessor:
         potential enum values based on patterns found in the data.
 
         Args:
-            purpose (str): Plain language description of how the extracted
+            instructions (str): Plain language description of how the extracted
                 structured data will be used (e.g., "Extract customer sentiment
                 signals for analytics", "Parse product features for search").
                 This guides field relevance and helps exclude irrelevant information.
@@ -548,7 +548,7 @@ class OpenAIVecSeriesAccessor:
 
         Returns:
             InferredSchema: An object containing:
-                - purpose: Normalized statement of the extraction objective
+                - instructions: Normalized statement of the extraction objective
                 - fields: List of field specifications with names, types, and descriptions
                 - inference_prompt: Reusable prompt for future extractions
                 - model: Dynamically generated Pydantic model for parsing
@@ -564,7 +564,7 @@ class OpenAIVecSeriesAccessor:
 
             # Infer schema for sentiment analysis
             schema = reviews.ai.infer_schema(
-                purpose="Extract sentiment and product quality indicators"
+                instructions="Extract sentiment and product quality indicators"
             )
 
             # Use the inferred schema for batch extraction
@@ -580,7 +580,9 @@ class OpenAIVecSeriesAccessor:
         inferer = CONTAINER.resolve(SchemaInferer)
 
         input: SchemaInferenceInput = SchemaInferenceInput(
-            examples=self._obj.sample(n=min(max_examples, len(self._obj))).tolist(), purpose=purpose, **api_kwargs
+            examples=self._obj.sample(n=min(max_examples, len(self._obj))).tolist(),
+            instructions=instructions,
+            **api_kwargs,
         )
         return inferer.infer_schema(input)
 
@@ -844,7 +846,7 @@ class OpenAIVecDataFrameAccessor:
 
         This method allows you to parse each DataFrame row (serialized as JSON)
         into structured data using an LLM, optionally inferring a schema based
-        on the provided purpose.
+        on the provided instructions.
 
         Args:
             instructions (str): System prompt for the LLM.
@@ -890,7 +892,7 @@ class OpenAIVecDataFrameAccessor:
 
         This method allows you to parse each DataFrame row (serialized as JSON)
         into structured data using an LLM, optionally inferring a schema based
-        on the provided purpose.
+        on the provided instructions.
 
         Args:
             instructions (str): System prompt for the LLM.
@@ -919,7 +921,7 @@ class OpenAIVecDataFrameAccessor:
             **api_kwargs,
         )
 
-    def infer_schema(self, purpose: str, max_examples: int = 100) -> InferredSchema:
+    def infer_schema(self, instructions: str, max_examples: int = 100) -> InferredSchema:
         """Infer a structured data schema from DataFrame rows using AI.
 
         This method analyzes a sample of DataFrame rows to automatically infer
@@ -928,7 +930,7 @@ class OpenAIVecDataFrameAccessor:
         field types, and potential categorical values.
 
         Args:
-            purpose (str): Plain language description of how the extracted
+            instructions (str): Plain language description of how the extracted
                 structured data will be used (e.g., "Extract operational metrics
                 for dashboard", "Parse customer attributes for segmentation").
                 This guides field relevance and helps exclude irrelevant information.
@@ -938,7 +940,7 @@ class OpenAIVecDataFrameAccessor:
 
         Returns:
             InferredSchema: An object containing:
-                - purpose: Normalized statement of the extraction objective
+                - instructions: Normalized statement of the extraction objective
                 - fields: List of field specifications with names, types, and descriptions
                 - inference_prompt: Reusable prompt for future extractions
                 - model: Dynamically generated Pydantic model for parsing
@@ -957,7 +959,7 @@ class OpenAIVecDataFrameAccessor:
 
             # Infer schema for logistics tracking
             schema = df.ai.infer_schema(
-                purpose="Extract shipping status and location data for logistics tracking"
+                instructions="Extract shipping status and location data for logistics tracking"
             )
 
             # Apply the schema to extract structured data
@@ -971,7 +973,7 @@ class OpenAIVecDataFrameAccessor:
             Spark operations.
         """
         return _df_rows_to_json_series(self._obj).ai.infer_schema(
-            purpose=purpose,
+            instructions=instructions,
             max_examples=max_examples,
         )
 
@@ -1477,7 +1479,7 @@ class AsyncOpenAIVecSeriesAccessor:
         """Parse Series values using an LLM with a provided cache (asynchronously).
 
         This method allows you to parse the Series content into structured data
-        using an LLM, optionally inferring a schema based on the provided purpose.
+        using an LLM, optionally inferring a schema based on the provided instructions.
 
         Args:
             instructions (str): System prompt for the LLM.
@@ -1504,7 +1506,7 @@ class AsyncOpenAIVecSeriesAccessor:
         schema: InferredSchema | None = None
         if response_format is None:
             # Use synchronous schema inference
-            schema = self._obj.ai.infer_schema(purpose=instructions, max_examples=max_examples)
+            schema = self._obj.ai.infer_schema(instructions=instructions, max_examples=max_examples)
 
         return await self.responses_with_cache(
             instructions=schema.inference_prompt if schema else instructions,
@@ -1530,7 +1532,7 @@ class AsyncOpenAIVecSeriesAccessor:
         """Parse Series values using an LLM with optional schema inference (asynchronously).
 
         This method allows you to parse the Series content into structured data
-        using an LLM, optionally inferring a schema based on the provided purpose.
+        using an LLM, optionally inferring a schema based on the provided instructions.
 
         Args:
             instructions (str): System prompt for the LLM.
@@ -1807,7 +1809,7 @@ class AsyncOpenAIVecDataFrameAccessor:
 
         This method allows you to parse each DataFrame row (serialized as JSON)
         into structured data using an LLM, optionally inferring a schema based
-        on the provided purpose.
+        on the provided instructions.
 
         Args:
             instructions (str): System prompt for the LLM.
@@ -1857,7 +1859,7 @@ class AsyncOpenAIVecDataFrameAccessor:
 
         This method allows you to parse each DataFrame row (serialized as JSON)
         into structured data using an LLM, optionally inferring a schema based
-        on the provided purpose.
+        on the provided instructions.
 
         Args:
             instructions (str): System prompt for the LLM.
