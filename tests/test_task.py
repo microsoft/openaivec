@@ -24,19 +24,19 @@ class TestPreparedTask:
 
         assert task.instructions == "Test instruction"
         assert task.response_format == SimpleResponse
-        assert task.temperature == 0.0
-        assert task.top_p == 1.0
+        assert task.api_kwargs == {}
 
     def test_prepared_task_creation_with_custom_parameters(self):
         """Test creating a PreparedTask with custom parameters."""
         task = PreparedTask(
-            instructions="Custom instruction", response_format=SimpleResponse, temperature=0.7, top_p=0.9
+            instructions="Custom instruction",
+            response_format=SimpleResponse,
+            api_kwargs={"temperature": 0.7, "top_p": 0.9},
         )
 
         assert task.instructions == "Custom instruction"
         assert task.response_format == SimpleResponse
-        assert task.temperature == 0.7
-        assert task.top_p == 0.9
+        assert task.api_kwargs == {"temperature": 0.7, "top_p": 0.9}
 
     def test_prepared_task_is_frozen(self):
         """Test that PreparedTask is immutable (frozen)."""
@@ -47,35 +47,35 @@ class TestPreparedTask:
             task.instructions = "Modified instruction"
 
         with pytest.raises(FrozenInstanceError):
-            task.temperature = 0.5
+            task.api_kwargs = {"temperature": 0.5}
 
-    def test_prepared_task_temperature_bounds(self):
-        """Test PreparedTask accepts valid temperature values."""
+    def test_prepared_task_api_kwargs_temperature_bounds(self):
+        """Test PreparedTask accepts valid temperature values in api_kwargs."""
         # Test minimum temperature
-        task_min = PreparedTask(instructions="Test", response_format=SimpleResponse, temperature=0.0)
-        assert task_min.temperature == 0.0
+        task_min = PreparedTask(instructions="Test", response_format=SimpleResponse, api_kwargs={"temperature": 0.0})
+        assert task_min.api_kwargs["temperature"] == 0.0
 
         # Test maximum temperature
-        task_max = PreparedTask(instructions="Test", response_format=SimpleResponse, temperature=1.0)
-        assert task_max.temperature == 1.0
+        task_max = PreparedTask(instructions="Test", response_format=SimpleResponse, api_kwargs={"temperature": 1.0})
+        assert task_max.api_kwargs["temperature"] == 1.0
 
         # Test intermediate value
-        task_mid = PreparedTask(instructions="Test", response_format=SimpleResponse, temperature=0.5)
-        assert task_mid.temperature == 0.5
+        task_mid = PreparedTask(instructions="Test", response_format=SimpleResponse, api_kwargs={"temperature": 0.5})
+        assert task_mid.api_kwargs["temperature"] == 0.5
 
-    def test_prepared_task_top_p_bounds(self):
-        """Test PreparedTask accepts valid top_p values."""
+    def test_prepared_task_api_kwargs_top_p_bounds(self):
+        """Test PreparedTask accepts valid top_p values in api_kwargs."""
         # Test minimum top_p
-        task_min = PreparedTask(instructions="Test", response_format=SimpleResponse, top_p=0.0)
-        assert task_min.top_p == 0.0
+        task_min = PreparedTask(instructions="Test", response_format=SimpleResponse, api_kwargs={"top_p": 0.0})
+        assert task_min.api_kwargs["top_p"] == 0.0
 
         # Test maximum top_p
-        task_max = PreparedTask(instructions="Test", response_format=SimpleResponse, top_p=1.0)
-        assert task_max.top_p == 1.0
+        task_max = PreparedTask(instructions="Test", response_format=SimpleResponse, api_kwargs={"top_p": 1.0})
+        assert task_max.api_kwargs["top_p"] == 1.0
 
         # Test intermediate value
-        task_mid = PreparedTask(instructions="Test", response_format=SimpleResponse, top_p=0.5)
-        assert task_mid.top_p == 0.5
+        task_mid = PreparedTask(instructions="Test", response_format=SimpleResponse, api_kwargs={"top_p": 0.5})
+        assert task_mid.api_kwargs["top_p"] == 0.5
 
     def test_prepared_task_response_format_type(self):
         """Test that response_format must be a Pydantic BaseModel type."""
@@ -101,8 +101,7 @@ class TestMultilingualTranslationTask:
         assert task.instructions is not None
         assert len(task.instructions) > 0
         assert task.response_format == TranslatedString
-        assert task.temperature == 0.0
-        assert task.top_p == 1.0
+        assert task.api_kwargs == {"temperature": 0.0, "top_p": 1.0}
 
     def test_multilingual_translation_task_instructions(self):
         """Test that translation task has appropriate instructions."""

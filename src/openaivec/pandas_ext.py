@@ -181,8 +181,6 @@ class OpenAIVecSeriesAccessor:
         instructions: str,
         cache: BatchingMapProxy[str, ResponseFormat],
         response_format: type[ResponseFormat] = str,
-        temperature: float | None = 0.0,
-        top_p: float = 1.0,
         **api_kwargs,
     ) -> pd.Series:
         """Call an LLM once for every Series element using a provided cache.
@@ -196,40 +194,37 @@ class OpenAIVecSeriesAccessor:
                 batching and deduplication control.
             response_format (type[ResponseFormat], optional): Pydantic model or built-in
                 type the assistant should return. Defaults to ``str``.
-            temperature (float | None, optional): Sampling temperature. Defaults to ``0.0``.
-            top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
 
         Additional Keyword Args:
-            Arbitrary OpenAI Responses API parameters (e.g. ``frequency_penalty``, ``presence_penalty``,
-            ``seed``, etc.) are forwarded verbatim to the underlying client.
+            Arbitrary OpenAI Responses API parameters (e.g. ``temperature``, ``top_p``,
+            ``frequency_penalty``, ``presence_penalty``, ``seed``, etc.) are forwarded
+            verbatim to the underlying client.
 
         Returns:
             pandas.Series: Series whose values are instances of ``response_format``.
         """
-        client: BatchResponses = BatchResponses(
+        # Extract proxy-specific params
+        proxy_params = {"show_progress", "batch_size"}
+        api_params = {k: v for k, v in api_kwargs.items() if k not in proxy_params}
+
+        client: BatchResponses = BatchResponses.of(
             client=CONTAINER.resolve(OpenAI),
             model_name=CONTAINER.resolve(ResponsesModelName).value,
             system_message=instructions,
             response_format=response_format,
-            cache=cache,
-            temperature=temperature,
-            top_p=top_p,
+            batch_size=None,  # Using the cache's batch_size
+            **api_params,
         )
+        # Override cache with the provided one
+        object.__setattr__(client, "cache", cache)
 
-        # Forward any extra kwargs to the underlying Responses API, excluding proxy-specific ones.
-        proxy_params = {"show_progress", "batch_size"}
-        filtered_kwargs = {k: v for k, v in api_kwargs.items() if k not in proxy_params}
-        return pd.Series(
-            client.parse(self._obj.tolist(), **filtered_kwargs), index=self._obj.index, name=self._obj.name
-        )
+        return pd.Series(client.parse(self._obj.tolist()), index=self._obj.index, name=self._obj.name)
 
     def responses(
         self,
         instructions: str,
         response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
-        temperature: float | None = 0.0,
-        top_p: float = 1.0,
         show_progress: bool = False,
         **api_kwargs,
     ) -> pd.Series:
@@ -248,6 +243,12 @@ class OpenAIVecSeriesAccessor:
                 batch_size=32,
                 show_progress=True
             )
+
+            # With custom temperature
+            animals.ai.responses(
+                "translate creatively",
+                temperature=0.8
+            )
             ```
 
         Args:
@@ -257,9 +258,8 @@ class OpenAIVecSeriesAccessor:
             batch_size (int | None, optional): Number of prompts grouped into a single
                 request. Defaults to ``None`` (automatic batch size optimization
                 based on execution time). Set to a positive integer for fixed batch size.
-            temperature (float | None, optional): Sampling temperature. Defaults to ``0.0``.
-            top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
+            **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
 
         Returns:
             pandas.Series: Series whose values are instances of ``response_format``.
@@ -268,8 +268,6 @@ class OpenAIVecSeriesAccessor:
             instructions=instructions,
             cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
             response_format=response_format,
-            temperature=temperature,
-            top_p=top_p,
             **api_kwargs,
         )
 
@@ -356,7 +354,7 @@ class OpenAIVecSeriesAccessor:
         """Execute a prepared task on every Series element using a provided cache.
 
         This mirrors ``responses_with_cache`` but uses the task's stored instructions,
-        response format, temperature and top_p. A supplied ``BatchingMapProxy`` enables
+        response format, and API parameters. A supplied ``BatchingMapProxy`` enables
         cross‑operation deduplicated reuse and external batch size / progress control.
 
         Example:
@@ -378,16 +376,17 @@ class OpenAIVecSeriesAccessor:
         Returns:
             pandas.Series: Task results aligned with the original Series index.
         """
-        client: BatchResponses = BatchResponses(
+        client: BatchResponses = BatchResponses.of_task(
             client=CONTAINER.resolve(OpenAI),
             model_name=CONTAINER.resolve(ResponsesModelName).value,
-            system_message=task.instructions,
-            response_format=task.response_format,
-            cache=cache,
-            temperature=task.temperature,
-            top_p=task.top_p,
+            task=task,
+            batch_size=None,  # Using the cache's batch_size
         )
-        return pd.Series(client.parse(self._obj.tolist(), **api_kwargs), index=self._obj.index, name=self._obj.name)
+        # Override cache with the provided one
+        object.__setattr__(client, "cache", cache)
+        # Merge api_kwargs with task's api_kwargs (caller kwargs take precedence)
+        merged_kwargs = {**task.api_kwargs, **api_kwargs}
+        return pd.Series(client.parse(self._obj.tolist(), **merged_kwargs), index=self._obj.index, name=self._obj.name)
 
     def task(
         self,
@@ -447,8 +446,6 @@ class OpenAIVecSeriesAccessor:
         cache: BatchingMapProxy[str, ResponseFormat],
         response_format: ResponseFormat = None,
         max_examples: int = 100,
-        temperature: float | None = 0.0,
-        top_p: float = 1.0,
         **api_kwargs,
     ) -> pd.Series:
         """Parse Series values using an LLM with a provided cache.
@@ -463,11 +460,10 @@ class OpenAIVecSeriesAccessor:
                 for structured output. If None, schema is inferred.
             max_examples (int): Maximum number of examples to use for schema inference.
                 Defaults to 100.
-            temperature (float | None): Sampling temperature. Defaults to 0.0.
-            top_p (float): Nucleus sampling parameter. Defaults to 1.0.
         Additional Keyword Args:
-            Arbitrary OpenAI Responses API parameters (e.g. `frequency_penalty`, `presence_penalty`,
-            `seed`, etc.) are forwarded verbatim to the underlying client.
+            Arbitrary OpenAI Responses API parameters (e.g. `temperature`, `top_p`,
+            `frequency_penalty`, `presence_penalty`, `seed`, etc.) are forwarded verbatim
+            to the underlying client.
         Returns:
             pandas.Series: Series with parsed structured data as instances of
                 `response_format` or inferred schema model.
@@ -481,8 +477,6 @@ class OpenAIVecSeriesAccessor:
             instructions=schema.inference_prompt if schema else instructions,
             cache=cache,
             response_format=response_format or schema.model,
-            temperature=temperature,
-            top_p=top_p,
             **api_kwargs,
         )
 
@@ -493,8 +487,6 @@ class OpenAIVecSeriesAccessor:
         max_examples: int = 100,
         batch_size: int | None = None,
         show_progress: bool = False,
-        temperature: float | None = 0.0,
-        top_p: float = 1.0,
         **api_kwargs,
     ) -> pd.Series:
         """Parse Series values using an LLM with optional schema inference.
@@ -512,8 +504,7 @@ class OpenAIVecSeriesAccessor:
                 Defaults to None (automatic optimization).
             show_progress (bool): Whether to display a progress bar during processing.
                 Defaults to False.
-            temperature (float | None): Sampling temperature. Defaults to 0.0.
-            top_p (float): Nucleus sampling parameter. Defaults to 1.0.
+            **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
 
         Returns:
             pandas.Series: Series with parsed structured data as instances of
@@ -524,8 +515,6 @@ class OpenAIVecSeriesAccessor:
             cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
             response_format=response_format,
             max_examples=max_examples,
-            temperature=temperature,
-            top_p=top_p,
             **api_kwargs,
         )
 
@@ -1130,8 +1119,6 @@ class AsyncOpenAIVecSeriesAccessor:
         instructions: str,
         cache: AsyncBatchingMapProxy[str, ResponseFormat],
         response_format: type[ResponseFormat] = str,
-        temperature: float | None = 0.0,
-        top_p: float = 1.0,
         **api_kwargs,
     ) -> pd.Series:
         """Call an LLM once for every Series element using a provided cache (asynchronously).
@@ -1158,13 +1145,11 @@ class AsyncOpenAIVecSeriesAccessor:
                 Set cache.batch_size=None to enable automatic batch size optimization.
             response_format (type[ResponseFormat], optional): Pydantic model or built‑in
                 type the assistant should return. Defaults to ``str``.
-            temperature (float | None, optional): Sampling temperature. ``None`` omits the
-                parameter (recommended for reasoning models). Defaults to ``0.0``.
-            top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
             **api_kwargs: Additional keyword arguments forwarded verbatim to
-                ``AsyncOpenAI.responses.parse`` (e.g. ``max_output_tokens``, penalties,
-                future parameters). Core batching keys (model, instructions, input,
-                text_format) are protected and silently ignored if provided.
+                ``AsyncOpenAI.responses.parse`` (e.g. ``temperature``, ``top_p``,
+                ``max_output_tokens``, penalties, future parameters). Core batching keys
+                (model, instructions, input, text_format) are protected and silently
+                ignored if provided.
 
         Returns:
             pandas.Series: Series whose values are instances of ``response_format``.
@@ -1172,20 +1157,23 @@ class AsyncOpenAIVecSeriesAccessor:
         Note:
             This is an asynchronous method and must be awaited.
         """
-        client: AsyncBatchResponses = AsyncBatchResponses(
+        # Extract proxy-specific params
+        proxy_params = {"show_progress", "batch_size", "max_concurrency"}
+        api_params = {k: v for k, v in api_kwargs.items() if k not in proxy_params}
+
+        client: AsyncBatchResponses = AsyncBatchResponses.of(
             client=CONTAINER.resolve(AsyncOpenAI),
             model_name=CONTAINER.resolve(ResponsesModelName).value,
             system_message=instructions,
             response_format=response_format,
-            cache=cache,
-            temperature=temperature,
-            top_p=top_p,
+            batch_size=None,  # Using the cache's batch_size
+            max_concurrency=getattr(cache, "_max_concurrency", 8),
+            **api_params,
         )
+        # Override cache with the provided one
+        object.__setattr__(client, "cache", cache)
 
-        # Forward any extra kwargs to the underlying Responses API, excluding proxy-specific ones.
-        proxy_params = {"show_progress", "batch_size", "max_concurrency"}
-        filtered_kwargs = {k: v for k, v in api_kwargs.items() if k not in proxy_params}
-        results = await client.parse(self._obj.tolist(), **filtered_kwargs)
+        results = await client.parse(self._obj.tolist())
         return pd.Series(results, index=self._obj.index, name=self._obj.name)
 
     async def responses(
@@ -1193,8 +1181,6 @@ class AsyncOpenAIVecSeriesAccessor:
         instructions: str,
         response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
-        temperature: float | None = 0.0,
-        top_p: float = 1.0,
         max_concurrency: int = 8,
         show_progress: bool = False,
         **api_kwargs,
@@ -1224,11 +1210,14 @@ class AsyncOpenAIVecSeriesAccessor:
             batch_size (int | None, optional): Number of prompts grouped into a single
                 request. Defaults to ``None`` (automatic batch size optimization
                 based on execution time). Set to a positive integer for fixed batch size.
-            temperature (float | None, optional): Sampling temperature. Defaults to ``0.0``.
-            top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to ``8``.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
+            **api_kwargs: Additional keyword arguments forwarded verbatim to
+                ``AsyncOpenAI.responses.parse`` (e.g. ``temperature``, ``top_p``,
+                ``max_output_tokens``, penalties, future parameters). Core batching keys
+                (model, instructions, input, text_format) are protected and silently
+                ignored if provided.
 
         Returns:
             pandas.Series: Series whose values are instances of ``response_format``.
@@ -1242,8 +1231,6 @@ class AsyncOpenAIVecSeriesAccessor:
                 batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
             ),
             response_format=response_format,
-            temperature=temperature,
-            top_p=top_p,
             **api_kwargs,
         )
 
@@ -1390,17 +1377,22 @@ class AsyncOpenAIVecSeriesAccessor:
         Note:
             This is an asynchronous method and must be awaited.
         """
-        client = AsyncBatchResponses(
+        # Merge task api_kwargs with method api_kwargs (method takes precedence)
+        combined_api_kwargs = {**task.api_kwargs, **api_kwargs}
+
+        client = AsyncBatchResponses.of(
             client=CONTAINER.resolve(AsyncOpenAI),
             model_name=CONTAINER.resolve(ResponsesModelName).value,
             system_message=task.instructions,
             response_format=task.response_format,
-            cache=cache,
-            temperature=task.temperature,
-            top_p=task.top_p,
+            batch_size=None,  # Using the cache's batch_size
+            max_concurrency=getattr(cache, "_max_concurrency", 8),
+            **combined_api_kwargs,
         )
+        # Override cache with the provided one
+        object.__setattr__(client, "cache", cache)
         # Await the async operation
-        results = await client.parse(self._obj.tolist(), **api_kwargs)
+        results = await client.parse(self._obj.tolist())
 
         return pd.Series(results, index=self._obj.index, name=self._obj.name)
 
@@ -1694,8 +1686,6 @@ class AsyncOpenAIVecDataFrameAccessor:
                 batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
             ),
             response_format=response_format,
-            temperature=temperature,
-            top_p=top_p,
             **api_kwargs,
         )
 

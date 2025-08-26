@@ -95,15 +95,12 @@ class CustomerSentiment(BaseModel):
     )
 
 
-def customer_sentiment(
-    business_context: str = "general customer support", temperature: float = 0.0, top_p: float = 1.0
-) -> PreparedTask:
+def customer_sentiment(business_context: str = "general customer support", **api_kwargs) -> PreparedTask:
     """Create a configurable customer sentiment analysis task.
 
     Args:
         business_context (str): Business context for sentiment analysis.
-        temperature (float): Sampling temperature (0.0-1.0).
-        top_p (float): Nucleus sampling parameter (0.0-1.0).
+        **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
 
     Returns:
         PreparedTask configured for customer sentiment analysis.
@@ -169,10 +166,8 @@ values like "positive" for sentiment.
 
 Provide comprehensive sentiment analysis with business context and recommended response strategy."""
 
-    return PreparedTask(
-        instructions=instructions, response_format=CustomerSentiment, temperature=temperature, top_p=top_p
-    )
+    return PreparedTask(instructions=instructions, response_format=CustomerSentiment, api_kwargs=api_kwargs)
 
 
 # Backward compatibility - default configuration
-CUSTOMER_SENTIMENT = customer_sentiment()
+CUSTOMER_SENTIMENT = customer_sentiment(temperature=0.0, top_p=1.0)

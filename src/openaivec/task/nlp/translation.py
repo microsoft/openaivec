@@ -157,5 +157,5 @@ class TranslatedString(BaseModel):
 instructions = "Translate the following text into multiple languages. "
 
 MULTILINGUAL_TRANSLATION = PreparedTask(
-    instructions=instructions, response_format=TranslatedString, temperature=0.0, top_p=1.0
+    instructions=instructions, response_format=TranslatedString, api_kwargs={"temperature": 0.0, "top_p": 1.0}
 )

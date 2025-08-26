@@ -148,8 +148,6 @@ class BatchResponses(Generic[ResponseFormat]):
         client (OpenAI): Initialised OpenAI client.
         model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
         system_message (str): System prompt prepended to every request.
-        temperature (float): Sampling temperature.
-        top_p (float): Nucleus‑sampling parameter.
         response_format (type[ResponseFormat]): Expected Pydantic model class or ``str`` for each assistant message.
         cache (BatchingMapProxy[str, ResponseFormat]): Order‑preserving batching proxy with de‑duplication and caching.
 
@@ -163,8 +161,6 @@ class BatchResponses(Generic[ResponseFormat]):
     client: OpenAI
     model_name: str  # For Azure: deployment name, for OpenAI: model name
     system_message: str
-    temperature: float | None = None
-    top_p: float = 1.0
     response_format: type[ResponseFormat] = str  # type: ignore[assignment]
     cache: BatchingMapProxy[str, ResponseFormat] = field(default_factory=lambda: BatchingMapProxy(batch_size=None))
     _vectorized_system_message: str = field(init=False)
@@ -176,10 +172,9 @@ class BatchResponses(Generic[ResponseFormat]):
         client: OpenAI,
         model_name: str,
         system_message: str,
-        temperature: float | None = 0.0,
-        top_p: float = 1.0,
         response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
+        **api_kwargs,
     ) -> "BatchResponses":
         """Factory constructor.
 
@@ -187,24 +182,24 @@ class BatchResponses(Generic[ResponseFormat]):
             client (OpenAI): OpenAI client.
             model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
             system_message (str): System prompt for the model.
-            temperature (float, optional): Sampling temperature. Defaults to 0.0.
-            top_p (float, optional): Nucleus sampling parameter. Defaults to 1.0.
             response_format (type[ResponseFormat], optional): Expected output type. Defaults to ``str``.
             batch_size (int | None, optional): Max unique prompts per API call. Defaults to None
                 (automatic batch size optimization). Set to a positive integer for fixed batch size.
+            **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
 
         Returns:
             BatchResponses: Configured instance backed by a batching proxy.
         """
-        return cls(
+        instance = cls(
             client=client,
             model_name=model_name,
             system_message=system_message,
-            temperature=temperature,
-            top_p=top_p,
             response_format=response_format,
             cache=BatchingMapProxy(batch_size=batch_size),
         )
+        # Store api_kwargs for use in _request_llm
+        object.__setattr__(instance, "_api_kwargs", api_kwargs)
+        return instance
 
     @classmethod
     def of_task(
@@ -222,15 +217,16 @@ class BatchResponses(Generic[ResponseFormat]):
         Returns:
             BatchResponses: Configured instance backed by a batching proxy.
         """
-        return cls(
+        instance = cls(
             client=client,
             model_name=model_name,
             system_message=task.instructions,
-            temperature=task.temperature,
-            top_p=task.top_p,
             response_format=task.response_format,
             cache=BatchingMapProxy(batch_size=batch_size),
         )
+        # Store task's api_kwargs for use in _request_llm
+        object.__setattr__(instance, "_api_kwargs", task.api_kwargs)
+        return instance
 
     def __post_init__(self):
         object.__setattr__(
@@ -275,15 +271,28 @@ class BatchResponses(Generic[ResponseFormat]):
             "text_format": ResponseT,
         }
 
-        # Resolve nucleus sampling (caller can override)
-        top_p = extra_api_params.pop("top_p", self.top_p)
-        if top_p is not None:
-            api_params["top_p"] = top_p
+        # Merge stored api_kwargs first (from constructor)
+        if hasattr(self, "_api_kwargs"):
+            for k, v in self._api_kwargs.items():
+                if k not in {"model", "instructions", "input", "text_format"}:
+                    api_params[k] = v
 
-        # Resolve temperature (caller can override). If None, omit entirely for reasoning models.
-        temperature = extra_api_params.pop("temperature", self.temperature)
-        if temperature is not None:
-            api_params["temperature"] = temperature
+        # Then merge extra_api_params (caller can override stored values)
+        # Handle temperature specially - if None, omit entirely for reasoning models
+        if "temperature" in extra_api_params:
+            temperature = extra_api_params.pop("temperature")
+            if temperature is not None:
+                api_params["temperature"] = temperature
+            elif "temperature" in api_params:
+                del api_params["temperature"]
+
+        # Handle top_p
+        if "top_p" in extra_api_params:
+            top_p = extra_api_params.pop("top_p")
+            if top_p is not None:
+                api_params["top_p"] = top_p
+            elif "top_p" in api_params:
+                del api_params["top_p"]
 
         # Merge remaining user supplied params, excluding protected keys
         for k, v in extra_api_params.items():
@@ -294,7 +303,7 @@ class BatchResponses(Generic[ResponseFormat]):
         try:
             completion: ParsedResponse[ResponseT] = self.client.responses.parse(**api_params)
         except BadRequestError as e:
-            _handle_temperature_error(e, self.model_name, self.temperature or 0.0)
+            _handle_temperature_error(e, self.model_name, api_params.get("temperature", 0.0))
             raise  # Re-raise if it wasn't a temperature error
 
         return cast(ParsedResponse[Response[ResponseFormat]], completion)
@@ -383,8 +392,6 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         client (AsyncOpenAI): Initialised OpenAI async client.
         model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
         system_message (str): System prompt prepended to every request.
-        temperature (float): Sampling temperature.
-        top_p (float): Nucleus‑sampling parameter.
         response_format (type[ResponseFormat]): Expected Pydantic model class or ``str`` for each assistant message.
         cache (AsyncBatchingMapProxy[str, ResponseFormat]): Async batching proxy with de‑duplication
             and concurrency control.
@@ -393,8 +400,6 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
     client: AsyncOpenAI
     model_name: str  # For Azure: deployment name, for OpenAI: model name
     system_message: str
-    temperature: float | None = 0.0
-    top_p: float = 1.0
     response_format: type[ResponseFormat] = str  # type: ignore[assignment]
     cache: AsyncBatchingMapProxy[str, ResponseFormat] = field(
         default_factory=lambda: AsyncBatchingMapProxy(batch_size=None, max_concurrency=8)
@@ -408,11 +413,10 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         client: AsyncOpenAI,
         model_name: str,
         system_message: str,
-        temperature: float | None = None,
-        top_p: float = 1.0,
         response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
         max_concurrency: int = 8,
+        **api_kwargs,
     ) -> "AsyncBatchResponses":
         """Factory constructor.
 
@@ -420,25 +424,25 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             client (AsyncOpenAI): OpenAI async client.
             model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
             system_message (str): System prompt.
-            temperature (float, optional): Sampling temperature. Defaults to 0.0.
-            top_p (float, optional): Nucleus sampling parameter. Defaults to 1.0.
             response_format (type[ResponseFormat], optional): Expected output type. Defaults to ``str``.
             batch_size (int | None, optional): Max unique prompts per API call. Defaults to None
                 (automatic batch size optimization). Set to a positive integer for fixed batch size.
             max_concurrency (int, optional): Max concurrent API calls. Defaults to 8.
+            **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
 
         Returns:
             AsyncBatchResponses: Configured instance backed by an async batching proxy.
         """
-        return cls(
+        instance = cls(
             client=client,
             model_name=model_name,
             system_message=system_message,
-            temperature=temperature,
-            top_p=top_p,
             response_format=response_format,
             cache=AsyncBatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency),
         )
+        # Store api_kwargs for use in _request_llm
+        object.__setattr__(instance, "_api_kwargs", api_kwargs)
+        return instance
 
     @classmethod
     def of_task(
@@ -462,15 +466,16 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         Returns:
             AsyncBatchResponses: Configured instance backed by an async batching proxy.
         """
-        return cls(
+        instance = cls(
             client=client,
             model_name=model_name,
             system_message=task.instructions,
-            temperature=task.temperature,
-            top_p=task.top_p,
             response_format=task.response_format,
             cache=AsyncBatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency),
         )
+        # Store task's api_kwargs for use in _request_llm
+        object.__setattr__(instance, "_api_kwargs", task.api_kwargs)
+        return instance
 
     def __post_init__(self):
         object.__setattr__(
@@ -512,15 +517,28 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             "text_format": ResponseT,
         }
 
-        # Resolve nucleus sampling (caller can override)
-        top_p = extra_api_params.pop("top_p", self.top_p)
-        if top_p is not None:
-            api_params["top_p"] = top_p
+        # Merge stored api_kwargs first (from constructor)
+        if hasattr(self, "_api_kwargs"):
+            for k, v in self._api_kwargs.items():
+                if k not in {"model", "instructions", "input", "text_format"}:
+                    api_params[k] = v
 
-        # Resolve temperature (caller can override). If None, omit entirely for reasoning models.
-        temperature = extra_api_params.pop("temperature", self.temperature)
-        if temperature is not None:
-            api_params["temperature"] = temperature
+        # Then merge extra_api_params (caller can override stored values)
+        # Handle temperature specially - if None, omit entirely for reasoning models
+        if "temperature" in extra_api_params:
+            temperature = extra_api_params.pop("temperature")
+            if temperature is not None:
+                api_params["temperature"] = temperature
+            elif "temperature" in api_params:
+                del api_params["temperature"]
+
+        # Handle top_p
+        if "top_p" in extra_api_params:
+            top_p = extra_api_params.pop("top_p")
+            if top_p is not None:
+                api_params["top_p"] = top_p
+            elif "top_p" in api_params:
+                del api_params["top_p"]
 
         # Merge remaining user supplied params, excluding protected keys
         for k, v in extra_api_params.items():
@@ -531,7 +549,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         try:
             completion: ParsedResponse[ResponseT] = await self.client.responses.parse(**api_params)
         except BadRequestError as e:
-            _handle_temperature_error(e, self.model_name, self.temperature or 0.0)
+            _handle_temperature_error(e, self.model_name, api_params.get("temperature", 0.0))
             raise  # Re-raise if it wasn't a temperature error
 
         return cast(ParsedResponse[Response[ResponseFormat]], completion)

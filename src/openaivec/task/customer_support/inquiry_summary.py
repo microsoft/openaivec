@@ -87,16 +87,15 @@ class InquirySummary(BaseModel):
 def inquiry_summary(
     summary_length: str = "concise",
     business_context: str = "general customer support",
-    temperature: float = 0.0,
-    top_p: float = 1.0,
+    **api_kwargs,
 ) -> PreparedTask:
     """Create a configurable inquiry summary task.
 
     Args:
         summary_length (str): Length of summary (concise, detailed, bullet_points).
         business_context (str): Business context for summary.
-        temperature (float): Sampling temperature (0.0-1.0).
-        top_p (float): Nucleus sampling parameter (0.0-1.0).
+        **api_kwargs: Additional keyword arguments to pass to the OpenAI API,
+            such as temperature, top_p, etc.
 
     Returns:
         PreparedTask configured for inquiry summarization.
@@ -163,8 +162,8 @@ input is in German, provide all summary content in German, but use English value
 
 Provide accurate, actionable summary that enables efficient support resolution."""
 
-    return PreparedTask(instructions=instructions, response_format=InquirySummary, temperature=temperature, top_p=top_p)
+    return PreparedTask(instructions=instructions, response_format=InquirySummary, api_kwargs=api_kwargs)
 
 
 # Backward compatibility - default configuration
-INQUIRY_SUMMARY = inquiry_summary()
+INQUIRY_SUMMARY = inquiry_summary(temperature=0.0, top_p=1.0)

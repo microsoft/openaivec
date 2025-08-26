@@ -324,8 +324,6 @@ def responses_udf(
     response_format: type[ResponseFormat] = str,
     model_name: str = CONTAINER.resolve(ResponsesModelName).value,
     batch_size: int | None = None,
-    temperature: float | None = 0.0,
-    top_p: float = 1.0,
     max_concurrency: int = 8,
     **api_kwargs,
 ) -> UserDefinedFunction:
@@ -360,17 +358,14 @@ def responses_udf(
             Defaults to None (automatic batch size optimization that dynamically
             adjusts based on execution time, targeting 30-60 seconds per batch).
             Set to a positive integer (e.g., 32-128) for fixed batch size.
-        temperature (float): Sampling temperature (0.0 to 2.0). Defaults to 0.0.
-        top_p (float): Nucleus sampling parameter. Defaults to 1.0.
         max_concurrency (int): Maximum number of concurrent API requests **PER EXECUTOR**.
             Total cluster concurrency = max_concurrency × number_of_executors.
             Higher values increase throughput but may hit OpenAI rate limits.
             Recommended: 4-12 per executor. Defaults to 8.
-
-    Additional Keyword Args:
-        Arbitrary OpenAI Responses API parameters (e.g. ``frequency_penalty``, ``presence_penalty``,
-        ``seed``, ``max_output_tokens``, etc.) are forwarded verbatim to the underlying API calls.
-        These parameters are applied to all API requests made by the UDF.
+        **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``, ``top_p``,
+            ``frequency_penalty``, ``presence_penalty``, ``seed``, ``max_output_tokens``, etc.)
+            forwarded verbatim to the underlying API calls. These parameters are applied to
+            all API requests made by the UDF.
 
     Returns:
         UserDefinedFunction: A Spark pandas UDF configured to generate responses asynchronously.
@@ -406,8 +401,6 @@ def responses_udf(
                         part.aio.responses_with_cache(
                             instructions=instructions,
                             response_format=response_format,
-                            temperature=temperature,
-                            top_p=top_p,
                             cache=cache,
                             **api_kwargs,
                         )
@@ -434,8 +427,6 @@ def responses_udf(
                         part.aio.responses_with_cache(
                             instructions=instructions,
                             response_format=str,
-                            temperature=temperature,
-                            top_p=top_p,
                             cache=cache,
                             **api_kwargs,
                         )
@@ -467,7 +458,7 @@ def task_udf(
 
     Args:
         task (PreparedTask): A predefined task configuration containing instructions,
-            response format, temperature, and top_p settings.
+            response format, and API parameters.
         model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
             For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to configured model in DI container.
         batch_size (int | None): Number of rows per async batch request within each partition.
@@ -481,10 +472,10 @@ def task_udf(
             Recommended: 4-12 per executor. Defaults to 8.
 
     Additional Keyword Args:
-        Arbitrary OpenAI Responses API parameters (e.g. ``frequency_penalty``, ``presence_penalty``,
-        ``seed``, ``max_output_tokens``, etc.) are forwarded verbatim to the underlying API calls.
-        These parameters are applied to all API requests made by the UDF and override any
-        parameters set in the task configuration.
+        Arbitrary OpenAI Responses API parameters (e.g. ``temperature``, ``top_p``,
+        ``frequency_penalty``, ``presence_penalty``, ``seed``, ``max_output_tokens``, etc.)
+        are forwarded verbatim to the underlying API calls. These parameters are applied to
+        all API requests made by the UDF and override any parameters set in the task configuration.
 
     Returns:
         UserDefinedFunction: A Spark pandas UDF configured to execute the specified task
@@ -505,15 +496,16 @@ def task_udf(
         **Automatic Caching**: Duplicate inputs within each partition are cached,
         reducing API calls and costs significantly on datasets with repeated content.
     """
+    # Merge task's api_kwargs with caller's api_kwargs (caller takes precedence)
+    merged_kwargs = {**task.api_kwargs, **api_kwargs}
+
     return responses_udf(
         instructions=task.instructions,
         response_format=task.response_format,
         model_name=model_name,
         batch_size=batch_size,
-        temperature=task.temperature,
-        top_p=task.top_p,
         max_concurrency=max_concurrency,
-        **api_kwargs,
+        **merged_kwargs,
     )
 
 
@@ -560,8 +552,6 @@ def parse_udf(
     max_examples: int = 100,
     model_name: str = CONTAINER.resolve(ResponsesModelName).value,
     batch_size: int | None = None,
-    temperature: float | None = 0.0,
-    top_p: float = 1.0,
     max_concurrency: int = 8,
     **api_kwargs,
 ) -> UserDefinedFunction:
@@ -591,17 +581,15 @@ def parse_udf(
             Defaults to None (automatic batch size optimization that dynamically
             adjusts based on execution time, targeting 30-60 seconds per batch).
             Set to a positive integer (e.g., 32-128) for fixed batch size
-        temperature (float | None): Sampling temperature (0.0 to 2.0). Defaults to 0.0.
-        top_p (float): Nucleus sampling parameter. Defaults to 1.0.
         max_concurrency (int): Maximum number of concurrent API requests **PER EXECUTOR**.
             Total cluster concurrency = max_concurrency × number_of_executors.
             Higher values increase throughput but may hit OpenAI rate limits.
             Recommended: 4-12 per executor. Defaults to 8.
-    Additional Keyword Args:
-        Arbitrary OpenAI Responses API parameters (e.g. ``frequency_penalty``, ``presence_penalty``,
-        ``seed``, ``max_output_tokens``, etc.) are forwarded verbatim to the underlying API calls.
-        These parameters are applied to all API requests made by the UDF and override any
-        parameters set in the response_format or example data.
+        **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``, ``top_p``,
+            ``frequency_penalty``, ``presence_penalty``, ``seed``, ``max_output_tokens``, etc.)
+            forwarded verbatim to the underlying API calls. These parameters are applied to
+            all API requests made by the UDF and override any parameters set in the
+            response_format or example data.
     Returns:
         UserDefinedFunction: A Spark pandas UDF configured to parse responses asynchronously.
             Output schema is `StringType` for str response format or a struct derived from
@@ -628,8 +616,6 @@ def parse_udf(
         response_format=schema.model if schema else response_format,
         model_name=model_name,
         batch_size=batch_size,
-        temperature=temperature,
-        top_p=top_p,
         max_concurrency=max_concurrency,
         **api_kwargs,
     )

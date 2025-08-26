@@ -109,8 +109,7 @@ class TestSparkUDFs:
         simple_task = PreparedTask(
             instructions="Repeat the input text twice, separated by a space.",
             response_format=str,
-            temperature=0.0,
-            top_p=1.0,
+            api_kwargs={"temperature": 0.0, "top_p": 1.0},
         )
 
         self.spark.udf.register(
@@ -142,8 +141,7 @@ class TestSparkUDFs:
         structured_task = PreparedTask(
             instructions="Analyze the text and return the original text and its length.",
             response_format=SimpleResponse,
-            temperature=0.0,
-            top_p=1.0,
+            api_kwargs={"temperature": 0.0, "top_p": 1.0},
         )
 
         self.spark.udf.register(
