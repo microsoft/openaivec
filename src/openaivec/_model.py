@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Generic, TypeVar
 
 __all__ = [
@@ -14,7 +14,7 @@ class PreparedTask(Generic[ResponseFormat]):
 
     This class encapsulates all the necessary parameters for executing a task,
     including the instructions to be sent to the model, the expected response
-    format using Pydantic models, and sampling parameters for controlling
+    format using Pydantic models, and API parameters for controlling
     the model's output behavior.
 
     Attributes:
@@ -22,12 +22,9 @@ class PreparedTask(Generic[ResponseFormat]):
             This should contain clear, specific directions for the task.
         response_format (type[ResponseFormat]): A Pydantic model class or str type that defines the expected
             structure of the response. Can be either a BaseModel subclass or str.
-        temperature (float): Controls randomness in the model's output.
-            Range: 0.0 to 1.0. Lower values make output more deterministic.
-            Defaults to 0.0.
-        top_p (float): Controls diversity via nucleus sampling. Only tokens
-            comprising the top_p probability mass are considered.
-            Range: 0.0 to 1.0. Defaults to 1.0.
+        api_kwargs (dict[str, int | float | str | bool]): Additional OpenAI API parameters
+            such as temperature, top_p, frequency_penalty, presence_penalty, seed, etc.
+            Defaults to an empty dict.
 
     Example:
         Creating a custom task:
@@ -43,8 +40,7 @@ class PreparedTask(Generic[ResponseFormat]):
         custom_task = PreparedTask(
             instructions="Translate the following text to French:",
             response_format=TranslationResponse,
-            temperature=0.1,
-            top_p=0.9
+            api_kwargs={"temperature": 0.1, "top_p": 0.9}
         )
         ```
 
@@ -55,8 +51,7 @@ class PreparedTask(Generic[ResponseFormat]):
 
     instructions: str
     response_format: type[ResponseFormat]
-    temperature: float = 0.0
-    top_p: float = 1.0
+    api_kwargs: dict[str, int | float | str | bool] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

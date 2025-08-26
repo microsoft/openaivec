@@ -445,8 +445,7 @@ class FewShotPromptBuilder:
         self,
         client: OpenAI | None = None,
         model_name: str | None = None,
-        temperature: float | None = None,
-        top_p: float | None = None,
+        **api_kwargs,
     ) -> "FewShotPromptBuilder":
         """Iteratively refine the prompt using an LLM.
 
@@ -460,8 +459,7 @@ class FewShotPromptBuilder:
         Args:
             client (OpenAI | None): Configured OpenAI client. If None, uses DI container with environment variables.
             model_name (str | None): Model identifier. If None, uses default ``gpt-4.1-mini``.
-            temperature (float | None): Sampling temperature. If None, uses model default.
-            top_p (float | None): Nucleus sampling parameter. If None, uses model default.
+            **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
 
         Returns:
             FewShotPromptBuilder: The current builder instance containing the refined prompt and iteration history.
@@ -479,9 +477,8 @@ class FewShotPromptBuilder:
             model=_model_name,
             instructions=_PROMPT,
             input=Request(prompt=self._prompt).model_dump_json(),
-            temperature=temperature,
-            top_p=top_p,
             text_format=Response,
+            **api_kwargs,
         )
 
         # keep the original prompt

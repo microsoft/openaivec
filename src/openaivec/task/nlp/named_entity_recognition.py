@@ -78,6 +78,5 @@ NAMED_ENTITY_RECOGNITION = PreparedTask(
     "organizations, locations, dates, money, percentages, and other miscellaneous entities "
     "with their positions and confidence scores.",
     response_format=NamedEntityRecognition,
-    temperature=0.0,
-    top_p=1.0,
+    api_kwargs={"temperature": 0.0, "top_p": 1.0},
 )

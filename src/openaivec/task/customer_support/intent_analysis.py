@@ -100,15 +100,13 @@ class IntentAnalysis(BaseModel):
     )
 
 
-def intent_analysis(
-    business_context: str = "general customer support", temperature: float = 0.0, top_p: float = 1.0
-) -> PreparedTask:
+def intent_analysis(business_context: str = "general customer support", **api_kwargs) -> PreparedTask:
     """Create a configurable intent analysis task.
 
     Args:
         business_context (str): Business context for intent analysis.
-        temperature (float): Sampling temperature (0.0-1.0).
-        top_p (float): Nucleus sampling parameter (0.0-1.0).
+        **api_kwargs: Additional keyword arguments to pass to the OpenAI API,
+            such as temperature, top_p, etc.
 
     Returns:
         PreparedTask configured for intent analysis.
@@ -171,8 +169,8 @@ next_steps, and reasoning in Japanese, but use English values like "get_help" fo
 
 Provide comprehensive intent analysis with actionable recommendations."""
 
-    return PreparedTask(instructions=instructions, response_format=IntentAnalysis, temperature=temperature, top_p=top_p)
+    return PreparedTask(instructions=instructions, response_format=IntentAnalysis, api_kwargs=api_kwargs)
 
 
 # Backward compatibility - default configuration
-INTENT_ANALYSIS = intent_analysis()
+INTENT_ANALYSIS = intent_analysis(temperature=0.0, top_p=1.0)

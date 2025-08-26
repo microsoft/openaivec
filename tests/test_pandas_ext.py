@@ -85,7 +85,9 @@ class TestPandasExt:
         """Test Series.ai.task method with actual task execution."""
         from openaivec._model import PreparedTask
 
-        task = PreparedTask(instructions="Translate to French", response_format=str, temperature=0.0, top_p=1.0)
+        task = PreparedTask(
+            instructions="Translate to French", response_format=str, api_kwargs={"temperature": 0.0, "top_p": 1.0}
+        )
 
         series = pd.Series(["cat", "dog"])
         results = series.ai.task(task=task, batch_size=2, show_progress=False)
@@ -138,7 +140,9 @@ class TestPandasExt:
         from openaivec._model import PreparedTask
 
         task = PreparedTask(
-            instructions="Extract the animal name from the data", response_format=str, temperature=0.0, top_p=1.0
+            instructions="Extract the animal name from the data",
+            response_format=str,
+            api_kwargs={"temperature": 0.0, "top_p": 1.0},
         )
 
         df = pd.DataFrame([{"animal": "cat", "legs": 4}, {"animal": "dog", "legs": 4}])
@@ -232,8 +236,7 @@ class TestPandasExt:
             task = PreparedTask(
                 instructions="Classify sentiment as positive or negative",
                 response_format=str,
-                temperature=0.0,
-                top_p=1.0,
+                api_kwargs={"temperature": 0.0, "top_p": 1.0},
             )
 
             series = pd.Series(["I love this!", "This is terrible"])
@@ -284,7 +287,9 @@ class TestPandasExt:
         from openaivec._model import PreparedTask
 
         async def run_test():
-            task = PreparedTask(instructions="Describe the animal", response_format=str, temperature=0.0, top_p=1.0)
+            task = PreparedTask(
+                instructions="Describe the animal", response_format=str, api_kwargs={"temperature": 0.0, "top_p": 1.0}
+            )
 
             df = pd.DataFrame([{"name": "fluffy", "type": "cat"}, {"name": "buddy", "type": "dog"}])
 
@@ -622,8 +627,8 @@ class TestPandasExt:
         task = fillna(df_with_missing, "name")
 
         assert task is not None
-        assert task.temperature == 0.0
-        assert task.top_p == 1.0
+        assert task.api_kwargs.get("temperature") == 0.0
+        assert task.api_kwargs.get("top_p") == 1.0
 
     def test_fillna_task_validation(self):
         """Test fillna validation with various edge cases."""
@@ -724,7 +729,7 @@ class TestPandasExt:
         series = pd.Series(["Good product", "Bad experience"])
         cache = BatchingMapProxy(batch_size=2)
 
-        results = series.ai.parse_with_cache(instructions="Extract sentiment", cache=cache, show_progress=False)
+        results = series.ai.parse_with_cache(instructions="Extract sentiment", cache=cache)
 
         assert len(results) == 2
         assert all(isinstance(result, (dict, BaseModel)) for result in results)
@@ -732,7 +737,7 @@ class TestPandasExt:
         # Test DataFrame parse_with_cache
         df = pd.DataFrame([{"review": "Great product", "rating": 5}, {"review": "Poor quality", "rating": 1}])
 
-        df_results = df.ai.parse_with_cache(instructions="Analyze sentiment", cache=cache, show_progress=False)
+        df_results = df.ai.parse_with_cache(instructions="Analyze sentiment", cache=cache)
 
         assert len(df_results) == 2
         assert all(isinstance(result, (dict, BaseModel)) for result in df_results)
@@ -824,7 +829,7 @@ class TestPandasExt:
         aio_responses_params = list(inspect.signature(series.aio.responses).parameters.keys())
 
         # Common parameters should be in same order (excluding max_concurrency which is async-only)
-        common_params = ["instructions", "response_format", "batch_size", "temperature", "top_p", "show_progress"]
+        common_params = ["instructions", "response_format", "batch_size", "show_progress"]
 
         # Check sync version has these in order
         sync_filtered = [p for p in responses_params if p in common_params]
@@ -832,5 +837,5 @@ class TestPandasExt:
 
         # Check async version has these in order (with max_concurrency inserted before show_progress)
         async_filtered = [p for p in aio_responses_params if p in common_params or p == "max_concurrency"]
-        expected_async = common_params[:5] + ["max_concurrency"] + [common_params[5]]
+        expected_async = common_params[:-1] + ["max_concurrency"] + [common_params[-1]]
         assert async_filtered == expected_async

@@ -135,8 +135,7 @@ def urgency_analysis(
     business_context: str = "general customer support",
     business_hours: str = "24/7 support",
     sla_rules: Dict[str, str] | None = None,
-    temperature: float = 0.0,
-    top_p: float = 1.0,
+    **api_kwargs,
 ) -> PreparedTask:
     """Create a configurable urgency analysis task.
 
@@ -149,8 +148,8 @@ def urgency_analysis(
         business_context (str): Description of the business context.
         business_hours (str): Description of business hours for response time calculation.
         sla_rules (dict[str, str] | None): Dictionary mapping customer tiers to SLA requirements.
-        temperature (float): Sampling temperature (0.0-1.0).
-        top_p (float): Nucleus sampling parameter (0.0-1.0).
+        **api_kwargs: Additional keyword arguments to pass to the OpenAI API,
+            such as temperature, top_p, etc.
 
     Returns:
         PreparedTask configured for urgency analysis.
@@ -287,10 +286,8 @@ urgency_level.
 
 Provide detailed analysis with clear reasoning for urgency level and response time recommendations."""
 
-    return PreparedTask(
-        instructions=instructions, response_format=UrgencyAnalysis, temperature=temperature, top_p=top_p
-    )
+    return PreparedTask(instructions=instructions, response_format=UrgencyAnalysis, api_kwargs=api_kwargs)
 
 
 # Backward compatibility - default configuration
-URGENCY_ANALYSIS = urgency_analysis()
+URGENCY_ANALYSIS = urgency_analysis(temperature=0.0, top_p=1.0)

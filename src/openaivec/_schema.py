@@ -154,7 +154,9 @@ class InferredSchema(BaseModel):
             PreparedTask: Ready for batched structured extraction calls.
         """
         return PreparedTask(
-            instructions=self.inference_prompt, response_format=self.model, top_p=None, temperature=None
+            instructions=self.inference_prompt,
+            response_format=self.model,
+            api_kwargs={"top_p": None, "temperature": None},
         )
 
     def build_model(self) -> type[BaseModel]:

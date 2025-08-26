@@ -117,7 +117,7 @@ All tasks are built using the `PreparedTask` dataclass:
 @dataclass(frozen=True)
 class PreparedTask:
     instructions: str           # Detailed prompt for the LLM
-    response_format: Type[ResponseFormat]    # Pydantic model or str for structured/plain output
+    response_format: type[ResponseFormat]    # Pydantic model or str for structured/plain output
     temperature: float = 0.0    # Sampling temperature
     top_p: float = 1.0         # Nucleus sampling parameter
 ```
