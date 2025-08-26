@@ -1283,7 +1283,7 @@ class AsyncOpenAIVecSeriesAccessor:
             cache=AsyncBatchingMapProxy(
                 batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
             ),
-            api_kwargs=api_kwargs,
+            **api_kwargs,
         )
 
     async def task_with_cache(
