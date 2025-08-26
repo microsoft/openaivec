@@ -729,7 +729,7 @@ class TestPandasExt:
         series = pd.Series(["Good product", "Bad experience"])
         cache = BatchingMapProxy(batch_size=2)
 
-        results = series.ai.parse_with_cache(instructions="Extract sentiment", cache=cache, show_progress=False)
+        results = series.ai.parse_with_cache(instructions="Extract sentiment", cache=cache)
 
         assert len(results) == 2
         assert all(isinstance(result, (dict, BaseModel)) for result in results)
@@ -737,7 +737,7 @@ class TestPandasExt:
         # Test DataFrame parse_with_cache
         df = pd.DataFrame([{"review": "Great product", "rating": 5}, {"review": "Poor quality", "rating": 1}])
 
-        df_results = df.ai.parse_with_cache(instructions="Analyze sentiment", cache=cache, show_progress=False)
+        df_results = df.ai.parse_with_cache(instructions="Analyze sentiment", cache=cache)
 
         assert len(df_results) == 2
         assert all(isinstance(result, (dict, BaseModel)) for result in df_results)
