@@ -78,7 +78,6 @@ class TestVectorizedResponsesOpenAI:
 
 
 @pytest.mark.requires_api
-@pytest.mark.asyncio
 class TestAsyncBatchResponses:
     @pytest.fixture(autouse=True)
     def setup_client(self, async_openai_client):
@@ -86,6 +85,7 @@ class TestAsyncBatchResponses:
         self.model_name = "gpt-4.1-mini"
         yield
 
+    @pytest.mark.asyncio
     async def test_parse_str(self):
         system_message = """
         just repeat the user message
@@ -99,6 +99,7 @@ class TestAsyncBatchResponses:
         response: list[str] = await client.parse(["apple", "orange", "banana", "pineapple"])
         assert response == ["apple", "orange", "banana", "pineapple"]
 
+    @pytest.mark.asyncio
     async def test_parse_structured(self):
         system_message = """
         return the color and taste of given fruit
@@ -137,6 +138,7 @@ class TestAsyncBatchResponses:
             assert isinstance(item.taste, str)
             assert len(item.taste) > 0
 
+    @pytest.mark.asyncio
     async def test_parse_structured_empty_input(self):
         system_message = """
         return the color and taste of given fruit
@@ -157,6 +159,7 @@ class TestAsyncBatchResponses:
         response: list[Fruit] = await client.parse([])
         assert response == []
 
+    @pytest.mark.asyncio
     async def test_parse_structured_batch_size(self):
         system_message = """
         return the color and taste of given fruit

@@ -36,8 +36,10 @@ def pytest_configure(config):
 def pytest_collection_modifyitems(config, items):
     """Automatically mark async tests."""
     for item in items:
-        # Automatically mark async tests
-        if hasattr(item.function, "__code__") and "async" in item.function.__code__.co_name:
+        # Automatically mark async tests (check if the function is actually async)
+        import asyncio
+
+        if hasattr(item.function, "__code__") and asyncio.iscoroutinefunction(item.function):
             item.add_marker(pytest.mark.asyncio)
 
 

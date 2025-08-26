@@ -636,8 +636,6 @@ class OpenAIVecDataFrameAccessor:
         instructions: str,
         cache: BatchingMapProxy[str, ResponseFormat],
         response_format: type[ResponseFormat] = str,
-        temperature: float | None = 0.0,
-        top_p: float = 1.0,
         **api_kwargs,
     ) -> pd.Series:
         """Generate a response for each row after serializing it to JSON using a provided cache.
@@ -671,8 +669,7 @@ class OpenAIVecDataFrameAccessor:
                 Set cache.batch_size=None to enable automatic batch size optimization.
             response_format (type[ResponseFormat], optional): Desired Python type of the
                 responses. Defaults to ``str``.
-            temperature (float | None, optional): Sampling temperature. Defaults to ``0.0``.
-            top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
+            **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
 
         Returns:
             pandas.Series: Responses aligned with the DataFrame's original index.
@@ -681,8 +678,6 @@ class OpenAIVecDataFrameAccessor:
             instructions=instructions,
             cache=cache,
             response_format=response_format,
-            temperature=temperature,
-            top_p=top_p,
             **api_kwargs,
         )
 
@@ -691,8 +686,6 @@ class OpenAIVecDataFrameAccessor:
         instructions: str,
         response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
-        temperature: float | None = 0.0,
-        top_p: float = 1.0,
         show_progress: bool = False,
         **api_kwargs,
     ) -> pd.Series:
@@ -724,9 +717,8 @@ class OpenAIVecDataFrameAccessor:
             batch_size (int | None, optional): Number of requests sent in one batch.
                 Defaults to ``None`` (automatic batch size optimization
                 based on execution time). Set to a positive integer for fixed batch size.
-            temperature (float | None, optional): Sampling temperature. Defaults to ``0.0``.
-            top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
+            **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
 
         Returns:
             pandas.Series: Responses aligned with the DataFrame's original index.
@@ -735,8 +727,6 @@ class OpenAIVecDataFrameAccessor:
             instructions=instructions,
             cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
             response_format=response_format,
-            temperature=temperature,
-            top_p=top_p,
             **api_kwargs,
         )
 
@@ -829,8 +819,6 @@ class OpenAIVecDataFrameAccessor:
         cache: BatchingMapProxy[str, ResponseFormat],
         response_format: ResponseFormat = None,
         max_examples: int = 100,
-        temperature: float | None = 0.0,
-        top_p: float = 1.0,
         **api_kwargs,
     ) -> pd.Series:
         """Parse DataFrame rows using an LLM with a provided cache.
@@ -847,8 +835,7 @@ class OpenAIVecDataFrameAccessor:
                 for structured output. If None, schema is inferred.
             max_examples (int): Maximum number of examples to use for schema inference.
                 Defaults to 100.
-            temperature (float | None): Sampling temperature. Defaults to 0.0.
-            top_p (float): Nucleus sampling parameter. Defaults to 1.0.
+            **api_kwargs: Additional OpenAI API parameters (temperature, top_p, frequency_penalty, etc.).
 
         Additional Keyword Args:
             Arbitrary OpenAI Responses API parameters (e.g. `frequency_penalty`, `presence_penalty`,
@@ -863,8 +850,6 @@ class OpenAIVecDataFrameAccessor:
             cache=cache,
             response_format=response_format,
             max_examples=max_examples,
-            temperature=temperature,
-            top_p=top_p,
             **api_kwargs,
         )
 
@@ -875,8 +860,6 @@ class OpenAIVecDataFrameAccessor:
         max_examples: int = 100,
         batch_size: int | None = None,
         show_progress: bool = False,
-        temperature: float | None = 0.0,
-        top_p: float = 1.0,
         **api_kwargs,
     ) -> pd.Series:
         """Parse DataFrame rows using an LLM with optional schema inference.
@@ -895,8 +878,7 @@ class OpenAIVecDataFrameAccessor:
                 Defaults to None (automatic optimization).
             show_progress (bool): Whether to display a progress bar during processing.
                 Defaults to False.
-            temperature (float | None): Sampling temperature. Defaults to 0.0.
-            top_p (float): Nucleus sampling parameter. Defaults to 1.0.
+            **api_kwargs: Additional OpenAI API parameters (temperature, top_p, frequency_penalty, etc.).
 
         Returns:
             pandas.Series: Series with parsed structured data as instances of
@@ -907,8 +889,6 @@ class OpenAIVecDataFrameAccessor:
             cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
             response_format=response_format,
             max_examples=max_examples,
-            temperature=temperature,
-            top_p=top_p,
             **api_kwargs,
         )
 
@@ -1474,8 +1454,6 @@ class AsyncOpenAIVecSeriesAccessor:
         cache: AsyncBatchingMapProxy[str, ResponseFormat],
         response_format: ResponseFormat = None,
         max_examples: int = 100,
-        temperature: float | None = 0.0,
-        top_p: float = 1.0,
         **api_kwargs,
     ) -> pd.Series:
         """Parse Series values using an LLM with a provided cache (asynchronously).
@@ -1491,8 +1469,7 @@ class AsyncOpenAIVecSeriesAccessor:
                 for structured output. If None, schema is inferred.
             max_examples (int): Maximum number of examples to use for schema inference.
                 Defaults to 100.
-            temperature (float | None): Sampling temperature. Defaults to 0.0.
-            top_p (float): Nucleus sampling parameter. Defaults to 1.0.
+            **api_kwargs: Additional OpenAI API parameters (temperature, top_p, frequency_penalty, etc.).
 
         Additional Keyword Args:
             Arbitrary OpenAI Responses API parameters (e.g. `frequency_penalty`, `presence_penalty`,
@@ -1514,8 +1491,6 @@ class AsyncOpenAIVecSeriesAccessor:
             instructions=schema.inference_prompt if schema else instructions,
             cache=cache,
             response_format=response_format or schema.model,
-            temperature=temperature,
-            top_p=top_p,
             **api_kwargs,
         )
 
@@ -1527,8 +1502,6 @@ class AsyncOpenAIVecSeriesAccessor:
         batch_size: int | None = None,
         max_concurrency: int = 8,
         show_progress: bool = False,
-        temperature: float | None = 0.0,
-        top_p: float = 1.0,
         **api_kwargs,
     ) -> pd.Series:
         """Parse Series values using an LLM with optional schema inference (asynchronously).
@@ -1547,8 +1520,7 @@ class AsyncOpenAIVecSeriesAccessor:
             max_concurrency (int): Maximum number of concurrent requests. Defaults to 8.
             show_progress (bool): Whether to display a progress bar during processing.
                 Defaults to False.
-            temperature (float | None): Sampling temperature. Defaults to 0.0.
-            top_p (float): Nucleus sampling parameter. Defaults to 1.0.
+            **api_kwargs: Additional OpenAI API parameters (temperature, top_p, frequency_penalty, etc.).
 
         Returns:
             pandas.Series: Series with parsed structured data as instances of
@@ -1564,8 +1536,6 @@ class AsyncOpenAIVecSeriesAccessor:
             ),
             response_format=response_format,
             max_examples=max_examples,
-            temperature=temperature,
-            top_p=top_p,
             **api_kwargs,
         )
 
@@ -1582,8 +1552,6 @@ class AsyncOpenAIVecDataFrameAccessor:
         instructions: str,
         cache: AsyncBatchingMapProxy[str, ResponseFormat],
         response_format: type[ResponseFormat] = str,
-        temperature: float | None = 0.0,
-        top_p: float = 1.0,
         **api_kwargs,
     ) -> pd.Series:
         """Generate a response for each row after serializing it to JSON using a provided cache (asynchronously).
@@ -1619,8 +1587,7 @@ class AsyncOpenAIVecDataFrameAccessor:
                 Set cache.batch_size=None to enable automatic batch size optimization.
             response_format (type[ResponseFormat], optional): Desired Python type of the
                 responses. Defaults to ``str``.
-            temperature (float | None, optional): Sampling temperature. Defaults to ``0.0``.
-            top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
+            **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
 
         Returns:
             pandas.Series: Responses aligned with the DataFrame's original index.
@@ -1633,8 +1600,6 @@ class AsyncOpenAIVecDataFrameAccessor:
             instructions=instructions,
             cache=cache,
             response_format=response_format,
-            temperature=temperature,
-            top_p=top_p,
             **api_kwargs,
         )
 
@@ -1643,8 +1608,6 @@ class AsyncOpenAIVecDataFrameAccessor:
         instructions: str,
         response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
-        temperature: float | None = 0.0,
-        top_p: float = 1.0,
         max_concurrency: int = 8,
         show_progress: bool = False,
         **api_kwargs,
@@ -1678,8 +1641,7 @@ class AsyncOpenAIVecDataFrameAccessor:
             batch_size (int | None, optional): Number of requests sent in one batch.
                 Defaults to ``None`` (automatic batch size optimization
                 based on execution time). Set to a positive integer for fixed batch size.
-            temperature (float | None, optional): Sampling temperature. Defaults to ``0.0``.
-            top_p (float, optional): Nucleus sampling parameter. Defaults to ``1.0``.
+            **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to ``8``.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
@@ -1801,8 +1763,6 @@ class AsyncOpenAIVecDataFrameAccessor:
         cache: AsyncBatchingMapProxy[str, ResponseFormat],
         response_format: ResponseFormat = None,
         max_examples: int = 100,
-        temperature: float | None = 0.0,
-        top_p: float = 1.0,
         **api_kwargs,
     ) -> pd.Series:
         """Parse DataFrame rows using an LLM with a provided cache (asynchronously).
@@ -1819,8 +1779,7 @@ class AsyncOpenAIVecDataFrameAccessor:
                 for structured output. If None, schema is inferred.
             max_examples (int): Maximum number of examples to use for schema inference.
                 Defaults to 100.
-            temperature (float | None): Sampling temperature. Defaults to 0.0.
-            top_p (float): Nucleus sampling parameter. Defaults to 1.0.
+            **api_kwargs: Additional OpenAI API parameters (temperature, top_p, frequency_penalty, etc.).
 
         Additional Keyword Args:
             Arbitrary OpenAI Responses API parameters (e.g. `frequency_penalty`, `presence_penalty`,
@@ -1838,8 +1797,6 @@ class AsyncOpenAIVecDataFrameAccessor:
             cache=cache,
             response_format=response_format,
             max_examples=max_examples,
-            temperature=temperature,
-            top_p=top_p,
             **api_kwargs,
         )
 
@@ -1851,8 +1808,6 @@ class AsyncOpenAIVecDataFrameAccessor:
         batch_size: int | None = None,
         max_concurrency: int = 8,
         show_progress: bool = False,
-        temperature: float | None = 0.0,
-        top_p: float = 1.0,
         **api_kwargs,
     ) -> pd.Series:
         """Parse DataFrame rows using an LLM with optional schema inference (asynchronously).
@@ -1872,8 +1827,7 @@ class AsyncOpenAIVecDataFrameAccessor:
             max_concurrency (int): Maximum number of concurrent requests. Defaults to 8.
             show_progress (bool): Whether to display a progress bar during processing.
                 Defaults to False.
-            temperature (float | None): Sampling temperature. Defaults to 0.0.
-            top_p (float): Nucleus sampling parameter. Defaults to 1.0.
+            **api_kwargs: Additional OpenAI API parameters (temperature, top_p, frequency_penalty, etc.).
 
         Returns:
             pandas.Series: Series with parsed structured data as instances of
@@ -1889,8 +1843,6 @@ class AsyncOpenAIVecDataFrameAccessor:
             ),
             response_format=response_format,
             max_examples=max_examples,
-            temperature=temperature,
-            top_p=top_p,
             **api_kwargs,
         )
 

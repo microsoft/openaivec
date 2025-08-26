@@ -837,5 +837,5 @@ class TestPandasExt:
 
         # Check async version has these in order (with max_concurrency inserted before show_progress)
         async_filtered = [p for p in aio_responses_params if p in common_params or p == "max_concurrency"]
-        expected_async = common_params[:5] + ["max_concurrency"] + [common_params[5]]
+        expected_async = common_params[:-1] + ["max_concurrency"] + [common_params[-1]]
         assert async_filtered == expected_async

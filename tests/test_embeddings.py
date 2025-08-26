@@ -5,7 +5,6 @@ from openaivec._embeddings import AsyncBatchEmbeddings
 
 
 @pytest.mark.requires_api
-@pytest.mark.asyncio
 class TestAsyncBatchEmbeddings:
     @pytest.fixture(autouse=True)
     def setup_client(self, async_openai_client, embeddings_model_name, embedding_dim):
@@ -14,6 +13,7 @@ class TestAsyncBatchEmbeddings:
         self.embedding_dim = embedding_dim
         yield
 
+    @pytest.mark.asyncio
     async def test_create_basic(self):
         """Test basic embedding creation with a small batch size."""
         client = AsyncBatchEmbeddings.of(
@@ -32,6 +32,7 @@ class TestAsyncBatchEmbeddings:
             assert embedding.dtype == np.float32
             assert np.all(np.isfinite(embedding))
 
+    @pytest.mark.asyncio
     async def test_create_empty_input(self):
         """Test embedding creation with an empty input list."""
         client = AsyncBatchEmbeddings.of(
@@ -44,6 +45,7 @@ class TestAsyncBatchEmbeddings:
 
         assert len(response) == 0
 
+    @pytest.mark.asyncio
     async def test_create_with_duplicates(self):
         """Test embedding creation with duplicate inputs. Should return correct embeddings in order."""
         client = AsyncBatchEmbeddings.of(
@@ -67,6 +69,7 @@ class TestAsyncBatchEmbeddings:
         for i, text in enumerate(inputs):
             assert np.allclose(response[i], expected_map[text])
 
+    @pytest.mark.asyncio
     async def test_create_batch_size_larger_than_unique(self):
         """Test when batch_size is larger than the number of unique inputs."""
         client = AsyncBatchEmbeddings.of(
@@ -86,6 +89,7 @@ class TestAsyncBatchEmbeddings:
             assert response[i].shape == (self.embedding_dim,)
             assert response[i].dtype == np.float32
 
+    @pytest.mark.asyncio
     async def test_create_batch_size_one(self):
         """Test embedding creation with batch_size = 1."""
         client = AsyncBatchEmbeddings.of(
@@ -120,6 +124,7 @@ class TestAsyncBatchEmbeddings:
         assert client.cache.max_concurrency == custom_concurrency
 
     @pytest.mark.parametrize("batch_size", [1, 2, 4])
+    @pytest.mark.asyncio
     async def test_create_with_different_batch_sizes(self, batch_size):
         """Test embedding creation with various batch sizes."""
         client = AsyncBatchEmbeddings.of(
@@ -138,6 +143,7 @@ class TestAsyncBatchEmbeddings:
             assert embedding.dtype == np.float32
 
     @pytest.mark.parametrize("concurrency", [2, 4, 8])
+    @pytest.mark.asyncio
     async def test_create_with_different_concurrency(self, concurrency):
         """Test embedding creation with various concurrency settings."""
         client = AsyncBatchEmbeddings.of(
