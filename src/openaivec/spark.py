@@ -625,6 +625,7 @@ def embeddings_udf(
     model_name: str = CONTAINER.resolve(EmbeddingsModelName).value,
     batch_size: int | None = None,
     max_concurrency: int = 8,
+    **api_kwargs,
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF for generating embeddings.
 
@@ -660,6 +661,7 @@ def embeddings_udf(
             Total cluster concurrency = max_concurrency × number_of_executors.
             Higher values increase throughput but may hit OpenAI rate limits.
             Recommended: 4-12 per executor. Defaults to 8.
+        **api_kwargs: Additional OpenAI API parameters (e.g., dimensions for text-embedding-3 models).
 
     Returns:
         UserDefinedFunction: A Spark pandas UDF configured to generate embeddings asynchronously
@@ -686,7 +688,7 @@ def embeddings_udf(
 
         try:
             for part in col:
-                embeddings: pd.Series = asyncio.run(part.aio.embeddings_with_cache(cache=cache))
+                embeddings: pd.Series = asyncio.run(part.aio.embeddings_with_cache(cache=cache, **api_kwargs))
                 yield embeddings.map(lambda x: x.tolist())
         finally:
             asyncio.run(cache.clear())

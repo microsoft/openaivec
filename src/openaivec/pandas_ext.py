@@ -314,7 +314,7 @@ class OpenAIVecSeriesAccessor:
             name=self._obj.name,
         )
 
-    def embeddings(self, batch_size: int | None = None, show_progress: bool = False) -> pd.Series:
+    def embeddings(self, batch_size: int | None = None, show_progress: bool = False, **api_kwargs) -> pd.Series:
         """Compute OpenAI embeddings for every Series element.
 
         Example:
@@ -336,6 +336,7 @@ class OpenAIVecSeriesAccessor:
                 single request. Defaults to ``None`` (automatic batch size optimization
                 based on execution time). Set to a positive integer for fixed batch size.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
+            **api_kwargs: Additional OpenAI API parameters (e.g., dimensions for text-embedding-3 models).
 
         Returns:
             pandas.Series: Series whose values are ``np.ndarray`` objects
@@ -343,6 +344,7 @@ class OpenAIVecSeriesAccessor:
         """
         return self.embeddings_with_cache(
             cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
+            **api_kwargs,
         )
 
     def task_with_cache(
@@ -1237,6 +1239,7 @@ class AsyncOpenAIVecSeriesAccessor:
     async def embeddings_with_cache(
         self,
         cache: AsyncBatchingMapProxy[str, np.ndarray],
+        **api_kwargs,
     ) -> pd.Series:
         """Compute OpenAI embeddings for every Series element using a provided cache (asynchronously).
 
@@ -1264,6 +1267,7 @@ class AsyncOpenAIVecSeriesAccessor:
             cache (AsyncBatchingMapProxy[str, np.ndarray]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
+            **api_kwargs: Additional OpenAI API parameters (e.g., dimensions for text-embedding-3 models).
 
         Returns:
             pandas.Series: Series whose values are ``np.ndarray`` objects
@@ -1272,11 +1276,15 @@ class AsyncOpenAIVecSeriesAccessor:
         Note:
             This is an asynchronous method and must be awaited.
         """
-        client: AsyncBatchEmbeddings = AsyncBatchEmbeddings(
+        client: AsyncBatchEmbeddings = AsyncBatchEmbeddings.of(
             client=CONTAINER.resolve(AsyncOpenAI),
             model_name=CONTAINER.resolve(EmbeddingsModelName).value,
-            cache=cache,
+            batch_size=None,  # Using the cache's batch_size
+            max_concurrency=getattr(cache, "_max_concurrency", 8),
+            **api_kwargs,
         )
+        # Override cache with the provided one
+        object.__setattr__(client, "cache", cache)
 
         # Await the async operation
         results = await client.create(self._obj.tolist())
@@ -1288,7 +1296,7 @@ class AsyncOpenAIVecSeriesAccessor:
         )
 
     async def embeddings(
-        self, batch_size: int | None = None, max_concurrency: int = 8, show_progress: bool = False
+        self, batch_size: int | None = None, max_concurrency: int = 8, show_progress: bool = False, **api_kwargs
     ) -> pd.Series:
         """Compute OpenAI embeddings for every Series element (asynchronously).
 
@@ -1314,6 +1322,7 @@ class AsyncOpenAIVecSeriesAccessor:
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to ``8``.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
+            **api_kwargs: Additional OpenAI API parameters (e.g., dimensions for text-embedding-3 models).
 
         Returns:
             pandas.Series: Series whose values are ``np.ndarray`` objects
@@ -1326,6 +1335,7 @@ class AsyncOpenAIVecSeriesAccessor:
             cache=AsyncBatchingMapProxy(
                 batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
             ),
+            **api_kwargs,
         )
 
     async def task_with_cache(

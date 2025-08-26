@@ -33,7 +33,7 @@ class BatchEmbeddings:
     cache: BatchingMapProxy[str, NDArray[np.float32]] = field(default_factory=lambda: BatchingMapProxy(batch_size=None))
 
     @classmethod
-    def of(cls, client: OpenAI, model_name: str, batch_size: int | None = None) -> "BatchEmbeddings":
+    def of(cls, client: OpenAI, model_name: str, batch_size: int | None = None, **api_kwargs) -> "BatchEmbeddings":
         """Factory constructor.
 
         Args:
@@ -41,15 +41,19 @@ class BatchEmbeddings:
             model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
             batch_size (int | None, optional): Max unique inputs per API call. Defaults to None
                 (automatic batch size optimization). Set to a positive integer for fixed batch size.
+            **api_kwargs: Additional OpenAI API parameters (e.g., dimensions for text-embedding-3 models).
 
         Returns:
             BatchEmbeddings: Configured instance backed by a batching proxy.
         """
-        return cls(client=client, model_name=model_name, cache=BatchingMapProxy(batch_size=batch_size))
+        instance = cls(client=client, model_name=model_name, cache=BatchingMapProxy(batch_size=batch_size))
+        # Store api_kwargs for use in _embed_chunk
+        object.__setattr__(instance, "_api_kwargs", api_kwargs)
+        return instance
 
     @observe(_LOGGER)
     @backoff(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
-    def _embed_chunk(self, inputs: list[str]) -> list[NDArray[np.float32]]:
+    def _embed_chunk(self, inputs: list[str], **extra_api_params) -> list[NDArray[np.float32]]:
         """Embed one minibatch of strings.
 
         This private helper is the unit of work used by the map/parallel
@@ -58,24 +62,36 @@ class BatchEmbeddings:
 
         Args:
             inputs (list[str]): Input strings to be embedded. Duplicates allowed.
+            **extra_api_params: Additional API parameters to override stored ones.
 
         Returns:
             list[NDArray[np.float32]]: Embedding vectors aligned to ``inputs``.
         """
-        responses = self.client.embeddings.create(input=inputs, model=self.model_name)
+        # Build base API parameters
+        api_params = {"input": inputs, "model": self.model_name}
+
+        # Merge stored api_kwargs first (from constructor)
+        if hasattr(self, "_api_kwargs"):
+            api_params.update(self._api_kwargs)
+
+        # Then merge extra_api_params (caller can override)
+        api_params.update(extra_api_params)
+
+        responses = self.client.embeddings.create(**api_params)
         return [np.array(d.embedding, dtype=np.float32) for d in responses.data]
 
     @observe(_LOGGER)
-    def create(self, inputs: list[str]) -> list[NDArray[np.float32]]:
+    def create(self, inputs: list[str], **api_kwargs) -> list[NDArray[np.float32]]:
         """Generate embeddings for inputs using cached, ordered batching.
 
         Args:
             inputs (list[str]): Input strings. Duplicates allowed.
+            **api_kwargs: Additional OpenAI API parameters to pass through.
 
         Returns:
             list[NDArray[np.float32]]: Embedding vectors aligned to ``inputs``.
         """
-        return self.cache.map(inputs, self._embed_chunk)
+        return self.cache.map(inputs, lambda chunk: self._embed_chunk(chunk, **api_kwargs))
 
 
 @dataclass(frozen=True)
@@ -178,13 +194,14 @@ class AsyncBatchEmbeddings:
         return [np.array(d.embedding, dtype=np.float32) for d in responses.data]
 
     @observe(_LOGGER)
-    async def create(self, inputs: list[str]) -> list[NDArray[np.float32]]:
+    async def create(self, inputs: list[str], **api_kwargs) -> list[NDArray[np.float32]]:
         """Generate embeddings for inputs using proxy batching (async).
 
         Args:
             inputs (list[str]): Input strings. Duplicates allowed.
+            **api_kwargs: Additional OpenAI API parameters to pass through.
 
         Returns:
             list[NDArray[np.float32]]: Embedding vectors aligned to ``inputs``.
         """
-        return await self.cache.map(inputs, self._embed_chunk)  # type: ignore[arg-type]
+        return await self.cache.map(inputs, lambda chunk: self._embed_chunk(chunk, **api_kwargs))  # type: ignore[arg-type]
