@@ -390,16 +390,16 @@ class FewShotPromptBuilder:
         """
         return cls.of(FewShotPrompt(instructions="", cautions=[], examples=[]))
 
-    def purpose(self, purpose: str) -> "FewShotPromptBuilder":
-        """Set the purpose of the prompt.
+    def instructions(self, instructions: str) -> "FewShotPromptBuilder":
+        """Set the instructions of the prompt.
 
         Args:
-            purpose (str): A concise statement describing the prompt’s goal.
+            instructions (str): A concise statement describing the prompt's goal.
 
         Returns:
             FewShotPromptBuilder: The current builder instance (for chaining).
         """
-        self._prompt.purpose = purpose
+        self._prompt.instructions = instructions
         return self
 
     def caution(self, caution: str) -> "FewShotPromptBuilder":

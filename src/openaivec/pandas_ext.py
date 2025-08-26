@@ -564,7 +564,7 @@ class OpenAIVecSeriesAccessor:
 
             # Infer schema for sentiment analysis
             schema = reviews.ai.infer_schema(
-                purpose="Extract sentiment and product quality indicators"
+                instructions="Extract sentiment and product quality indicators"
             )
 
             # Use the inferred schema for batch extraction
@@ -957,7 +957,7 @@ class OpenAIVecDataFrameAccessor:
 
             # Infer schema for logistics tracking
             schema = df.ai.infer_schema(
-                purpose="Extract shipping status and location data for logistics tracking"
+                instructions="Extract shipping status and location data for logistics tracking"
             )
 
             # Apply the schema to extract structured data
@@ -971,7 +971,7 @@ class OpenAIVecDataFrameAccessor:
             Spark operations.
         """
         return _df_rows_to_json_series(self._obj).ai.infer_schema(
-            purpose=instructions,
+            instructions=instructions,
             max_examples=max_examples,
         )
 
