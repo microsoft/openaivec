@@ -134,6 +134,7 @@ import numpy as np
 import pandas as pd
 import tiktoken
 from pydantic import BaseModel
+from pyspark import SparkContext
 from pyspark.sql import SparkSession
 from pyspark.sql.pandas.functions import pandas_udf
 from pyspark.sql.types import ArrayType, BooleanType, FloatType, IntegerType, StringType, StructField, StructType
@@ -180,7 +181,10 @@ def setup(
             If provided, registers `EmbeddingsModelName` in the DI container.
     """
 
-    sc = spark.sparkContext
+    CONTAINER.register(SparkSession, lambda: spark)
+    CONTAINER.register(SparkContext, lambda: CONTAINER.resolve(SparkSession).sparkContext)
+
+    sc = CONTAINER.resolve(SparkContext)
     sc.environment["OPENAI_API_KEY"] = api_key
 
     os.environ["OPENAI_API_KEY"] = api_key
@@ -219,7 +223,10 @@ def setup_azure(
             If provided, registers `EmbeddingsModelName` in the DI container.
     """
 
-    sc = spark.sparkContext
+    CONTAINER.register(SparkSession, lambda: spark)
+    CONTAINER.register(SparkContext, lambda: CONTAINER.resolve(SparkSession).sparkContext)
+
+    sc = CONTAINER.resolve(SparkContext)
     sc.environment["AZURE_OPENAI_API_KEY"] = api_key
     sc.environment["AZURE_OPENAI_BASE_URL"] = base_url
     sc.environment["AZURE_OPENAI_API_VERSION"] = api_version
@@ -532,9 +539,7 @@ def infer_schema(
         InferredSchema: An object containing the inferred schema and response format.
     """
 
-    from pyspark.sql import SparkSession
-
-    spark = SparkSession.builder.getOrCreate()
+    spark = CONTAINER.resolve(SparkSession)
     examples: list[str] = (
         spark.table(example_table_name).rdd.map(lambda row: row[example_field_name]).takeSample(False, max_examples)
     )
