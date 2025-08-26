@@ -18,14 +18,14 @@ def cached_inferred_schemas(openai_client, responses_model_name):
                 "Order #1235: customer happy, praised fast shipping.",
                 "Order #1236: delayed delivery complaint, wants status update.",
             ],
-            purpose="Extract useful flat analytic signals from short support notes.",
+            instructions="Extract useful flat analytic signals from short support notes.",
         ),
         "retry_case": SchemaInferenceInput(
             examples=[
                 "User reported login failure after password reset.",
                 "User confirmed issue was resolved after cache clear.",
             ],
-            purpose="Infer minimal status/phase signals from event style notes.",
+            instructions="Infer minimal status/phase signals from event style notes.",
         ),
     }
 
@@ -137,9 +137,9 @@ class TestInferredSchemaBuildModel:
     def test_build_model_primitive_types(self):
         """Test that all primitive types are correctly mapped to Python types."""
         schema = InferredSchema(
-            purpose="Test primitive types",
+            instructions="Test primitive types",
             examples_summary="Various primitive type examples",
-            examples_purpose_alignment="Primitive examples justify coverage of all base types",
+            examples_instructions_alignment="Primitive examples justify coverage of all base types",
             object_spec=ObjectSpec(
                 name="PrimitiveRoot",
                 fields=[
@@ -168,9 +168,9 @@ class TestInferredSchemaBuildModel:
     def test_build_model_enum_field(self):
         """Test that enum fields generate proper Enum classes."""
         schema = InferredSchema(
-            purpose="Test enum types",
+            instructions="Test enum types",
             examples_summary="Enum examples",
-            examples_purpose_alignment="Stable status labels appear repeatedly, supporting enum creation",
+            examples_instructions_alignment="Stable status labels appear repeatedly, supporting enum creation",
             object_spec=ObjectSpec(
                 name="EnumRoot",
                 fields=[
@@ -208,9 +208,9 @@ class TestInferredSchemaBuildModel:
         ]
 
         schema = InferredSchema(
-            purpose="Test field ordering",
+            instructions="Test field ordering",
             examples_summary="Field ordering examples",
-            examples_purpose_alignment="Ordering matters for deterministic downstream column alignment",
+            examples_instructions_alignment="Ordering matters for deterministic downstream column alignment",
             object_spec=ObjectSpec(name="OrderingRoot", fields=fields),
             inference_prompt="Test prompt",
         )
@@ -224,9 +224,9 @@ class TestInferredSchemaBuildModel:
     def test_build_model_field_descriptions(self):
         """Test that field descriptions are correctly included in the model."""
         schema = InferredSchema(
-            purpose="Test field descriptions",
+            instructions="Test field descriptions",
             examples_summary="Description examples",
-            examples_purpose_alignment="Descriptions guide extraction disambiguation",
+            examples_instructions_alignment="Descriptions guide extraction disambiguation",
             object_spec=ObjectSpec(
                 name="DescRoot",
                 fields=[
@@ -247,9 +247,9 @@ class TestInferredSchemaBuildModel:
     def test_build_model_empty_fields(self):
         """Test behavior with empty fields list."""
         schema = InferredSchema(
-            purpose="Test empty fields",
+            instructions="Test empty fields",
             examples_summary="Empty examples",
-            examples_purpose_alignment="Edge case of no extractable signals",
+            examples_instructions_alignment="Edge case of no extractable signals",
             object_spec=ObjectSpec(name="EmptyRoot", fields=[]),
             inference_prompt="Test prompt",
         )
@@ -267,9 +267,9 @@ class TestInferredSchemaBuildModel:
     def test_build_model_mixed_enum_and_regular_fields(self):
         """Test a complex scenario with both enum and regular fields of all types."""
         schema = InferredSchema(
-            purpose="Test mixed field types",
+            instructions="Test mixed field types",
             examples_summary="Mixed type examples",
-            examples_purpose_alignment="Examples demonstrate diverse field types including enums",
+            examples_instructions_alignment="Examples demonstrate diverse field types including enums",
             object_spec=ObjectSpec(
                 name="MixedRoot",
                 fields=[
@@ -314,9 +314,9 @@ class TestInferredSchemaBuildModel:
     def test_build_model_multiple_calls_independence(self):
         """Test that multiple calls to build_model return independent model classes."""
         schema = InferredSchema(
-            purpose="Test independence",
+            instructions="Test independence",
             examples_summary="Independence examples",
-            examples_purpose_alignment="Independence ensures rebuilding yields fresh class objects",
+            examples_instructions_alignment="Independence ensures rebuilding yields fresh class objects",
             object_spec=ObjectSpec(
                 name="IndependentRoot",
                 fields=[
@@ -339,9 +339,9 @@ class TestInferredSchemaBuildModel:
     def test_build_model_array_types(self):
         """Test that *_array types map to list element annotations and proper JSON Schema arrays."""
         schema = InferredSchema(
-            purpose="Test array types",
+            instructions="Test array types",
             examples_summary="Array type examples",
-            examples_purpose_alignment="Examples justify homogeneous primitive arrays",
+            examples_instructions_alignment="Examples justify homogeneous primitive arrays",
             object_spec=ObjectSpec(
                 name="ArrayRoot",
                 fields=[
