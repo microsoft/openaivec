@@ -274,6 +274,7 @@ class OpenAIVecSeriesAccessor:
     def embeddings_with_cache(
         self,
         cache: BatchingMapProxy[str, np.ndarray],
+        **api_kwargs,
     ) -> pd.Series:
         """Compute OpenAI embeddings for every Series element using a provided cache.
 
@@ -297,6 +298,7 @@ class OpenAIVecSeriesAccessor:
             cache (BatchingMapProxy[str, np.ndarray]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
+            **api_kwargs: Additional keyword arguments to pass to the OpenAI API.
 
         Returns:
             pandas.Series: Series whose values are ``np.ndarray`` objects
@@ -306,6 +308,7 @@ class OpenAIVecSeriesAccessor:
             client=CONTAINER.resolve(OpenAI),
             model_name=CONTAINER.resolve(EmbeddingsModelName).value,
             cache=cache,
+            api_kwargs=api_kwargs,
         )
 
         return pd.Series(
