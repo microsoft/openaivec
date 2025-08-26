@@ -45,7 +45,7 @@ Example (conceptual):
         schema = inferer.infer_schema(
                 SchemaInferenceInput(
                         examples=["Order #123 delayed due to weather", "Order #456 delivered"],
-                        purpose="Extract operational status signals for logistics analytics",
+                        instructions="Extract operational status signals for logistics analytics",
                 )
         )
         Model = schema.model  # dynamic Pydantic model
@@ -71,16 +71,16 @@ __all__: list[str] = []
 class InferredSchema(BaseModel):
     """Result of a schema inference round.
 
-    Contains the normalized *purpose*, objective *examples_summary*, the root
+    Contains the normalized *instructions*, objective *examples_summary*, the root
     hierarchical ``object_spec`` contract, and the canonical reusable
     ``inference_prompt``. The prompt MUST be fully derivable from the other
     components (no new unstated facts) to preserve traceability.
 
     Attributes:
-        purpose: Unambiguous restatement of the user's objective.
+        instructions: Unambiguous restatement of the user's objective.
         examples_summary: Neutral description of structural / semantic patterns
             observed in the examples.
-        examples_purpose_alignment: Mapping from purpose facets to concrete
+        examples_instructions_alignment: Mapping from instructions facets to concrete
             recurring evidence (or explicit gaps) anchoring extraction scope.
         object_spec: Root ``ObjectSpec`` (UpperCamelCase name) whose ``fields``
             recursively define the extraction schema.
@@ -88,7 +88,7 @@ class InferredSchema(BaseModel):
             hierarchy, and types (no additions/removals/renames).
     """
 
-    purpose: str = Field(
+    instructions: str = Field(
         description=(
             "Normalized, unambiguous restatement of the user objective with redundant, vague, or "
             "conflicting phrasing removed."
@@ -100,10 +100,10 @@ class InferredSchema(BaseModel):
             "patterns, and notable constraints."
         )
     )
-    examples_purpose_alignment: str = Field(
+    examples_instructions_alignment: str = Field(
         description=(
             "Explanation of how observable recurring patterns in the examples substantiate and bound the stated "
-            "purpose. Should reference purpose facets and cite supporting example evidence (or note any gaps) to "
+            "instructions. Should reference instructions facets and cite supporting example evidence (or note any gaps) to "
             "reduce hallucinated fields. Internal diagnostic / quality aid; not required for downstream extraction."
         )
     )
@@ -115,7 +115,7 @@ class InferredSchema(BaseModel):
     )
     inference_prompt: str = Field(
         description=(
-            "Canonical, reusable extraction prompt. Must be derivable from purpose + summaries + object_spec. Enforces "
+            "Canonical, reusable extraction prompt. Must be derivable from instructions + summaries + object_spec. Enforces "
             "exact hierarchical field set (names, order per object, types) forbidding additions, removals, renames, or "
             "subjective language. Self-contained (no TODOs, external refs, or placeholders)."
         )
@@ -176,7 +176,7 @@ class SchemaInferenceInput(BaseModel):
         examples: Representative sample texts restricted to the in‑scope
             distribution (exclude outliers / noise). Size should be *minimal*
             yet sufficient to surface recurring patterns.
-        purpose: Plain language description of downstream usage (analytics,
+        instructions: Plain language description of downstream usage (analytics,
             filtering, enrichment, feature engineering, etc.). Guides field
             relevance & exclusion of outcome labels.
     """
@@ -187,7 +187,7 @@ class SchemaInferenceInput(BaseModel):
             "exclude outliers not in scope."
         )
     )
-    purpose: str = Field(
+    instructions: str = Field(
         description=(
             "Plain language statement describing the downstream use of the extracted structured data (e.g. "
             "analytics, filtering, enrichment)."
@@ -199,15 +199,15 @@ _INFER_INSTRUCTIONS = """
 You are a schema inference engine.
 
 Task:
-1. Normalize the user's purpose (eliminate ambiguity, redundancy, contradictions).
+1. Normalize the user's instructions (eliminate ambiguity, redundancy, contradictions).
 2. Objectively summarize observable patterns in the example texts.
-3. Produce an "examples_purpose_alignment" explanation mapping purpose facets to concrete recurring evidence (or gaps).
+3. Produce an "examples_instructions_alignment" explanation mapping instructions facets to concrete recurring evidence (or gaps).
 4. Propose a minimal hierarchical schema (root ObjectSpec) comprised of reliably extractable fields. Use nesting ONLY
      when a group of fields forms a cohesive sub-entity repeated in the data; otherwise keep flat.
 5. Skip fields likely missing in a large share (>~20%) of realistic inputs.
 6. Provide enum_spec ONLY when a small stable closed categorical set (1–{_MAX_ENUM_VALUES} raw tokens) is clearly
      evidenced; never invent unseen categories.
-7. If the purpose indicates prediction (predict / probability / likelihood),
+7. If the instructions indicates prediction (predict / probability / likelihood),
    output only explanatory features (no target restatement).
 
 Rules:
@@ -229,9 +229,9 @@ Rules:
 
 Output contract:
 Return exactly an InferredSchema JSON object with keys:
-        - purpose (string)
+        - instructions (string)
         - examples_summary (string)
-        - examples_purpose_alignment (string)
+        - examples_instructions_alignment (string)
         - object_spec (ObjectSpec: name, fields[list[FieldSpec]])
         - inference_prompt (string)
 Where each FieldSpec includes: name, type, description, optional enum_spec (for
@@ -272,14 +272,14 @@ class SchemaInferer:
                 3. Retry (up to ``max_retries``) on validation failure.
 
         Args:
-            data (SchemaInferenceInput): Representative examples + purpose.
+            data (SchemaInferenceInput): Representative examples + instructions.
             *args: Positional passthrough to ``client.responses.parse``.
             max_retries (int, optional): Attempts before surfacing the last validation error
                 (must be >= 1). Defaults to 3.
             **kwargs: Keyword passthrough to ``client.responses.parse``.
 
         Returns:
-            InferredSchema: Fully validated schema (purpose, examples summary,
+            InferredSchema: Fully validated schema (instructions, examples summary,
             ordered fields, extraction prompt).
 
         Raises:

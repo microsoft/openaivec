@@ -10,7 +10,7 @@ from openaivec.prompt import FewShotPromptBuilder
 
 prompt_str: str = (
     FewShotPromptBuilder()
-    .purpose("some purpose")
+    .instructions("some instructions")
     .caution("some caution")
     .caution("some other caution")
     .example("some input", "some output")
@@ -22,7 +22,7 @@ print(prompt_str)
 this will produce an XML string that looks like this:
 ```xml
 <Prompt>
-    <Purpose>some purpose</Purpose>
+    <Instructions>some instructions</Instructions>
     <Cautions>
         <Caution>some caution</Caution>
         <Caution>some other caution</Caution>
@@ -80,7 +80,7 @@ class FewShotPrompt(BaseModel):
     large‑language model as part of the system prompt.
 
     Attributes:
-        purpose (str): A concise, human‑readable statement describing the goal
+        instructions (str): A concise, human‑readable statement describing the goal
             of the prompt.
         cautions (list[str]): A list of warnings, edge cases, or pitfalls that
             the model should be aware of when generating answers.
@@ -88,7 +88,7 @@ class FewShotPrompt(BaseModel):
             behaviour for a variety of scenarios.
     """
 
-    purpose: str
+    instructions: str
     cautions: list[str]
     examples: list[Example]
 
@@ -122,7 +122,7 @@ _PROMPT: str = """
 <Prompt>
     <Instructions>
         <Instruction id="1">
-            Receive the prompt in JSON format with fields "purpose",
+            Receive the prompt in JSON format with fields "instructions",
             "cautions", and "examples". Ensure the entire prompt is free
             from logical contradictions, redundancies, and ambiguities.
             IMPORTANT: The "examples" array must always contain at least one example throughout all iterations.
@@ -141,11 +141,11 @@ _PROMPT: str = """
               and apply any necessary modifications.
         </Instruction>
         <Instruction id="3">
-            Always respond in the same language as specified in the "purpose" field for all output values,
+            Always respond in the same language as specified in the "instructions" field for all output values,
             including the analysis field and chain-of-thought steps.
         </Instruction>
         <Instruction id="4">
-            In the "purpose" field, clearly describe the overall semantics and main goal,
+            In the "instructions" field, clearly describe the overall semantics and main goal,
             ensuring that all critical instructions contained in the original text are
             preserved without altering the base meaning.
         </Instruction>
@@ -174,7 +174,7 @@ _PROMPT: str = """
     <Example>
         <Input>{
     "origin": {
-        "purpose": "some_purpose01",
+        "instructions": "some_instructions01",
         "cautions": [
             "some_caution01",
             "some_caution02",
@@ -209,8 +209,8 @@ _PROMPT: str = """
   "iterations": [
     {
       "id": 1,
-      "analysis": "The original purpose was vague and did not explicitly state the main objective.
-        This ambiguity could lead to confusion about the task. In this iteration, we refined the purpose to
+      "analysis": "The original instructions was vague and did not explicitly state the main objective.
+        This ambiguity could lead to confusion about the task. In this iteration, we refined the instructions to
         clearly specify that the goal is to determine the correct category for a given word based on its context.",
       "prompt": {
         "purpose": "Determine the correct category for a given word by analyzing its context for clear meaning.",
@@ -235,10 +235,10 @@ _PROMPT: str = """
       "id": 2,
       "analysis": "Next, we focused solely on the cautions section. The original cautions were generic and
         did not mention potential pitfalls like homonyms or polysemy. Failing to address these could result in
-        misclassification. Therefore, we added a specific caution regarding homonyms while keeping the purpose
+        misclassification. Therefore, we added a specific caution regarding homonyms while keeping the instructions
         and examples unchanged.",
       "prompt": {
-        "purpose": "Determine the correct category for a given word by analyzing its context for clear meaning.",
+        "instructions": "Determine the correct category for a given word by analyzing its context for clear meaning.",
         "cautions": [
           "Ensure the word's context is provided to avoid ambiguity.",
           "Consider multiple meanings of the word and choose the most relevant category.",
@@ -262,9 +262,9 @@ _PROMPT: str = """
       "analysis": "In this step, we improved the examples section to cover a broader range of scenarios and
         address potential ambiguities. By adding examples that include words with multiple interpretations
         (such as 'Mercury' for both a planet and an element), we enhance clarity and ensure better coverage.
-        This iteration only modifies the examples section, leaving purpose and cautions intact.",
+        This iteration only modifies the examples section, leaving instructions and cautions intact.",
       "prompt": {
-        "purpose": "Determine the correct category for a given word by analyzing its context for clear meaning.",
+        "instructions": "Determine the correct category for a given word by analyzing its context for clear meaning.",
         "cautions": [
           "Ensure the word's context is provided to avoid ambiguity.",
           "Consider multiple meanings of the word and choose the most relevant category.",
@@ -317,9 +317,9 @@ def _render_prompt(prompt: FewShotPrompt) -> str:
     prompt_dict = prompt.model_dump()
     root = ElementTree.Element("Prompt")
 
-    # Purpose (always output)
-    purpose_elem = ElementTree.SubElement(root, "Purpose")
-    purpose_elem.text = prompt_dict["purpose"]
+    # Instructions (always output)
+    instructions_elem = ElementTree.SubElement(root, "Instructions")
+    instructions_elem.text = prompt_dict["instructions"]
 
     # Cautions (always output, even if empty)
     cautions_elem = ElementTree.SubElement(root, "Cautions")
@@ -346,13 +346,13 @@ class FewShotPromptBuilder:
 
     Usage:
         builder = (FewShotPromptBuilder()
-                  .purpose("Your task description")
+                  .instructions("Your task description")
                   .example("input1", "output1")  # At least one required
                   .example("input2", "output2")
                   .build())
 
     Note:
-        Both .purpose() and at least one .example() call are required before
+        Both .instructions() and at least one .example() call are required before
         calling .build(), .improve(), or .get_object().
     """
 
@@ -363,9 +363,9 @@ class FewShotPromptBuilder:
         """Initialize an empty FewShotPromptBuilder.
 
         Note:
-            You must call .purpose() and at least one .example() before building.
+            You must call .instructions() and at least one .example() before building.
         """
-        self._prompt = FewShotPrompt(purpose="", cautions=[], examples=[])
+        self._prompt = FewShotPrompt(instructions="", cautions=[], examples=[])
 
     @classmethod
     def of(cls, prompt: FewShotPrompt) -> "FewShotPromptBuilder":
@@ -388,7 +388,7 @@ class FewShotPromptBuilder:
         Returns:
             FewShotPromptBuilder: A new builder instance with an empty prompt.
         """
-        return cls.of(FewShotPrompt(purpose="", cautions=[], examples=[]))
+        return cls.of(FewShotPrompt(instructions="", cautions=[], examples=[]))
 
     def purpose(self, purpose: str) -> "FewShotPromptBuilder":
         """Set the purpose of the prompt.
@@ -537,13 +537,13 @@ class FewShotPromptBuilder:
         """Validate the internal FewShotPrompt.
 
         Raises:
-            ValueError: If required fields such as purpose or examples are
+            ValueError: If required fields such as instructions or examples are
                 missing.
         """
-        # Validate that 'purpose' and 'examples' are not empty.
-        if not self._prompt.purpose:
+        # Validate that 'instructions' and 'examples' are not empty.
+        if not self._prompt.instructions:
             raise ValueError(
-                "Purpose is required. Please call .purpose('your purpose description') before building the prompt."
+                "Instructions are required. Please call .instructions('your instructions description') before building the prompt."
             )
         if not self._prompt.examples or len(self._prompt.examples) == 0:
             raise ValueError(
