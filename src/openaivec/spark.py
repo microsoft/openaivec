@@ -393,8 +393,9 @@ def responses_udf(
         instructions (str): The system prompt or instructions for the model.
         response_format (type[ResponseFormat]): The desired output format. Either `str` for plain text
             or a Pydantic `BaseModel` for structured JSON output. Defaults to `str`.
-        model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
-            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to configured model in DI container.
+        model_name (str | None): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
+            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to configured model in DI container
+            via ResponsesModelName if not provided.
         batch_size (int | None): Number of rows per async batch request within each partition.
             Larger values reduce API call overhead but increase memory usage.
             Defaults to None (automatic batch size optimization that dynamically
@@ -503,8 +504,9 @@ def task_udf(
     Args:
         task (PreparedTask): A predefined task configuration containing instructions,
             response format, and API parameters.
-        model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
-            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to configured model in DI container.
+        model_name (str | None): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
+            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to configured model in DI container
+            via ResponsesModelName if not provided.
         batch_size (int | None): Number of rows per async batch request within each partition.
             Larger values reduce API call overhead but increase memory usage.
             Defaults to None (automatic batch size optimization that dynamically
@@ -618,8 +620,9 @@ def parse_udf(
             If provided, `example_table_name` must also be specified.
         max_examples (int): Maximum number of examples to retrieve for schema inference.
             Defaults to 100.
-        model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
-            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to configured model in DI container.
+        model_name (str | None): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
+            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to configured model in DI container
+            via ResponsesModelName if not provided.
         batch_size (int | None): Number of rows per async batch request within each partition.
             Larger values reduce API call overhead but increase memory usage.
             Defaults to None (automatic batch size optimization that dynamically
@@ -692,9 +695,9 @@ def embeddings_udf(
             sc.environment["AZURE_OPENAI_API_VERSION"] = "preview"
 
     Args:
-        model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-embedding-deployment").
+        model_name (str | None): For Azure OpenAI, use your deployment name (e.g., "my-embedding-deployment").
             For OpenAI, use the model name (e.g., "text-embedding-3-small").
-            Defaults to configured model in DI container.
+            Defaults to configured model in DI container via EmbeddingsModelName if not provided.
         batch_size (int | None): Number of rows per async batch request within each partition.
             Larger values reduce API call overhead but increase memory usage.
             Defaults to None (automatic batch size optimization that dynamically
