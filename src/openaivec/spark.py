@@ -193,8 +193,6 @@ def setup(
         CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName(responses_model_name))
 
     if embeddings_model_name:
-        from openaivec._model import EmbeddingsModelName
-
         CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName(embeddings_model_name))
 
     CONTAINER.clear_singletons()
@@ -322,7 +320,7 @@ def _safe_dump(x: BaseModel | None) -> dict:
 def responses_udf(
     instructions: str,
     response_format: type[ResponseFormat] = str,
-    model_name: str = CONTAINER.resolve(ResponsesModelName).value,
+    model_name: str | None = None,
     batch_size: int | None = None,
     max_concurrency: int = 8,
     **api_kwargs,
@@ -382,13 +380,15 @@ def responses_udf(
         - Consider your OpenAI tier limits: total_requests = max_concurrency × executors
         - Use Spark UI to optimize partition sizes relative to batch_size
     """
+    _model_name = model_name or CONTAINER.resolve(ResponsesModelName).value
+
     if issubclass(response_format, BaseModel):
         spark_schema = _pydantic_to_spark_schema(response_format)
         json_schema_string = serialize_base_model(response_format)
 
         @pandas_udf(returnType=spark_schema)  # type: ignore[call-overload]
         def structure_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
-            pandas_ext.responses_model(model_name)
+            pandas_ext.responses_model(_model_name)
             response_format = deserialize_base_model(json_schema_string)
             cache = AsyncBatchingMapProxy[str, response_format](
                 batch_size=batch_size,
@@ -415,7 +415,7 @@ def responses_udf(
 
         @pandas_udf(returnType=StringType())  # type: ignore[call-overload]
         def string_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
-            pandas_ext.responses_model(model_name)
+            pandas_ext.responses_model(_model_name)
             cache = AsyncBatchingMapProxy[str, str](
                 batch_size=batch_size,
                 max_concurrency=max_concurrency,
@@ -443,7 +443,7 @@ def responses_udf(
 
 def task_udf(
     task: PreparedTask[ResponseFormat],
-    model_name: str = CONTAINER.resolve(ResponsesModelName).value,
+    model_name: str | None = None,
     batch_size: int | None = None,
     max_concurrency: int = 8,
     **api_kwargs,
@@ -550,7 +550,7 @@ def parse_udf(
     example_table_name: str | None = None,
     example_field_name: str | None = None,
     max_examples: int = 100,
-    model_name: str = CONTAINER.resolve(ResponsesModelName).value,
+    model_name: str | None = None,
     batch_size: int | None = None,
     max_concurrency: int = 8,
     **api_kwargs,
@@ -622,7 +622,7 @@ def parse_udf(
 
 
 def embeddings_udf(
-    model_name: str = CONTAINER.resolve(EmbeddingsModelName).value,
+    model_name: str | None = None,
     batch_size: int | None = None,
     max_concurrency: int = 8,
     **api_kwargs,
@@ -678,9 +678,11 @@ def embeddings_udf(
         - Use larger batch_size for embeddings compared to response generation
     """
 
+    _model_name = model_name or CONTAINER.resolve(EmbeddingsModelName).value
+
     @pandas_udf(returnType=ArrayType(FloatType()))  # type: ignore[call-overload,misc]
     def _embeddings_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
-        pandas_ext.embeddings_model(model_name)
+        pandas_ext.embeddings_model(_model_name)
         cache = AsyncBatchingMapProxy[str, np.ndarray](
             batch_size=batch_size,
             max_concurrency=max_concurrency,
