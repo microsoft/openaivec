@@ -193,8 +193,6 @@ def setup(
         CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName(responses_model_name))
 
     if embeddings_model_name:
-        from openaivec._model import EmbeddingsModelName
-
         CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName(embeddings_model_name))
 
     CONTAINER.clear_singletons()
@@ -242,6 +240,50 @@ def setup_azure(
         CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName(embeddings_model_name))
 
     CONTAINER.clear_singletons()
+
+
+def set_responses_model(model_name: str):
+    """Set the default model name for response generation in the DI container.
+
+    Args:
+        model_name (str): The model name to set as default for responses.
+    """
+    CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName(model_name))
+    CONTAINER.clear_singletons()
+
+
+def get_responses_model() -> str | None:
+    """Get the default model name for response generation from the DI container.
+
+    Returns:
+        str | None: The default model name for responses, or None if not set.
+    """
+    try:
+        return CONTAINER.resolve(ResponsesModelName).value
+    except Exception:
+        return None
+
+
+def set_embeddings_model(model_name: str):
+    """Set the default model name for embeddings in the DI container.
+
+    Args:
+        model_name (str): The model name to set as default for embeddings.
+    """
+    CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName(model_name))
+    CONTAINER.clear_singletons()
+
+
+def get_embeddings_model() -> str | None:
+    """Get the default model name for embeddings from the DI container.
+
+    Returns:
+        str | None: The default model name for embeddings, or None if not set.
+    """
+    try:
+        return CONTAINER.resolve(EmbeddingsModelName).value
+    except Exception:
+        return None
 
 
 def _python_type_to_spark(python_type):
@@ -322,7 +364,7 @@ def _safe_dump(x: BaseModel | None) -> dict:
 def responses_udf(
     instructions: str,
     response_format: type[ResponseFormat] = str,
-    model_name: str = CONTAINER.resolve(ResponsesModelName).value,
+    model_name: str | None = None,
     batch_size: int | None = None,
     max_concurrency: int = 8,
     **api_kwargs,
@@ -351,8 +393,9 @@ def responses_udf(
         instructions (str): The system prompt or instructions for the model.
         response_format (type[ResponseFormat]): The desired output format. Either `str` for plain text
             or a Pydantic `BaseModel` for structured JSON output. Defaults to `str`.
-        model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
-            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to configured model in DI container.
+        model_name (str | None): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
+            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to configured model in DI container
+            via ResponsesModelName if not provided.
         batch_size (int | None): Number of rows per async batch request within each partition.
             Larger values reduce API call overhead but increase memory usage.
             Defaults to None (automatic batch size optimization that dynamically
@@ -382,13 +425,15 @@ def responses_udf(
         - Consider your OpenAI tier limits: total_requests = max_concurrency × executors
         - Use Spark UI to optimize partition sizes relative to batch_size
     """
+    _model_name = model_name or CONTAINER.resolve(ResponsesModelName).value
+
     if issubclass(response_format, BaseModel):
         spark_schema = _pydantic_to_spark_schema(response_format)
         json_schema_string = serialize_base_model(response_format)
 
         @pandas_udf(returnType=spark_schema)  # type: ignore[call-overload]
         def structure_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
-            pandas_ext.responses_model(model_name)
+            pandas_ext.responses_model(_model_name)
             response_format = deserialize_base_model(json_schema_string)
             cache = AsyncBatchingMapProxy[str, response_format](
                 batch_size=batch_size,
@@ -415,7 +460,7 @@ def responses_udf(
 
         @pandas_udf(returnType=StringType())  # type: ignore[call-overload]
         def string_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
-            pandas_ext.responses_model(model_name)
+            pandas_ext.responses_model(_model_name)
             cache = AsyncBatchingMapProxy[str, str](
                 batch_size=batch_size,
                 max_concurrency=max_concurrency,
@@ -443,7 +488,7 @@ def responses_udf(
 
 def task_udf(
     task: PreparedTask[ResponseFormat],
-    model_name: str = CONTAINER.resolve(ResponsesModelName).value,
+    model_name: str | None = None,
     batch_size: int | None = None,
     max_concurrency: int = 8,
     **api_kwargs,
@@ -459,8 +504,9 @@ def task_udf(
     Args:
         task (PreparedTask): A predefined task configuration containing instructions,
             response format, and API parameters.
-        model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
-            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to configured model in DI container.
+        model_name (str | None): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
+            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to configured model in DI container
+            via ResponsesModelName if not provided.
         batch_size (int | None): Number of rows per async batch request within each partition.
             Larger values reduce API call overhead but increase memory usage.
             Defaults to None (automatic batch size optimization that dynamically
@@ -550,7 +596,7 @@ def parse_udf(
     example_table_name: str | None = None,
     example_field_name: str | None = None,
     max_examples: int = 100,
-    model_name: str = CONTAINER.resolve(ResponsesModelName).value,
+    model_name: str | None = None,
     batch_size: int | None = None,
     max_concurrency: int = 8,
     **api_kwargs,
@@ -574,8 +620,9 @@ def parse_udf(
             If provided, `example_table_name` must also be specified.
         max_examples (int): Maximum number of examples to retrieve for schema inference.
             Defaults to 100.
-        model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
-            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to configured model in DI container.
+        model_name (str | None): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
+            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to configured model in DI container
+            via ResponsesModelName if not provided.
         batch_size (int | None): Number of rows per async batch request within each partition.
             Larger values reduce API call overhead but increase memory usage.
             Defaults to None (automatic batch size optimization that dynamically
@@ -622,7 +669,7 @@ def parse_udf(
 
 
 def embeddings_udf(
-    model_name: str = CONTAINER.resolve(EmbeddingsModelName).value,
+    model_name: str | None = None,
     batch_size: int | None = None,
     max_concurrency: int = 8,
     **api_kwargs,
@@ -648,9 +695,9 @@ def embeddings_udf(
             sc.environment["AZURE_OPENAI_API_VERSION"] = "preview"
 
     Args:
-        model_name (str): For Azure OpenAI, use your deployment name (e.g., "my-embedding-deployment").
+        model_name (str | None): For Azure OpenAI, use your deployment name (e.g., "my-embedding-deployment").
             For OpenAI, use the model name (e.g., "text-embedding-3-small").
-            Defaults to configured model in DI container.
+            Defaults to configured model in DI container via EmbeddingsModelName if not provided.
         batch_size (int | None): Number of rows per async batch request within each partition.
             Larger values reduce API call overhead but increase memory usage.
             Defaults to None (automatic batch size optimization that dynamically
@@ -678,9 +725,11 @@ def embeddings_udf(
         - Use larger batch_size for embeddings compared to response generation
     """
 
+    _model_name = model_name or CONTAINER.resolve(EmbeddingsModelName).value
+
     @pandas_udf(returnType=ArrayType(FloatType()))  # type: ignore[call-overload,misc]
     def _embeddings_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
-        pandas_ext.embeddings_model(model_name)
+        pandas_ext.embeddings_model(_model_name)
         cache = AsyncBatchingMapProxy[str, np.ndarray](
             batch_size=batch_size,
             max_concurrency=max_concurrency,
