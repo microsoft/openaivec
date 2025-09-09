@@ -83,8 +83,9 @@ from openaivec import pandas_ext
 
 from typing import List
 
+
 # Set OpenAI Client (optional: this is default client if environment "OPENAI_API_KEY" is set)
-pandas_ext.use(OpenAI())
+pandas_ext.set_client(OpenAI())
 
 # Set models for responses and embeddings(optional: these are default models)
 pandas_ext.responses_model("gpt-4.1-nano")

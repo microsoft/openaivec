@@ -12,11 +12,22 @@ from openaivec import pandas_ext
 
 @pytest.mark.requires_api
 class TestPandasExt:
+    def test_get_client_and_get_async_client(self, openai_client, async_openai_client):
+        """Test get_client and get_async_client return the registered client instances."""
+        pandas_ext.set_client(openai_client)
+        pandas_ext.set_async_client(async_openai_client)
+        client = pandas_ext.get_client()
+        async_client = pandas_ext.get_async_client()
+        assert client is openai_client
+        assert async_client is async_openai_client
+        from openai import AsyncOpenAI, OpenAI
+        assert isinstance(client, OpenAI)
+        assert isinstance(async_client, AsyncOpenAI)
     @pytest.fixture(autouse=True)
     def setup_pandas_ext(self, openai_client, async_openai_client, responses_model_name, embeddings_model_name):
         """Setup pandas_ext with test clients and models."""
-        pandas_ext.use(openai_client)
-        pandas_ext.use_async(async_openai_client)
+        pandas_ext.set_client(openai_client)
+        pandas_ext.set_async_client(async_openai_client)
         pandas_ext.responses_model(responses_model_name)
         pandas_ext.embeddings_model(embeddings_model_name)
         yield
@@ -745,10 +756,10 @@ class TestPandasExt:
     # ===== CONFIGURATION & PARAMETER TESTS =====
 
     def test_configuration_methods(self):
-        """Test configuration methods use, use_async, responses_model, embeddings_model."""
+        """Test configuration methods set_client, set_async_client, responses_model, embeddings_model."""
         # Test that configuration methods exist and are callable
-        assert callable(pandas_ext.use)
-        assert callable(pandas_ext.use_async)
+        assert callable(pandas_ext.set_client)
+        assert callable(pandas_ext.set_async_client)
         assert callable(pandas_ext.responses_model)
         assert callable(pandas_ext.embeddings_model)
 

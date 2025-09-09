@@ -10,25 +10,26 @@ from openaivec import pandas_ext
 # (AZURE_OPENAI_API_KEY, AZURE_OPENAI_BASE_URL, AZURE_OPENAI_API_VERSION)
 # No explicit setup needed - clients are automatically created
 
-# Option 2: Use an existing OpenAI client instance
-client = OpenAI(api_key="your-api-key")
-pandas_ext.use(client)
 
-# Option 3: Use an existing Azure OpenAI client instance
+# Option 2: Set an existing OpenAI client instance
+client = OpenAI(api_key="your-api-key")
+pandas_ext.set_client(client)
+
+# Option 3: Set an existing Azure OpenAI client instance
 azure_client = AzureOpenAI(
     api_key="your-azure-key",
     base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
     api_version="preview"
 )
-pandas_ext.use(azure_client)
+pandas_ext.set_client(azure_client)
 
-# Option 4: Use async Azure OpenAI client instance
+# Option 4: Set async Azure OpenAI client instance
 async_azure_client = AsyncAzureOpenAI(
     api_key="your-azure-key",
     base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
     api_version="preview"
 )
-pandas_ext.use_async(async_azure_client)
+pandas_ext.set_async_client(async_azure_client)
 
 # Set up model names (optional, defaults shown)
 pandas_ext.responses_model("gpt-4.1-mini")
@@ -55,8 +56,8 @@ from openaivec._schema import InferredSchema, SchemaInferenceInput, SchemaInfere
 __all__ = [
     "embeddings_model",
     "responses_model",
-    "use",
-    "use_async",
+    "set_client",
+    "set_async_client",
 ]
 from pydantic import BaseModel
 
@@ -68,8 +69,8 @@ from openaivec._responses import AsyncBatchResponses, BatchResponses
 from openaivec.task.table import FillNaResponse, fillna
 
 __all__ = [
-    "use",
-    "use_async",
+    "set_client",
+    "set_async_client",
     "responses_model",
     "embeddings_model",
 ]
@@ -95,7 +96,7 @@ def _df_rows_to_json_series(df: pd.DataFrame) -> pd.Series:
 T = TypeVar("T")  # For pipe function return type
 
 
-def use(client: OpenAI) -> None:
+def set_client(client: OpenAI) -> None:
     """Register a custom OpenAI‑compatible client.
 
     Args:
@@ -110,7 +111,16 @@ def use(client: OpenAI) -> None:
     CONTAINER.register(OpenAI, lambda: client)
 
 
-def use_async(client: AsyncOpenAI) -> None:
+def get_client() -> OpenAI:
+    """Get the currently registered OpenAI client.
+
+    Returns:
+        OpenAI: The registered OpenAI or AzureOpenAI client instance.
+    """
+    return CONTAINER.resolve(OpenAI)
+
+
+def set_async_client(client: AsyncOpenAI) -> None:
     """Register a custom asynchronous OpenAI‑compatible client.
 
     Args:
@@ -123,6 +133,15 @@ def use_async(client: AsyncOpenAI) -> None:
         _check_azure_v1_api_url(str(client.base_url))
 
     CONTAINER.register(AsyncOpenAI, lambda: client)
+
+
+def get_async_client() -> AsyncOpenAI:
+    """Get the currently registered asynchronous OpenAI client.
+
+    Returns:
+        AsyncOpenAI: The registered AsyncOpenAI or AsyncAzureOpenAI client instance.
+    """
+    return CONTAINER.resolve(AsyncOpenAI)
 
 
 def responses_model(name: str) -> None:
