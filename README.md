@@ -1,5 +1,7 @@
 # openaivec
 
+[Contributor guidelines](AGENTS.md)
+
 **Transform your data analysis with AI-powered text processing at scale.**
 
 **openaivec** enables data analysts to seamlessly integrate OpenAI's language models into their pandas and Spark workflows. Process thousands of text records with natural language instructions, turning unstructured data into actionable insights with just a few lines of code.
