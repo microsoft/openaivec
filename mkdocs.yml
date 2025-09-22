@@ -52,6 +52,7 @@ nav:
   - Home: index.md
   - PyPI: https://pypi.org/project/openaivec/
   - GitHub: https://github.com/microsoft/openaivec
+  - Contributor Guidelines: contributor-guide.md
   - Examples:
       - Getting Started: examples/pandas.ipynb
       - Intelligent Fill: examples/intelligent_fill.ipynb
