@@ -52,8 +52,6 @@ import numpy as np
 import pandas as pd
 import tiktoken
 from openai import AsyncOpenAI, OpenAI
-
-from openaivec._schema import InferredSchema, SchemaInferenceInput, SchemaInferer
 from pydantic import BaseModel
 
 from openaivec._embeddings import AsyncBatchEmbeddings, BatchEmbeddings
@@ -61,6 +59,7 @@ from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, 
 from openaivec._provider import CONTAINER, _check_azure_v1_api_url
 from openaivec._proxy import AsyncBatchingMapProxy, BatchingMapProxy
 from openaivec._responses import AsyncBatchResponses, BatchResponses
+from openaivec._schema import InferredSchema, SchemaInferenceInput, SchemaInferer
 from openaivec.task.table import FillNaResponse, fillna
 
 __all__ = [
