@@ -83,11 +83,11 @@ from openaivec import pandas_ext
 
 from typing import List
 
-# Set OpenAI Client (optional: this is default client if environment "OPENAI_API_KEY" is set)
+# Set OpenAI/Azure client (optional; auto-detected from environment variables)
 pandas_ext.set_client(OpenAI())
 
-# Set models for responses and embeddings(optional: these are default models)
-pandas_ext.set_responses_model("gpt-4.1-nano")
+# Set models for responses and embeddings (optional; defaults shown)
+pandas_ext.set_responses_model("gpt-4.1-mini")
 pandas_ext.set_embeddings_model("text-embedding-3-small")
 
 
@@ -95,7 +95,7 @@ fruits: List[str] = ["apple", "banana", "orange", "grape", "kiwi", "mango", "pea
 fruits_df = pd.DataFrame({"name": fruits})
 ```
 
-`frults_df` is a `pandas` DataFrame with a single column `name` containing the names of fruits. We can mutate the Field `name` with the accessor `ai` to add a new column `color` with the color of each fruit.:
+`fruits_df` is a `pandas` DataFrame with a single column `name` containing the names of fruits. We can mutate the field `name` with the accessor `ai` to add a new column `color` with the color of each fruit:
 
 ```python
 fruits_df.assign(
@@ -221,11 +221,11 @@ results = asyncio.run(analyze_feedback())
 
 ### Performance Tuning Parameters
 
-**`batch_size`** (default: 128 for responses, 128 for embeddings):
-- Controls how many inputs are processed in a single API request
-- **Larger values**: Fewer API calls, reduced overhead, but higher memory usage
-- **Smaller values**: More granular processing, better for rate-limited scenarios
-- **Recommended**: 32-128 for responses, 64-256 for embeddings
+**`batch_size`** (default: adaptive auto-tuning):
+- Leave unset (`None`) to let `BatchingMapProxy` pick an efficient size (targets 30–60 seconds per batch)
+- Set a positive integer for deterministic batch sizes when coordinating with rate limits
+- Use `0` or a negative value only when everything fits in a single request
+- Typical ranges: 32–128 for responses, 64–256 for embeddings when you need fixed sizes
 
 **`max_concurrency`** (default: 8):
 - Limits the number of simultaneous API requests
