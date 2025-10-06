@@ -381,8 +381,8 @@ class TestAzureV1ApiWarning:
             else:
                 assert len(w) == 0, f"Unexpected warning for URL: {legacy_url}"
 
-    def test_pandas_ext_use_azure_warning(self):
-        """Test that pandas_ext.use() shows warning for legacy Azure URLs."""
+    def test_pandas_ext_set_client_azure_warning(self):
+        """Test that pandas_ext.set_client() shows warning for legacy Azure URLs."""
         from openai import AzureOpenAI
 
         from openaivec import pandas_ext
@@ -394,7 +394,7 @@ class TestAzureV1ApiWarning:
 
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            pandas_ext.use(legacy_client)
+            pandas_ext.set_client(legacy_client)
             assert len(w) > 0, "Expected warning for legacy Azure URL"
             assert "v1 API is recommended" in str(w[0].message)
 

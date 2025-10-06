@@ -10,29 +10,32 @@ from openaivec import pandas_ext
 # (AZURE_OPENAI_API_KEY, AZURE_OPENAI_BASE_URL, AZURE_OPENAI_API_VERSION)
 # No explicit setup needed - clients are automatically created
 
-# Option 2: Use an existing OpenAI client instance
+# Option 2: Register an existing OpenAI client instance
 client = OpenAI(api_key="your-api-key")
-pandas_ext.use(client)
+pandas_ext.set_client(client)
 
-# Option 3: Use an existing Azure OpenAI client instance
+# Option 3: Register an Azure OpenAI client instance
 azure_client = AzureOpenAI(
     api_key="your-azure-key",
     base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
     api_version="preview"
 )
-pandas_ext.use(azure_client)
+pandas_ext.set_client(azure_client)
 
-# Option 4: Use async Azure OpenAI client instance
+# Option 4: Register an async Azure OpenAI client instance
 async_azure_client = AsyncAzureOpenAI(
     api_key="your-azure-key",
     base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
     api_version="preview"
 )
-pandas_ext.use_async(async_azure_client)
+pandas_ext.set_async_client(async_azure_client)
 
 # Set up model names (optional, defaults shown)
-pandas_ext.responses_model("gpt-4.1-mini")
-pandas_ext.embeddings_model("text-embedding-3-small")
+pandas_ext.set_responses_model("gpt-4.1-mini")
+pandas_ext.set_embeddings_model("text-embedding-3-small")
+
+# Inspect current configuration
+configured_model = pandas_ext.get_responses_model()
 ```
 
 This module provides `.ai` and `.aio` accessors for pandas Series and DataFrames
@@ -51,13 +54,6 @@ import tiktoken
 from openai import AsyncOpenAI, OpenAI
 
 from openaivec._schema import InferredSchema, SchemaInferenceInput, SchemaInferer
-
-__all__ = [
-    "embeddings_model",
-    "responses_model",
-    "use",
-    "use_async",
-]
 from pydantic import BaseModel
 
 from openaivec._embeddings import AsyncBatchEmbeddings, BatchEmbeddings
@@ -68,10 +64,14 @@ from openaivec._responses import AsyncBatchResponses, BatchResponses
 from openaivec.task.table import FillNaResponse, fillna
 
 __all__ = [
-    "use",
-    "use_async",
-    "responses_model",
-    "embeddings_model",
+    "get_async_client",
+    "get_client",
+    "get_embeddings_model",
+    "get_responses_model",
+    "set_async_client",
+    "set_client",
+    "set_embeddings_model",
+    "set_responses_model",
 ]
 
 _LOGGER = logging.getLogger(__name__)
@@ -95,30 +95,16 @@ def _df_rows_to_json_series(df: pd.DataFrame) -> pd.Series:
 T = TypeVar("T")  # For pipe function return type
 
 
-def use(client: OpenAI) -> None:
-    """Register a custom OpenAI‑compatible client.
-    deprecated: use `set_client` instead.
-
-    Args:
-        client (OpenAI): A pre‑configured `openai.OpenAI` or
-            `openai.AzureOpenAI` instance.
-            The same instance is reused by every helper in this module.
-    """
-    # Check Azure v1 API URL if using AzureOpenAI client
-    if client.__class__.__name__ == "AzureOpenAI" and hasattr(client, "base_url"):
-        _check_azure_v1_api_url(str(client.base_url))
-
-    CONTAINER.register(OpenAI, lambda: client)
-
-
 def set_client(client: OpenAI) -> None:
-    """Alias for `use` to register a custom OpenAI-compatible client.
+    """Register a custom OpenAI-compatible client for pandas helpers.
 
     Args:
         client (OpenAI): A pre-configured `openai.OpenAI` or
-            `openai.AzureOpenAI` instance.
-            The same instance is reused by every helper in this module.
+            `openai.AzureOpenAI` instance reused by every helper in this module.
     """
+    if client.__class__.__name__ == "AzureOpenAI" and hasattr(client, "base_url"):
+        _check_azure_v1_api_url(str(client.base_url))
+
     CONTAINER.register(OpenAI, lambda: client)
 
 
@@ -131,30 +117,16 @@ def get_client() -> OpenAI:
     return CONTAINER.resolve(OpenAI)
 
 
-def use_async(client: AsyncOpenAI) -> None:
-    """Register a custom asynchronous OpenAI‑compatible client.
-    deprecated: use `set_async_client` instead.
-
-    Args:
-        client (AsyncOpenAI): A pre‑configured `openai.AsyncOpenAI` or
-            `openai.AsyncAzureOpenAI` instance.
-            The same instance is reused by every helper in this module.
-    """
-    # Check Azure v1 API URL if using AsyncAzureOpenAI client
-    if client.__class__.__name__ == "AsyncAzureOpenAI" and hasattr(client, "base_url"):
-        _check_azure_v1_api_url(str(client.base_url))
-
-    CONTAINER.register(AsyncOpenAI, lambda: client)
-
-
 def set_async_client(client: AsyncOpenAI) -> None:
-    """Alias for `use_async` to register a custom asynchronous OpenAI-compatible client.
+    """Register a custom asynchronous OpenAI-compatible client.
 
     Args:
         client (AsyncOpenAI): A pre-configured `openai.AsyncOpenAI` or
-            `openai.AsyncAzureOpenAI` instance.
-            The same instance is reused by every helper in this module.
+            `openai.AsyncAzureOpenAI` instance reused by every helper in this module.
     """
+    if client.__class__.__name__ == "AsyncAzureOpenAI" and hasattr(client, "base_url"):
+        _check_azure_v1_api_url(str(client.base_url))
+
     CONTAINER.register(AsyncOpenAI, lambda: client)
 
 
@@ -167,19 +139,8 @@ def get_async_client() -> AsyncOpenAI:
     return CONTAINER.resolve(AsyncOpenAI)
 
 
-def responses_model(name: str) -> None:
-    """Override the model used for text responses.
-    deprecated: use `set_responses_model` instead.
-
-    Args:
-        name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name
-            (for example, ``gpt-4.1-mini``).
-    """
-    CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName(name))
-
-
 def set_responses_model(name: str) -> None:
-    """Alias for `responses_model` to override the model used for text responses.
+    """Override the model used for text responses.
 
     Args:
         name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name
@@ -197,20 +158,8 @@ def get_responses_model() -> str:
     return CONTAINER.resolve(ResponsesModelName).value
 
 
-def embeddings_model(name: str) -> None:
-    """Override the model used for text embeddings.
-
-    deprecated: use `set_embeddings_model` instead.
-
-    Args:
-        name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name,
-            e.g. ``text-embedding-3-small``.
-    """
-    CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName(name))
-
-
 def set_embeddings_model(name: str) -> None:
-    """Alias for `embeddings_model` to override the model used for text embeddings.
+    """Override the model used for text embeddings.
 
     Args:
         name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name,
@@ -722,7 +671,7 @@ class OpenAIVecSeriesAccessor:
             animals.ai.count_tokens()
             ```
             This method uses the `tiktoken` library to count tokens based on the
-            model name set by `responses_model`.
+            model name configured via `set_responses_model`.
 
         Returns:
             pandas.Series: Token counts for each element.

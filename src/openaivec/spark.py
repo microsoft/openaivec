@@ -433,7 +433,7 @@ def responses_udf(
 
         @pandas_udf(returnType=spark_schema)  # type: ignore[call-overload]
         def structure_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
-            pandas_ext.responses_model(_model_name)
+            pandas_ext.set_responses_model(_model_name)
             response_format = deserialize_base_model(json_schema_string)
             cache = AsyncBatchingMapProxy[str, response_format](
                 batch_size=batch_size,
@@ -460,7 +460,7 @@ def responses_udf(
 
         @pandas_udf(returnType=StringType())  # type: ignore[call-overload]
         def string_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
-            pandas_ext.responses_model(_model_name)
+            pandas_ext.set_responses_model(_model_name)
             cache = AsyncBatchingMapProxy[str, str](
                 batch_size=batch_size,
                 max_concurrency=max_concurrency,
@@ -729,7 +729,7 @@ def embeddings_udf(
 
     @pandas_udf(returnType=ArrayType(FloatType()))  # type: ignore[call-overload,misc]
     def _embeddings_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
-        pandas_ext.embeddings_model(_model_name)
+        pandas_ext.set_embeddings_model(_model_name)
         cache = AsyncBatchingMapProxy[str, np.ndarray](
             batch_size=batch_size,
             max_concurrency=max_concurrency,

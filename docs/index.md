@@ -84,11 +84,11 @@ from openaivec import pandas_ext
 from typing import List
 
 # Set OpenAI Client (optional: this is default client if environment "OPENAI_API_KEY" is set)
-pandas_ext.use(OpenAI())
+pandas_ext.set_client(OpenAI())
 
 # Set models for responses and embeddings(optional: these are default models)
-pandas_ext.responses_model("gpt-4.1-nano")
-pandas_ext.embeddings_model("text-embedding-3-small")
+pandas_ext.set_responses_model("gpt-4.1-nano")
+pandas_ext.set_embeddings_model("text-embedding-3-small")
 
 
 fruits: List[str] = ["apple", "banana", "orange", "grape", "kiwi", "mango", "peach", "pear", "pineapple", "strawberry"]
