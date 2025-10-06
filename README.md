@@ -163,13 +163,13 @@ os.environ["OPENAI_API_KEY"] = "your-api-key-here"
 
 # Authentication Option 2: Custom client (optional)
 # from openai import OpenAI, AsyncOpenAI
-# pandas_ext.use(OpenAI())
+# pandas_ext.set_client(OpenAI())
 # For async operations:
-# pandas_ext.use_async(AsyncOpenAI())
+# pandas_ext.set_async_client(AsyncOpenAI())
 
 # Configure model (optional - defaults to gpt-4.1-mini)
 # For Azure OpenAI: use your deployment name, for OpenAI: use model name
-pandas_ext.responses_model("gpt-4.1-mini")
+pandas_ext.set_responses_model("gpt-4.1-mini")
 
 # Create your data
 df = pd.DataFrame({"name": ["panda", "rabbit", "koala"]})
@@ -196,7 +196,7 @@ When using reasoning models (o1-preview, o1-mini, o3-mini, etc.), you must set `
 
 ```python
 # For reasoning models like o1-preview, o1-mini, o3-mini
-pandas_ext.responses_model("o1-mini")  # Set your reasoning model
+pandas_ext.set_responses_model("o1-mini")  # Set your reasoning model
 
 # MUST use temperature=None with reasoning models
 result = df.assign(
@@ -267,7 +267,7 @@ import pandas as pd
 from openaivec import pandas_ext
 
 # Setup (same as synchronous version)
-pandas_ext.responses_model("gpt-4.1-mini")
+pandas_ext.set_responses_model("gpt-4.1-mini")
 
 df = pd.DataFrame({"text": [
     "This product is amazing!",

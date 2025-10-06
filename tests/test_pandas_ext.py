@@ -15,10 +15,10 @@ class TestPandasExt:
     @pytest.fixture(autouse=True)
     def setup_pandas_ext(self, openai_client, async_openai_client, responses_model_name, embeddings_model_name):
         """Setup pandas_ext with test clients and models."""
-        pandas_ext.use(openai_client)
-        pandas_ext.use_async(async_openai_client)
-        pandas_ext.responses_model(responses_model_name)
-        pandas_ext.embeddings_model(embeddings_model_name)
+        pandas_ext.set_client(openai_client)
+        pandas_ext.set_async_client(async_openai_client)
+        pandas_ext.set_responses_model(responses_model_name)
+        pandas_ext.set_embeddings_model(embeddings_model_name)
         yield
 
     # ===== BASIC SERIES METHODS =====
@@ -744,18 +744,31 @@ class TestPandasExt:
 
     # ===== CONFIGURATION & PARAMETER TESTS =====
 
-    def test_configuration_methods(self):
-        """Test configuration methods use, use_async, responses_model, embeddings_model."""
+    def test_configuration_methods(self, openai_client, async_openai_client):
+        """Test configuration helpers for clients and model names."""
         # Test that configuration methods exist and are callable
-        assert callable(pandas_ext.use)
-        assert callable(pandas_ext.use_async)
-        assert callable(pandas_ext.responses_model)
-        assert callable(pandas_ext.embeddings_model)
+        assert callable(pandas_ext.set_client)
+        assert callable(pandas_ext.get_client)
+        assert callable(pandas_ext.set_async_client)
+        assert callable(pandas_ext.get_async_client)
+        assert callable(pandas_ext.set_responses_model)
+        assert callable(pandas_ext.get_responses_model)
+        assert callable(pandas_ext.set_embeddings_model)
+        assert callable(pandas_ext.get_embeddings_model)
 
         # Test model configuration
         try:
-            pandas_ext.responses_model("gpt-4.1-mini")
-            pandas_ext.embeddings_model("text-embedding-3-small")
+            pandas_ext.set_client(openai_client)
+            assert pandas_ext.get_client() is openai_client
+
+            pandas_ext.set_async_client(async_openai_client)
+            assert pandas_ext.get_async_client() is async_openai_client
+
+            pandas_ext.set_responses_model("gpt-4.1-mini")
+            assert pandas_ext.get_responses_model() == "gpt-4.1-mini"
+
+            pandas_ext.set_embeddings_model("text-embedding-3-small")
+            assert pandas_ext.get_embeddings_model() == "text-embedding-3-small"
         except Exception as e:
             pytest.fail(f"Model configuration failed unexpectedly: {e}")
 
