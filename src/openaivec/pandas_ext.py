@@ -200,11 +200,32 @@ def get_responses_model() -> str:
 def embeddings_model(name: str) -> None:
     """Override the model used for text embeddings.
 
+    deprecated: use `set_embeddings_model` instead.
+
     Args:
         name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name,
             e.g. ``text-embedding-3-small``.
     """
     CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName(name))
+
+
+def set_embeddings_model(name: str) -> None:
+    """Alias for `embeddings_model` to override the model used for text embeddings.
+
+    Args:
+        name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name,
+            e.g. ``text-embedding-3-small``.
+    """
+    CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName(name))
+
+
+def get_embeddings_model() -> str:
+    """Get the currently registered model name for text embeddings.
+
+    Returns:
+        str: The model name (for example, ``text-embedding-3-small``).
+    """
+    return CONTAINER.resolve(EmbeddingsModelName).value
 
 
 def _extract_value(x, series_name):
