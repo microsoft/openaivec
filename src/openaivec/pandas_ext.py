@@ -169,12 +169,32 @@ def get_async_client() -> AsyncOpenAI:
 
 def responses_model(name: str) -> None:
     """Override the model used for text responses.
+    deprecated: use `set_responses_model` instead.
 
     Args:
         name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name
             (for example, ``gpt-4.1-mini``).
     """
     CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName(name))
+
+
+def set_responses_model(name: str) -> None:
+    """Alias for `responses_model` to override the model used for text responses.
+
+    Args:
+        name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name
+            (for example, ``gpt-4.1-mini``).
+    """
+    CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName(name))
+
+
+def get_responses_model() -> str:
+    """Get the currently registered model name for text responses.
+
+    Returns:
+        str: The model name (for example, ``gpt-4.1-mini``).
+    """
+    return CONTAINER.resolve(ResponsesModelName).value
 
 
 def embeddings_model(name: str) -> None:
