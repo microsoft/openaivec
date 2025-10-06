@@ -110,6 +110,26 @@ def use(client: OpenAI) -> None:
     CONTAINER.register(OpenAI, lambda: client)
 
 
+def set_client(client: OpenAI) -> None:
+    """Alias for `use` to register a custom OpenAI-compatible client.
+
+    Args:
+        client (OpenAI): A pre-configured `openai.OpenAI` or
+            `openai.AzureOpenAI` instance.
+            The same instance is reused by every helper in this module.
+    """
+    CONTAINER.register(OpenAI, lambda: client)
+
+
+def get_client() -> OpenAI:
+    """Get the currently registered OpenAI-compatible client.
+
+    Returns:
+        OpenAI: The registered `openai.OpenAI` or `openai.AzureOpenAI` instance.
+    """
+    return CONTAINER.resolve(OpenAI)
+
+
 def use_async(client: AsyncOpenAI) -> None:
     """Register a custom asynchronous OpenAI‑compatible client.
 
