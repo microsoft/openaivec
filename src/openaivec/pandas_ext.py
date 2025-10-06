@@ -97,6 +97,7 @@ T = TypeVar("T")  # For pipe function return type
 
 def use(client: OpenAI) -> None:
     """Register a custom OpenAI‑compatible client.
+    deprecated: use `set_client` instead.
 
     Args:
         client (OpenAI): A pre‑configured `openai.OpenAI` or
@@ -132,6 +133,7 @@ def get_client() -> OpenAI:
 
 def use_async(client: AsyncOpenAI) -> None:
     """Register a custom asynchronous OpenAI‑compatible client.
+    deprecated: use `set_async_client` instead.
 
     Args:
         client (AsyncOpenAI): A pre‑configured `openai.AsyncOpenAI` or
@@ -143,6 +145,26 @@ def use_async(client: AsyncOpenAI) -> None:
         _check_azure_v1_api_url(str(client.base_url))
 
     CONTAINER.register(AsyncOpenAI, lambda: client)
+
+
+def set_async_client(client: AsyncOpenAI) -> None:
+    """Alias for `use_async` to register a custom asynchronous OpenAI-compatible client.
+
+    Args:
+        client (AsyncOpenAI): A pre-configured `openai.AsyncOpenAI` or
+            `openai.AsyncAzureOpenAI` instance.
+            The same instance is reused by every helper in this module.
+    """
+    CONTAINER.register(AsyncOpenAI, lambda: client)
+
+
+def get_async_client() -> AsyncOpenAI:
+    """Get the currently registered asynchronous OpenAI-compatible client.
+
+    Returns:
+        AsyncOpenAI: The registered `openai.AsyncOpenAI` or `openai.AsyncAzureOpenAI` instance.
+    """
+    return CONTAINER.resolve(AsyncOpenAI)
 
 
 def responses_model(name: str) -> None:
