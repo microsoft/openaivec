@@ -150,6 +150,8 @@ from openaivec._serialize import deserialize_base_model, serialize_base_model
 from openaivec._util import TextChunker
 
 __all__ = [
+    "setup",
+    "setup_azure",
     "responses_udf",
     "task_udf",
     "embeddings_udf",
@@ -240,50 +242,6 @@ def setup_azure(
         CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName(embeddings_model_name))
 
     CONTAINER.clear_singletons()
-
-
-def set_responses_model(model_name: str):
-    """Set the default model name for response generation in the DI container.
-
-    Args:
-        model_name (str): The model name to set as default for responses.
-    """
-    CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName(model_name))
-    CONTAINER.clear_singletons()
-
-
-def get_responses_model() -> str | None:
-    """Get the default model name for response generation from the DI container.
-
-    Returns:
-        str | None: The default model name for responses, or None if not set.
-    """
-    try:
-        return CONTAINER.resolve(ResponsesModelName).value
-    except Exception:
-        return None
-
-
-def set_embeddings_model(model_name: str):
-    """Set the default model name for embeddings in the DI container.
-
-    Args:
-        model_name (str): The model name to set as default for embeddings.
-    """
-    CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName(model_name))
-    CONTAINER.clear_singletons()
-
-
-def get_embeddings_model() -> str | None:
-    """Get the default model name for embeddings from the DI container.
-
-    Returns:
-        str | None: The default model name for embeddings, or None if not set.
-    """
-    try:
-        return CONTAINER.resolve(EmbeddingsModelName).value
-    except Exception:
-        return None
 
 
 def _python_type_to_spark(python_type):
