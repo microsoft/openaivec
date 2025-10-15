@@ -6,6 +6,27 @@
 
 **openaivec** enables data analysts to seamlessly integrate OpenAI's language models into their pandas and Spark workflows. Process thousands of text records with natural language instructions, turning unstructured data into actionable insights with just a few lines of code.
 
+## Contents
+- [Why openaivec?](#why-openaivec)
+- [Quick Start](#-quick-start-from-text-to-insights-in-seconds)
+- [Real-World Impact](#-real-world-impact)
+- [Overview](#overview)
+- [Core Workflows](#core-workflows)
+- [Using with Apache Spark UDFs](#using-with-apache-spark-udfs)
+- [Building Prompts](#building-prompts)
+- [Using with Microsoft Fabric](#using-with-microsoft-fabric)
+- [Contributing](#contributing)
+- [Additional Resources](#additional-resources)
+- [Community](#community)
+
+## Why openaivec?
+- Drop-in `.ai` and `.aio` DataFrame accessors keep pandas analysts in their favorite tools.
+- Smart batching (`BatchingMapProxy`) deduplicates prompts, enforces ordered outputs, and shortens runtimes without manual tuning.
+- Built-in caches, retry logic, and reasoning model safeguards cut noisy boilerplate from production pipelines.
+- Ready-made Spark UDF builders and Microsoft Fabric guides take AI workloads from notebooks into enterprise-scale ETL.
+- Pre-configured task library and `FewShotPromptBuilder` ship curated prompts and structured outputs validated by Pydantic.
+- Supports OpenAI and Azure OpenAI clients interchangeably, including async workloads and embeddings.
+
 ## 🚀 Quick Start: From Text to Insights in Seconds
 
 Imagine analyzing 10,000 customer reviews. Instead of manual work, just write:
@@ -85,21 +106,28 @@ This approach helps reduce latency and simplifies your code.
 Additionally, it integrates effortlessly with Pandas DataFrames and Apache Spark UDFs, making it easy to incorporate
 into your data processing pipelines.
 
-## Features
+Behind the scenes, `BatchingMapProxy` and `AsyncBatchingMapProxy` deduplicate repeated inputs, guarantee response order,
+and unblock waiters even when upstream APIs error. Caches created via helpers such as `responses_with_cache` plug into
+this batching layer so expensive prompts are reused across pandas, Spark, and async flows. Progress bars surface
+automatically in notebook environments when `show_progress=True`.
 
-- Vectorized API requests for processing multiple inputs at once.
-- Seamless integration with Pandas DataFrames.
-- A UDF builder for Apache Spark.
-- Compatibility with multiple OpenAI clients, including Azure OpenAI.
+## Core Capabilities
+
+- Vectorized request batching with automatic deduplication, retries, and cache hooks for any OpenAI-compatible client.
+- pandas `.ai` and `.aio` accessors for synchronous and asynchronous DataFrame pipelines, including `ai.extract` helpers.
+- Task library with Pydantic-backed schemas for consistent structured outputs across pandas and Spark jobs.
+- Spark UDF builders (`responses_udf`, `embeddings_udf`, `parse_udf`, `task_udf`, etc.) for large-scale ETL and BI.
+- Embeddings, token counting, and similarity utilities for search and retrieval use cases.
+- Prompt tooling (`FewShotPromptBuilder`, `improve`) to craft and iterate production-ready instructions.
 
 ## Key Benefits
 
-- **🚀 Performance**: Vectorized processing handles thousands of records in minutes, not hours
-- **💰 Cost Efficiency**: Automatic deduplication significantly reduces API costs on typical datasets
-- **🔗 Integration**: Works within existing pandas/Spark workflows without architectural changes
-- **📈 Scalability**: Same API scales from exploratory analysis (100s of records) to production systems (millions of records)
-- **🎯 Pre-configured Tasks**: Ready-to-use task library with optimized prompts for common use cases
-- **🏢 Enterprise Ready**: Microsoft Fabric integration, Apache Spark UDFs, Azure OpenAI compatibility
+- **🚀 Throughput**: Smart batching and concurrency tuning process thousands of records in minutes, not hours.
+- **💰 Cost Efficiency**: Input deduplication and optional caches cut redundant token usage on real-world datasets.
+- **🛡️ Reliability**: Guardrails for reasoning models, informative errors, and automatic waiter release keep pipelines healthy.
+- **🔗 Integration**: pandas, Spark, async, and Fabric workflows share the same API surface—no bespoke adapters required.
+- **🎯 Consistency**: Pre-configured tasks and extractors deliver structured outputs validated with Pydantic models.
+- **🏢 Enterprise Ready**: Azure OpenAI parity, Microsoft Fabric walkthroughs, and Spark UDFs shorten the path to production.
 
 ## Requirements
 
@@ -119,7 +147,7 @@ If you want to uninstall the package, you can do so with:
 pip uninstall openaivec
 ```
 
-## Basic Usage
+## Core Workflows
 
 ### Direct API Usage
 

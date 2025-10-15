@@ -249,7 +249,7 @@ class OpenAIVecSeriesAccessor:
         instructions: str,
         response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
-        show_progress: bool = False,
+        show_progress: bool = True,
         **api_kwargs,
     ) -> pd.Series:
         """Call an LLM once for every Series element.
@@ -282,7 +282,7 @@ class OpenAIVecSeriesAccessor:
             batch_size (int | None, optional): Number of prompts grouped into a single
                 request. Defaults to ``None`` (automatic batch size optimization
                 based on execution time). Set to a positive integer for fixed batch size.
-            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
             **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
 
         Returns:
@@ -341,7 +341,7 @@ class OpenAIVecSeriesAccessor:
             name=self._obj.name,
         )
 
-    def embeddings(self, batch_size: int | None = None, show_progress: bool = False, **api_kwargs) -> pd.Series:
+    def embeddings(self, batch_size: int | None = None, show_progress: bool = True, **api_kwargs) -> pd.Series:
         """Compute OpenAI embeddings for every Series element.
 
         Example:
@@ -362,7 +362,7 @@ class OpenAIVecSeriesAccessor:
             batch_size (int | None, optional): Number of inputs grouped into a
                 single request. Defaults to ``None`` (automatic batch size optimization
                 based on execution time). Set to a positive integer for fixed batch size.
-            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
             **api_kwargs: Additional OpenAI API parameters (e.g., dimensions for text-embedding-3 models).
 
         Returns:
@@ -417,7 +417,7 @@ class OpenAIVecSeriesAccessor:
         self,
         task: PreparedTask,
         batch_size: int | None = None,
-        show_progress: bool = False,
+        show_progress: bool = True,
     ) -> pd.Series:
         """Execute a prepared task on every Series element.
 
@@ -447,7 +447,7 @@ class OpenAIVecSeriesAccessor:
             batch_size (int | None, optional): Number of prompts grouped into a single
                 request to optimize API usage. Defaults to ``None`` (automatic batch size
                 optimization based on execution time). Set to a positive integer for fixed batch size.
-            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
 
         Note:
             The task's stored API parameters are used. Core batching / routing keys
@@ -520,7 +520,7 @@ class OpenAIVecSeriesAccessor:
         response_format: type[ResponseFormat] | None = None,
         max_examples: int = 100,
         batch_size: int | None = None,
-        show_progress: bool = False,
+        show_progress: bool = True,
         **api_kwargs,
     ) -> pd.Series:
         """Parse Series values into structured data using an LLM.
@@ -544,7 +544,7 @@ class OpenAIVecSeriesAccessor:
             batch_size (int | None, optional): Number of requests to process
                 per batch. None enables automatic optimization. Defaults to None.
             show_progress (bool, optional): Display progress bar in Jupyter
-                notebooks. Defaults to False.
+                notebooks. Defaults to True.
             **api_kwargs: Additional OpenAI API parameters (temperature, top_p,
                 frequency_penalty, presence_penalty, seed, etc.).
 
@@ -770,7 +770,7 @@ class OpenAIVecDataFrameAccessor:
         instructions: str,
         response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
-        show_progress: bool = False,
+        show_progress: bool = True,
         **api_kwargs,
     ) -> pd.Series:
         """Generate a response for each row after serializing it to JSON.
@@ -801,7 +801,7 @@ class OpenAIVecDataFrameAccessor:
             batch_size (int | None, optional): Number of requests sent in one batch.
                 Defaults to ``None`` (automatic batch size optimization
                 based on execution time). Set to a positive integer for fixed batch size.
-            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
             **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
 
         Returns:
@@ -840,7 +840,7 @@ class OpenAIVecDataFrameAccessor:
         self,
         task: PreparedTask,
         batch_size: int | None = None,
-        show_progress: bool = False,
+        show_progress: bool = True,
     ) -> pd.Series:
         """Execute a prepared task on each DataFrame row after serializing it to JSON.
 
@@ -874,7 +874,7 @@ class OpenAIVecDataFrameAccessor:
             batch_size (int | None, optional): Number of requests sent in one batch
                 to optimize API usage. Defaults to ``None`` (automatic batch size
                 optimization based on execution time). Set to a positive integer for fixed batch size.
-            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
 
         Note:
             The task's stored API parameters are used. Core batching / routing
@@ -939,7 +939,7 @@ class OpenAIVecDataFrameAccessor:
         response_format: type[ResponseFormat] | None = None,
         max_examples: int = 100,
         batch_size: int | None = None,
-        show_progress: bool = False,
+        show_progress: bool = True,
         **api_kwargs,
     ) -> pd.Series:
         """Parse DataFrame rows into structured data using an LLM.
@@ -960,7 +960,7 @@ class OpenAIVecDataFrameAccessor:
             batch_size (int | None, optional): Rows per API batch. None
                 enables automatic optimization. Defaults to None.
             show_progress (bool, optional): Show progress bar in Jupyter
-                notebooks. Defaults to False.
+                notebooks. Defaults to True.
             **api_kwargs: Additional OpenAI API parameters.
 
         Returns:
@@ -1084,7 +1084,7 @@ class OpenAIVecDataFrameAccessor:
         target_column_name: str,
         max_examples: int = 500,
         batch_size: int | None = None,
-        show_progress: bool = False,
+        show_progress: bool = True,
     ) -> pd.DataFrame:
         """Fill missing values in a DataFrame column using AI-powered inference.
 
@@ -1102,7 +1102,7 @@ class OpenAIVecDataFrameAccessor:
             batch_size (int | None, optional): Number of requests sent in one batch
                 to optimize API usage. Defaults to ``None`` (automatic batch size
                 optimization based on execution time). Set to a positive integer for fixed batch size.
-            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
 
         Returns:
             pandas.DataFrame: A new DataFrame with missing values filled in the target
@@ -1251,7 +1251,7 @@ class AsyncOpenAIVecSeriesAccessor:
         response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
         max_concurrency: int = 8,
-        show_progress: bool = False,
+        show_progress: bool = True,
         **api_kwargs,
     ) -> pd.Series:
         """Call an LLM once for every Series element (asynchronously).
@@ -1281,7 +1281,7 @@ class AsyncOpenAIVecSeriesAccessor:
                 based on execution time). Set to a positive integer for fixed batch size.
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to ``8``.
-            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
             **api_kwargs: Additional keyword arguments forwarded verbatim to
                 ``AsyncOpenAI.responses.parse`` (e.g. ``temperature``, ``top_p``,
                 ``max_output_tokens``, penalties, future parameters). Core batching keys
@@ -1360,7 +1360,7 @@ class AsyncOpenAIVecSeriesAccessor:
         )
 
     async def embeddings(
-        self, batch_size: int | None = None, max_concurrency: int = 8, show_progress: bool = False, **api_kwargs
+        self, batch_size: int | None = None, max_concurrency: int = 8, show_progress: bool = True, **api_kwargs
     ) -> pd.Series:
         """Compute OpenAI embeddings for every Series element (asynchronously).
 
@@ -1385,7 +1385,7 @@ class AsyncOpenAIVecSeriesAccessor:
                 based on execution time). Set to a positive integer for fixed batch size.
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to ``8``.
-            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
             **api_kwargs: Additional OpenAI API parameters (e.g., dimensions for text-embedding-3 models).
 
         Returns:
@@ -1467,7 +1467,7 @@ class AsyncOpenAIVecSeriesAccessor:
         task: PreparedTask,
         batch_size: int | None = None,
         max_concurrency: int = 8,
-        show_progress: bool = False,
+        show_progress: bool = True,
     ) -> pd.Series:
         """Execute a prepared task on every Series element (asynchronously).
 
@@ -1500,7 +1500,7 @@ class AsyncOpenAIVecSeriesAccessor:
                 optimization based on execution time). Set to a positive integer for fixed batch size.
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to 8.
-            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
 
         Note:
             The task's stored API parameters are used. Core batching / routing
@@ -1575,7 +1575,7 @@ class AsyncOpenAIVecSeriesAccessor:
         max_examples: int = 100,
         batch_size: int | None = None,
         max_concurrency: int = 8,
-        show_progress: bool = False,
+        show_progress: bool = True,
         **api_kwargs,
     ) -> pd.Series:
         """Parse Series values into structured data using an LLM (asynchronously).
@@ -1594,7 +1594,7 @@ class AsyncOpenAIVecSeriesAccessor:
                 automatic optimization. Defaults to None.
             max_concurrency (int, optional): Maximum concurrent API requests.
                 Defaults to 8.
-            show_progress (bool, optional): Show progress bar. Defaults to False.
+            show_progress (bool, optional): Show progress bar. Defaults to True.
             **api_kwargs: Additional OpenAI API parameters.
 
         Returns:
@@ -1696,7 +1696,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
         max_concurrency: int = 8,
-        show_progress: bool = False,
+        show_progress: bool = True,
         **api_kwargs,
     ) -> pd.Series:
         """Generate a response for each row after serializing it to JSON (asynchronously).
@@ -1731,7 +1731,7 @@ class AsyncOpenAIVecDataFrameAccessor:
             **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to ``8``.
-            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
 
         Returns:
             pandas.Series: Responses aligned with the DataFrame's original index.
@@ -1780,7 +1780,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         task: PreparedTask,
         batch_size: int | None = None,
         max_concurrency: int = 8,
-        show_progress: bool = False,
+        show_progress: bool = True,
     ) -> pd.Series:
         """Execute a prepared task on each DataFrame row after serializing it to JSON (asynchronously).
 
@@ -1817,7 +1817,7 @@ class AsyncOpenAIVecDataFrameAccessor:
                 optimization based on execution time). Set to a positive integer for fixed batch size.
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to 8.
-            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
 
         Note:
             The task's stored API parameters are used. Core batching / routing
@@ -1884,7 +1884,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         max_examples: int = 100,
         batch_size: int | None = None,
         max_concurrency: int = 8,
-        show_progress: bool = False,
+        show_progress: bool = True,
         **api_kwargs,
     ) -> pd.Series:
         """Parse DataFrame rows into structured data using an LLM (asynchronously).
@@ -1903,7 +1903,7 @@ class AsyncOpenAIVecDataFrameAccessor:
                 automatic optimization. Defaults to None.
             max_concurrency (int, optional): Maximum concurrent requests.
                 Defaults to 8.
-            show_progress (bool, optional): Show progress bar. Defaults to False.
+            show_progress (bool, optional): Show progress bar. Defaults to True.
             **api_kwargs: Additional OpenAI API parameters.
 
         Returns:
@@ -2036,7 +2036,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         max_examples: int = 500,
         batch_size: int | None = None,
         max_concurrency: int = 8,
-        show_progress: bool = False,
+        show_progress: bool = True,
     ) -> pd.DataFrame:
         """Fill missing values in a DataFrame column using AI-powered inference (asynchronously).
 
@@ -2056,7 +2056,7 @@ class AsyncOpenAIVecDataFrameAccessor:
                 optimization based on execution time). Set to a positive integer for fixed batch size.
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to 8.
-            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``False``.
+            show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
 
         Returns:
             pandas.DataFrame: A new DataFrame with missing values filled in the target

@@ -199,7 +199,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     # - If positive integer: Fixed batch size
     # - If <= 0: Process all items at once
     batch_size: int | None = None
-    show_progress: bool = False
+    show_progress: bool = True
     suggester: BatchSizeSuggester = field(default_factory=BatchSizeSuggester, repr=False)
 
     # internals
@@ -509,7 +509,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     # - If <= 0: Process all items at once
     batch_size: int | None = None
     max_concurrency: int = 8
-    show_progress: bool = False
+    show_progress: bool = True
     suggester: BatchSizeSuggester = field(default_factory=BatchSizeSuggester, repr=False)
 
     # internals

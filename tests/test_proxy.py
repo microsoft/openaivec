@@ -608,7 +608,7 @@ def test_progress_bar_methods():
 
 
 def test_batching_proxy_with_progress_disabled():
-    """Test BatchingMapProxy with progress disabled (default)."""
+    """Test BatchingMapProxy with progress disabled via explicit flag."""
     calls: list[list[int]] = []
 
     def mf(xs: list[int]) -> list[int]:
@@ -641,7 +641,7 @@ def test_batching_proxy_with_progress_enabled():
 
 @pytest.mark.asyncio
 async def test_async_batching_proxy_with_progress_disabled():
-    """Test AsyncBatchingMapProxy with progress disabled (default)."""
+    """Test AsyncBatchingMapProxy with progress disabled via explicit flag."""
     calls: list[list[int]] = []
 
     async def mf(xs: list[int]) -> list[int]:
