@@ -5,6 +5,7 @@ venv
 
 # Claude code file
 CLAUDE.md
+.claude/
 
 ### ruff
 .ruff_cache
