@@ -6,7 +6,7 @@ construction of a prompt in a structured way, including setting the
 purpose, adding cautions, and providing examples.
 
 ```python
-from openaivec.prompt import FewShotPromptBuilder
+from openaivec import FewShotPromptBuilder
 
 prompt_str: str = (
     FewShotPromptBuilder()
