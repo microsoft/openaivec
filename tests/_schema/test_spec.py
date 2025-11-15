@@ -5,7 +5,7 @@ from typing import get_args, get_origin
 
 import pytest
 
-from openaivec._dynamic import _MAX_ENUM_VALUES, EnumSpec, FieldSpec, ObjectSpec, _build_model
+from openaivec._schema.spec import _MAX_ENUM_VALUES, EnumSpec, FieldSpec, ObjectSpec, _build_model
 
 # ----------------------------- Success Cases -----------------------------
 

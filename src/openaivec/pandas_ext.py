@@ -59,7 +59,7 @@ from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, 
 from openaivec._provider import CONTAINER, _check_azure_v1_api_url
 from openaivec._proxy import AsyncBatchingMapProxy, BatchingMapProxy
 from openaivec._responses import AsyncBatchResponses, BatchResponses
-from openaivec._schema import InferredSchema, SchemaInferenceInput, SchemaInferer
+from openaivec._schema import SchemaInferenceInput, SchemaInferenceOutput, SchemaInferer
 from openaivec.task.table import FillNaResponse, fillna
 
 __all__ = [
@@ -503,7 +503,7 @@ class OpenAIVecSeriesAccessor:
                 schema model, aligned with the original Series index.
         """
 
-        schema: InferredSchema | None = None
+        schema: SchemaInferenceOutput | None = None
         if response_format is None:
             schema = self.infer_schema(instructions=instructions, max_examples=max_examples, **api_kwargs)
 
@@ -588,7 +588,7 @@ class OpenAIVecSeriesAccessor:
             **api_kwargs,
         )
 
-    def infer_schema(self, instructions: str, max_examples: int = 100, **api_kwargs) -> InferredSchema:
+    def infer_schema(self, instructions: str, max_examples: int = 100, **api_kwargs) -> SchemaInferenceOutput:
         """Infer a structured data schema from Series content using AI.
 
         This method analyzes a sample of Series values to automatically generate
@@ -990,7 +990,7 @@ class OpenAIVecDataFrameAccessor:
             **api_kwargs,
         )
 
-    def infer_schema(self, instructions: str, max_examples: int = 100, **api_kwargs) -> InferredSchema:
+    def infer_schema(self, instructions: str, max_examples: int = 100, **api_kwargs) -> SchemaInferenceOutput:
         """Infer a structured data schema from DataFrame rows using AI.
 
         This method analyzes a sample of DataFrame rows to automatically infer
@@ -1556,7 +1556,7 @@ class AsyncOpenAIVecSeriesAccessor:
         Note:
             This is an asynchronous method and must be awaited.
         """
-        schema: InferredSchema | None = None
+        schema: SchemaInferenceOutput | None = None
         if response_format is None:
             # Use synchronous schema inference
             schema = self._obj.ai.infer_schema(instructions=instructions, max_examples=max_examples)
