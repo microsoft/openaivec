@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from openaivec._cache.proxy import AsyncBatchingMapProxy, BatchingMapProxy
+from openaivec._cache import AsyncBatchingMapProxy, BatchingMapProxy
 
 
 def test_sync_proxy_uses_suggester_when_batch_size_none():

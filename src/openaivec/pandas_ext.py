@@ -54,7 +54,7 @@ import tiktoken
 from openai import AsyncOpenAI, OpenAI
 from pydantic import BaseModel
 
-from openaivec._cache.proxy import AsyncBatchingMapProxy, BatchingMapProxy
+from openaivec._cache import AsyncBatchingMapProxy, BatchingMapProxy
 from openaivec._embeddings import AsyncBatchEmbeddings, BatchEmbeddings
 from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
 from openaivec._provider import CONTAINER, _check_azure_v1_api_url
@@ -308,7 +308,7 @@ class OpenAIVecSeriesAccessor:
 
         Example:
             ```python
-            from openaivec._cache.proxy import BatchingMapProxy
+            from openaivec._cache import BatchingMapProxy
             import numpy as np
 
             # Create a shared cache with custom batch size
@@ -387,7 +387,7 @@ class OpenAIVecSeriesAccessor:
 
         Example:
             ```python
-            from openaivec._cache.proxy import BatchingMapProxy
+            from openaivec._cache import BatchingMapProxy
             shared_cache = BatchingMapProxy(batch_size=64)
             reviews.ai.task_with_cache(sentiment_task, cache=shared_cache)
             ```
@@ -730,7 +730,7 @@ class OpenAIVecDataFrameAccessor:
 
         Example:
             ```python
-            from openaivec._cache.proxy import BatchingMapProxy
+            from openaivec._cache import BatchingMapProxy
 
             # Create a shared cache with custom batch size
             shared_cache = BatchingMapProxy(batch_size=64)
@@ -1317,7 +1317,7 @@ class AsyncOpenAIVecSeriesAccessor:
 
         Example:
             ```python
-            from openaivec._cache.proxy import AsyncBatchingMapProxy
+            from openaivec._cache import AsyncBatchingMapProxy
             import numpy as np
 
             # Create a shared cache with custom batch size and concurrency
@@ -1424,7 +1424,7 @@ class AsyncOpenAIVecSeriesAccessor:
         Example:
             ```python
             from openaivec._model import PreparedTask
-            from openaivec._cache.proxy import AsyncBatchingMapProxy
+            from openaivec._cache import AsyncBatchingMapProxy
 
             # Create a shared cache with custom batch size and concurrency
             shared_cache = AsyncBatchingMapProxy(batch_size=64, max_concurrency=4)
@@ -1650,7 +1650,7 @@ class AsyncOpenAIVecDataFrameAccessor:
 
         Example:
             ```python
-            from openaivec._cache.proxy import AsyncBatchingMapProxy
+            from openaivec._cache import AsyncBatchingMapProxy
 
             # Create a shared cache with custom batch size and concurrency
             shared_cache = AsyncBatchingMapProxy(batch_size=64, max_concurrency=4)

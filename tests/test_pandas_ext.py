@@ -532,7 +532,7 @@ class TestPandasExt:
 
     def test_shared_cache_responses_sync(self):
         """Test shared cache functionality for responses."""
-        from openaivec._cache.proxy import BatchingMapProxy
+        from openaivec._cache import BatchingMapProxy
 
         shared_cache = BatchingMapProxy(batch_size=32)
         series1 = pd.Series(["cat", "dog", "elephant"])
@@ -557,7 +557,7 @@ class TestPandasExt:
 
     def test_shared_cache_embeddings_sync(self):
         """Test shared cache functionality for embeddings."""
-        from openaivec._cache.proxy import BatchingMapProxy
+        from openaivec._cache import BatchingMapProxy
 
         shared_cache = BatchingMapProxy(batch_size=32)
         series1 = pd.Series(["apple", "banana", "cherry"])
@@ -582,7 +582,7 @@ class TestPandasExt:
 
     def test_shared_cache_async(self):
         """Test shared cache functionality for async methods."""
-        from openaivec._cache.proxy import AsyncBatchingMapProxy
+        from openaivec._cache import AsyncBatchingMapProxy
 
         async def run_test():
             shared_cache = AsyncBatchingMapProxy(batch_size=32, max_concurrency=4)
@@ -723,7 +723,7 @@ class TestPandasExt:
 
     def test_parse_with_cache_methods(self):
         """Test parse_with_cache methods for both Series and DataFrame."""
-        from openaivec._cache.proxy import BatchingMapProxy
+        from openaivec._cache import BatchingMapProxy
 
         # Test Series parse_with_cache
         series = pd.Series(["Good product", "Bad experience"])
