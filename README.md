@@ -23,7 +23,7 @@
 - Drop-in `.ai` and `.aio` DataFrame accessors keep pandas analysts in their favorite tools.
 - Smart batching (`BatchingMapProxy`) deduplicates prompts, enforces ordered outputs, and shortens runtimes without manual tuning.
 - Built-in caches, retry logic, and reasoning model safeguards cut noisy boilerplate from production pipelines.
-- Ready-made Spark UDF builders and Microsoft Fabric guides take AI workloads from notebooks into enterprise-scale ETL.
+- Ready-made Spark UDF helpers and Microsoft Fabric guides take AI workloads from notebooks into enterprise-scale ETL.
 - Pre-configured task library and `FewShotPromptBuilder` ship curated prompts and structured outputs validated by Pydantic.
 - Supports OpenAI and Azure OpenAI clients interchangeably, including async workloads and embeddings.
 
@@ -116,7 +116,7 @@ automatically in notebook environments when `show_progress=True`.
 - Vectorized request batching with automatic deduplication, retries, and cache hooks for any OpenAI-compatible client.
 - pandas `.ai` and `.aio` accessors for synchronous and asynchronous DataFrame pipelines, including `ai.extract` helpers.
 - Task library with Pydantic-backed schemas for consistent structured outputs across pandas and Spark jobs.
-- Spark UDF builders (`responses_udf`, `embeddings_udf`, `parse_udf`, `task_udf`, etc.) for large-scale ETL and BI.
+- Spark UDF helpers (`responses_udf`, `embeddings_udf`, `parse_udf`, `task_udf`, etc.) for large-scale ETL and BI.
 - Embeddings, token counting, and similarity utilities for search and retrieval use cases.
 - Prompt tooling (`FewShotPromptBuilder`, `improve`) to craft and iterate production-ready instructions.
 

@@ -32,7 +32,7 @@ Specialized tasks for customer service operations:
 ### Quick Start with Default Tasks
 ```python
 from openai import OpenAI
-from openaivec._responses import BatchResponses
+from openaivec import BatchResponses
 from openaivec.task import nlp, customer_support
 
 client = OpenAI()
@@ -90,15 +90,17 @@ results_df = df.ai.extract("sentiment")
 
 ### Spark Integration
 ```python
-from openaivec.spark import ResponsesUDFBuilder
+from openaivec.spark import task_udf
 
 # Register UDF for large-scale processing
 spark.udf.register(
     "analyze_sentiment",
-    ResponsesUDFBuilder.of_openai(
-        api_key=api_key,
-        model_name="gpt-4.1-mini"
-    ).build_from_task(task=nlp.SENTIMENT_ANALYSIS)
+    task_udf(
+        task=nlp.SENTIMENT_ANALYSIS,
+        model_name="gpt-4.1-mini",
+        batch_size=64,
+        max_concurrency=8,
+    ),
 )
 
 # Use in Spark SQL

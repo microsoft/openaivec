@@ -9,7 +9,7 @@ Example:
 
     ```python
     from openai import OpenAI
-    from openaivec._responses import BatchResponses
+    from openaivec import BatchResponses
     from openaivec.task import customer_support
 
     client = OpenAI()
