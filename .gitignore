@@ -13,6 +13,9 @@ CLAUDE.md
 ### Jupyter
 *.ipynb
 
+### deps
+*.dot
+
 
 ### Python template
 # Byte-compiled / optimized / DLL files

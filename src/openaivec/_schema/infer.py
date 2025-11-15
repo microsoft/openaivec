@@ -61,14 +61,14 @@ from openai import OpenAI
 from openai.types.responses import ParsedResponse
 from pydantic import BaseModel, Field
 
-from openaivec._dynamic import ObjectSpec, _build_model
 from openaivec._model import PreparedTask
+from openaivec._schema.spec import ObjectSpec, _build_model
 
 # Internal module: explicitly not part of public API
 __all__: list[str] = []
 
 
-class InferredSchema(BaseModel):
+class SchemaInferenceOutput(BaseModel):
     """Result of a schema inference round.
 
     Contains the normalized *instructions*, objective *examples_summary*, the root
@@ -123,7 +123,7 @@ class InferredSchema(BaseModel):
     )
 
     @classmethod
-    def load(cls, path: str) -> "InferredSchema":
+    def load(cls, path: str) -> "SchemaInferenceOutput":
         """Load an inferred schema from a JSON file.
 
         Args:
@@ -265,7 +265,7 @@ class SchemaInferer:
     client: OpenAI
     model_name: str
 
-    def infer_schema(self, data: SchemaInferenceInput, *args, max_retries: int = 8, **kwargs) -> InferredSchema:
+    def infer_schema(self, data: SchemaInferenceInput, *args, max_retries: int = 8, **kwargs) -> SchemaInferenceOutput:
         """Infer a validated schema from representative examples.
 
           Workflow:
@@ -315,11 +315,11 @@ class SchemaInferer:
                 )
                 instructions = _INFER_INSTRUCTIONS + "\n\n" + "\n".join(feedback_lines)
 
-            response: ParsedResponse[InferredSchema] = self.client.responses.parse(
+            response: ParsedResponse[SchemaInferenceOutput] = self.client.responses.parse(
                 model=self.model_name,
                 instructions=instructions,
                 input=data.model_dump_json(),
-                text_format=InferredSchema,
+                text_format=SchemaInferenceOutput,
                 *args,
                 **kwargs,
             )

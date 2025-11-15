@@ -4,8 +4,8 @@ from typing import get_args, get_origin
 import pytest
 from pydantic import BaseModel
 
-from openaivec._dynamic import EnumSpec, FieldSpec, ObjectSpec  # internal types for constructing test schemas
-from openaivec._schema import InferredSchema, SchemaInferenceInput, SchemaInferer  # type: ignore
+from openaivec._schema import SchemaInferenceInput, SchemaInferenceOutput, SchemaInferer  # type: ignore
+from openaivec._schema.spec import EnumSpec, FieldSpec, ObjectSpec  # internal types for constructing test schemas
 
 
 @pytest.fixture(scope="session")
@@ -136,7 +136,7 @@ class TestInferredSchemaBuildModel:
 
     def test_build_model_primitive_types(self):
         """Test that all primitive types are correctly mapped to Python types."""
-        schema = InferredSchema(
+        schema = SchemaInferenceOutput(
             instructions="Test primitive types",
             examples_summary="Various primitive type examples",
             examples_instructions_alignment="Primitive examples justify coverage of all base types",
@@ -167,7 +167,7 @@ class TestInferredSchemaBuildModel:
 
     def test_build_model_enum_field(self):
         """Test that enum fields generate proper Enum classes."""
-        schema = InferredSchema(
+        schema = SchemaInferenceOutput(
             instructions="Test enum types",
             examples_summary="Enum examples",
             examples_instructions_alignment="Stable status labels appear repeatedly, supporting enum creation",
@@ -207,7 +207,7 @@ class TestInferredSchemaBuildModel:
             FieldSpec(name="second_field", type="boolean", description="Second field"),
         ]
 
-        schema = InferredSchema(
+        schema = SchemaInferenceOutput(
             instructions="Test field ordering",
             examples_summary="Field ordering examples",
             examples_instructions_alignment="Ordering matters for deterministic downstream column alignment",
@@ -223,7 +223,7 @@ class TestInferredSchemaBuildModel:
 
     def test_build_model_field_descriptions(self):
         """Test that field descriptions are correctly included in the model."""
-        schema = InferredSchema(
+        schema = SchemaInferenceOutput(
             instructions="Test field descriptions",
             examples_summary="Description examples",
             examples_instructions_alignment="Descriptions guide extraction disambiguation",
@@ -246,7 +246,7 @@ class TestInferredSchemaBuildModel:
 
     def test_build_model_empty_fields(self):
         """Test behavior with empty fields list."""
-        schema = InferredSchema(
+        schema = SchemaInferenceOutput(
             instructions="Test empty fields",
             examples_summary="Empty examples",
             examples_instructions_alignment="Edge case of no extractable signals",
@@ -266,7 +266,7 @@ class TestInferredSchemaBuildModel:
 
     def test_build_model_mixed_enum_and_regular_fields(self):
         """Test a complex scenario with both enum and regular fields of all types."""
-        schema = InferredSchema(
+        schema = SchemaInferenceOutput(
             instructions="Test mixed field types",
             examples_summary="Mixed type examples",
             examples_instructions_alignment="Examples demonstrate diverse field types including enums",
@@ -313,7 +313,7 @@ class TestInferredSchemaBuildModel:
 
     def test_build_model_multiple_calls_independence(self):
         """Test that multiple calls to build_model return independent model classes."""
-        schema = InferredSchema(
+        schema = SchemaInferenceOutput(
             instructions="Test independence",
             examples_summary="Independence examples",
             examples_instructions_alignment="Independence ensures rebuilding yields fresh class objects",
@@ -338,7 +338,7 @@ class TestInferredSchemaBuildModel:
 
     def test_build_model_array_types(self):
         """Test that *_array types map to list element annotations and proper JSON Schema arrays."""
-        schema = InferredSchema(
+        schema = SchemaInferenceOutput(
             instructions="Test array types",
             examples_summary="Array type examples",
             examples_instructions_alignment="Examples justify homogeneous primitive arrays",

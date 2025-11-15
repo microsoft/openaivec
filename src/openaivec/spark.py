@@ -145,7 +145,7 @@ from openaivec import pandas_ext
 from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
 from openaivec._provider import CONTAINER
 from openaivec._proxy import AsyncBatchingMapProxy
-from openaivec._schema import InferredSchema, SchemaInferenceInput, SchemaInferer
+from openaivec._schema import SchemaInferenceInput, SchemaInferenceOutput, SchemaInferer
 from openaivec._serialize import deserialize_base_model, serialize_base_model
 from openaivec._util import TextChunker
 
@@ -518,7 +518,7 @@ def infer_schema(
     example_table_name: str,
     example_field_name: str,
     max_examples: int = 100,
-) -> InferredSchema:
+) -> SchemaInferenceOutput:
     """Infer the schema for a response format based on example data.
 
     This function retrieves examples from a Spark table and infers the schema
@@ -606,7 +606,7 @@ def parse_udf(
     if not response_format and not (example_field_name and example_table_name):
         raise ValueError("Either response_format or example_table_name and example_field_name must be provided.")
 
-    schema: InferredSchema | None = None
+    schema: SchemaInferenceOutput | None = None
 
     if not response_format:
         schema = infer_schema(
