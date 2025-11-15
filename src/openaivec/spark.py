@@ -142,9 +142,9 @@ from pyspark.sql.udf import UserDefinedFunction
 from typing_extensions import Literal
 
 from openaivec import pandas_ext
+from openaivec._cache.proxy import AsyncBatchingMapProxy
 from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
 from openaivec._provider import CONTAINER
-from openaivec._proxy import AsyncBatchingMapProxy
 from openaivec._schema import SchemaInferenceInput, SchemaInferenceOutput, SchemaInferer
 from openaivec._serialize import deserialize_base_model, serialize_base_model
 from openaivec._util import TextChunker

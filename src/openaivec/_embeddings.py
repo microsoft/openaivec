@@ -5,8 +5,8 @@ import numpy as np
 from numpy.typing import NDArray
 from openai import AsyncOpenAI, InternalServerError, OpenAI, RateLimitError
 
+from openaivec._cache.proxy import AsyncBatchingMapProxy, BatchingMapProxy
 from openaivec._log import observe
-from openaivec._proxy import AsyncBatchingMapProxy, BatchingMapProxy
 from openaivec._util import backoff, backoff_async
 
 __all__ = [

@@ -4,7 +4,7 @@ from threading import Thread
 
 import pytest
 
-from openaivec._optimize import BatchSizeSuggester, PerformanceMetric
+from openaivec._cache.optimize import BatchSizeSuggester, PerformanceMetric
 
 
 class TestPerformanceMetric:

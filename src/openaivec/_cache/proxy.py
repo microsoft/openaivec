@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable, Hashable
 from dataclasses import dataclass, field
 from typing import Any, Generic, TypeVar
 
-from openaivec._optimize import BatchSizeSuggester
+from openaivec._cache.optimize import BatchSizeSuggester
 
 __all__ = []
 
