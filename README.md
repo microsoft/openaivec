@@ -248,24 +248,23 @@ result = df.assign(
 
 ### Using with Reasoning Models
 
-When using reasoning models (o1-preview, o1-mini, o3-mini, etc.), you must set `temperature=None` to avoid API errors:
+Reasoning models (o1-preview, o1-mini, o3-mini, etc.) work without special flags, and you can pass the `reasoning`
+argument exactly as in the official OpenAI SDK:
 
 ```python
 # For reasoning models like o1-preview, o1-mini, o3-mini
 pandas_ext.set_responses_model("o1-mini")  # Set your reasoning model
 
-# MUST use temperature=None with reasoning models
 result = df.assign(
     analysis=lambda df: df.text.ai.responses(
         "Analyze this text step by step",
-        temperature=None  # Required for reasoning models
+        reasoning={"effort": "medium"}  # Optional: mirrors the OpenAI SDK argument
     )
 )
 ```
 
-**Why this is needed**: Reasoning models don't support temperature parameters and will return an error if temperature is specified. The library automatically detects these errors and provides guidance on how to fix them.
-
-**Reference**: [Azure OpenAI Reasoning Models](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/reasoning)
+You can omit `reasoning` to use the model defaults or tune it per request using the same shape (`dict` with effort) as the
+OpenAI SDK.
 
 ### Using Pre-configured Tasks
 
@@ -448,12 +447,12 @@ spark.udf.register(
 )
 
 # --- Register UDF for Reasoning Models ---
-# For reasoning models (o1-preview, o1-mini, o3, etc.), set temperature=None
+# For reasoning models (o1-preview, o1-mini, o3, etc.), you can forward the SDK's `reasoning` argument
 spark.udf.register(
     "reasoning_analysis",
     responses_udf(
         instructions="Analyze this step by step with detailed reasoning",
-        temperature=None  # Required for reasoning models
+        reasoning={"effort": "medium"}  # Optional: mirrors OpenAI SDK
     )
 )
 
