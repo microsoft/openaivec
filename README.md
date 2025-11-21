@@ -137,8 +137,7 @@ into your data processing pipelines.
 
 Behind the scenes, `BatchingMapProxy` and `AsyncBatchingMapProxy` deduplicate repeated inputs, guarantee response order,
 and unblock waiters even when upstream APIs error. Caches created via helpers such as `responses_with_cache` plug into
-this batching layer so expensive prompts are reused across pandas, Spark, and async flows. Progress bars surface
-automatically in notebook environments when `show_progress=True`.
+this batching layer so expensive prompts are reused across pandas, Spark, and async flows.
 
 ## Core Capabilities
 
