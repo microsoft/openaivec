@@ -53,14 +53,14 @@ print(sentiment.tolist())
 
 - Drop-in `.ai` and `.aio` accessors keep pandas analysts in familiar tooling.
 - Smart batching (`BatchingMapProxy`/`AsyncBatchingMapProxy`) dedupes prompts, preserves order, and releases waiters on failure.
-- Reasoning guardrails: o1/o3 models enforce `temperature=None`; structured outputs accept Pydantic `response_format`.
+- Reasoning support mirrors the OpenAI SDK; structured outputs accept Pydantic `response_format`.
 - Built-in caches and retries remove boilerplate; helpers reuse caches across pandas, Spark, and async flows.
 - Spark UDFs and Microsoft Fabric guides move notebooks into production-scale ETL.
 - Prompt tooling (`FewShotPromptBuilder`, `improve`) and the task library ship curated prompts with validated outputs.
 
 # Overview
 
-Vectorized OpenAI access so you process many inputs per call instead of one-by-one. Batching proxies dedupe inputs, enforce ordered outputs, and unblock waiters even on upstream errors. Cache helpers (`responses_with_cache`, Spark UDF builders) plug into the same layer so expensive prompts are reused across pandas, Spark, and async flows. Reasoning models honor SDK semantics and enforce `temperature=None` for o1/o3 families. Requires Python 3.10+.
+Vectorized OpenAI access so you process many inputs per call instead of one-by-one. Batching proxies dedupe inputs, enforce ordered outputs, and unblock waiters even on upstream errors. Cache helpers (`responses_with_cache`, Spark UDF builders) plug into the same layer so expensive prompts are reused across pandas, Spark, and async flows. Reasoning models honor SDK semantics. Requires Python 3.10+.
 
 ## Core Workflows
 
@@ -144,7 +144,7 @@ result = df.assign(
 
 ### Using with reasoning models
 
-Reasoning models (o1-preview, o1-mini, o3-mini, etc.) work without special flags. `reasoning` mirrors the OpenAI SDK, and openaivec enforces `temperature=None` for o1/o3-family safety.
+Reasoning models (o1-preview, o1-mini, o3-mini, etc.) work without special flags. `reasoning` mirrors the OpenAI SDK.
 
 ```python
 pandas_ext.set_responses_model("o1-mini")  # Set your reasoning model
