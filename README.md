@@ -161,20 +161,6 @@ this batching layer so expensive prompts are reused across pandas, Spark, and as
 
 - Python 3.10 or higher
 
-## Installation
-
-Install the package with:
-
-```bash
-pip install openaivec
-```
-
-If you want to uninstall the package, you can do so with:
-
-```bash
-pip uninstall openaivec
-```
-
 ## Core Workflows
 
 ### Direct API Usage
