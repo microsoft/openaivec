@@ -1,5 +1,32 @@
 # openaivec
 
+## Getting started
+
+```bash
+pip install openaivec
+```
+
+```python
+import os
+import pandas as pd
+from openaivec import pandas_ext
+
+os.environ["OPENAI_API_KEY"] = "your-api-key"  # Or set AZURE_* env vars
+
+pandas_ext.set_responses_model("gpt-5.1")  # Optional: pick your model/deployment
+
+series = pd.Series([
+    "Great coffee and friendly staff.",
+    "Delivery was late and the package was damaged.",
+])
+
+responses = series.ai.responses(
+    "Summarize the sentiment in one short sentence.",
+    reasoning={"effort": "medium"},
+)
+print(responses.tolist())
+```
+
 [Contributor guidelines](AGENTS.md)
 
 **Transform your data analysis with AI-powered text processing at scale.**
@@ -7,6 +34,7 @@
 **openaivec** enables data analysts to seamlessly integrate OpenAI's language models into their pandas and Spark workflows. Process thousands of text records with natural language instructions, turning unstructured data into actionable insights with just a few lines of code.
 
 ## Contents
+
 - [Why openaivec?](#why-openaivec)
 - [Quick Start](#-quick-start-from-text-to-insights-in-seconds)
 - [Real-World Impact](#-real-world-impact)
@@ -20,6 +48,7 @@
 - [Community](#community)
 
 ## Why openaivec?
+
 - Drop-in `.ai` and `.aio` DataFrame accessors keep pandas analysts in their favorite tools.
 - Smart batching (`BatchingMapProxy`) deduplicates prompts, enforces ordered outputs, and shortens runtimes without manual tuning.
 - Built-in caches, retry logic, and reasoning model safeguards cut noisy boilerplate from production pipelines.
@@ -721,7 +750,7 @@ steps:
 
      # In Microsoft Fabric, spark session is automatically available
      # spark = SparkSession.builder.getOrCreate()
-     
+
      # Configure Azure OpenAI authentication
      setup_azure(
          spark,
