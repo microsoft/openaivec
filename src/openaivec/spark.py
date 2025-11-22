@@ -181,6 +181,20 @@ def setup(
             If provided, registers `ResponsesModelName` in the DI container.
         embeddings_model_name (str | None): Default model name for embeddings.
             If provided, registers `EmbeddingsModelName` in the DI container.
+
+    Example:
+        ```python
+        from pyspark.sql import SparkSession
+        from openaivec.spark import setup
+
+        spark = SparkSession.builder.getOrCreate()
+        setup(
+            spark,
+            api_key="sk-***",
+            responses_model_name="gpt-4.1-mini",
+            embeddings_model_name="text-embedding-3-small",
+        )
+        ```
     """
 
     CONTAINER.register(SparkSession, lambda: spark)
@@ -221,6 +235,22 @@ def setup_azure(
             If provided, registers `ResponsesModelName` in the DI container.
         embeddings_model_name (str | None): Default model name for embeddings.
             If provided, registers `EmbeddingsModelName` in the DI container.
+
+    Example:
+        ```python
+        from pyspark.sql import SparkSession
+        from openaivec.spark import setup_azure
+
+        spark = SparkSession.builder.getOrCreate()
+        setup_azure(
+            spark,
+            api_key="azure-key",
+            base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
+            api_version="preview",
+            responses_model_name="gpt4-deployment",
+            embeddings_model_name="embedding-deployment",
+        )
+        ```
     """
 
     CONTAINER.register(SparkSession, lambda: spark)
@@ -374,6 +404,19 @@ def responses_udf(
 
     Raises:
         ValueError: If `response_format` is not `str` or a Pydantic `BaseModel`.
+
+    Example:
+        ```python
+        from pyspark.sql import SparkSession
+        from openaivec.spark import responses_udf, setup
+
+        spark = SparkSession.builder.getOrCreate()
+        setup(spark, api_key="sk-***", responses_model_name="gpt-4.1-mini")
+        udf = responses_udf("Reply with one word.")
+        spark.udf.register("short_answer", udf)
+        df = spark.createDataFrame([("hello",), ("bye",)], ["text"])
+        df.selectExpr("short_answer(text) as reply").show()
+        ```
 
     Note:
         For optimal performance in distributed environments:
@@ -533,6 +576,20 @@ def infer_schema(
 
     Returns:
         InferredSchema: An object containing the inferred schema and response format.
+
+    Example:
+        ```python
+        from pyspark.sql import SparkSession
+
+        spark = SparkSession.builder.getOrCreate()
+        spark.createDataFrame([("great product",), ("bad service",)], ["text"]).createOrReplaceTempView("examples")
+        infer_schema(
+            instructions="Classify sentiment as positive or negative.",
+            example_table_name="examples",
+            example_field_name="text",
+            max_examples=2,
+        )
+        ```
     """
 
     spark = CONTAINER.resolve(SparkSession)
@@ -595,6 +652,23 @@ def parse_udf(
             forwarded verbatim to the underlying API calls. These parameters are applied to
             all API requests made by the UDF and override any parameters set in the
             response_format or example data.
+    Example:
+        ```python
+        from pyspark.sql import SparkSession
+
+        spark = SparkSession.builder.getOrCreate()
+        spark.createDataFrame(
+            [("Order #123 delivered",), ("Order #456 delayed",)],
+            ["body"],
+        ).createOrReplaceTempView("messages")
+        udf = parse_udf(
+            instructions="Extract order id as `order_id` and status as `status`.",
+            example_table_name="messages",
+            example_field_name="body",
+        )
+        spark.udf.register("parse_ticket", udf)
+        spark.sql("SELECT parse_ticket(body) AS parsed FROM messages").show()
+        ```
     Returns:
         UserDefinedFunction: A Spark pandas UDF configured to parse responses asynchronously.
             Output schema is `StringType` for str response format or a struct derived from
