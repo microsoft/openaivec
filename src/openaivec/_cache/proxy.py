@@ -186,11 +186,15 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     performance (targeting 30-60 seconds per batch).
 
     Example:
-        >>> p = BatchingMapProxy[int, str](batch_size=3)
-        >>> def f(xs: list[int]) -> list[str]:
-        ...     return [f"v:{x}" for x in xs]
-        >>> p.map([1, 2, 2, 3, 4], f)
-        ['v:1', 'v:2', 'v:2', 'v:3', 'v:4']
+        ```python
+        p = BatchingMapProxy[int, str](batch_size=3)
+
+        def f(xs: list[int]) -> list[str]:
+            return [f"v:{x}" for x in xs]
+
+        p.map([1, 2, 2, 3, 4], f)
+        # ['v:1', 'v:2', 'v:2', 'v:3', 'v:4']
+        ```
     """
 
     # Number of items to process per call to map_func.
@@ -449,6 +453,21 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
 
         Raises:
             Exception: Propagates any exception raised by ``map_func``.
+
+        Example:
+            ```python
+            proxy: BatchingMapProxy[int, str] = BatchingMapProxy(batch_size=2)
+            calls: list[list[int]] = []
+
+            def mapper(chunk: list[int]) -> list[str]:
+                calls.append(chunk)
+                return [f"v:{x}" for x in chunk]
+
+            proxy.map([1, 2, 2, 3], mapper)
+            # ['v:1', 'v:2', 'v:2', 'v:3']
+            calls  # duplicate ``2`` is only computed once
+            # [[1, 2], [3]]
+            ```
         """
         if self.__all_cached(items):
             return self.__values(items)
@@ -490,16 +509,21 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     performance (targeting 30-60 seconds per batch).
 
     Example:
-        >>> import asyncio
-        >>> from typing import List
-        >>> p = AsyncBatchingMapProxy[int, str](batch_size=2)
-        >>> async def af(xs: list[int]) -> list[str]:
-        ...     await asyncio.sleep(0)
-        ...     return [f"v:{x}" for x in xs]
-        >>> async def run():
-        ...     return await p.map([1, 2, 3], af)
-        >>> asyncio.run(run())
-        ['v:1', 'v:2', 'v:3']
+        ```python
+        import asyncio
+
+        p = AsyncBatchingMapProxy[int, str](batch_size=2)
+
+        async def af(xs: list[int]) -> list[str]:
+            await asyncio.sleep(0)
+            return [f"v:{x}" for x in xs]
+
+        async def run():
+            return await p.map([1, 2, 3], af)
+
+        asyncio.run(run())
+        # ['v:1', 'v:2', 'v:3']
+        ```
     """
 
     # Number of items to process per call to map_func.
@@ -747,6 +771,19 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
 
         Returns:
             list[T]: Mapped values corresponding to ``items`` in the same order.
+
+        Example:
+            ```python
+            import asyncio
+
+            async def mapper(chunk: list[int]) -> list[str]:
+                await asyncio.sleep(0)
+                return [f"v:{x}" for x in chunk]
+
+            proxy: AsyncBatchingMapProxy[int, str] = AsyncBatchingMapProxy(batch_size=2)
+            asyncio.run(proxy.map([1, 1, 2], mapper))
+            # ['v:1', 'v:1', 'v:2']
+            ```
         """
         if await self.__all_cached(items):
             return await self.__values(items)
