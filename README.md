@@ -83,7 +83,7 @@ client = BatchResponses.of(
 
 result = client.parse(
     ["panda", "rabbit", "koala"],
-    reasoning={"effort": "medium"},  # Required for gpt-5.1
+    reasoning={"effort": "medium"},
 )
 print(result)  # Expected output: ['bear family', 'rabbit family', 'koala family']
 ```
