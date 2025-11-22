@@ -31,7 +31,7 @@ reviews = pd.Series([
 
 sentiment = reviews.ai.responses(
     "Summarize sentiment in one short sentence.",
-    reasoning={"effort": "medium"},  # Mirrors OpenAI SDK for reasoning models
+    reasoning={"effort": "none"},  # Mirrors OpenAI SDK for reasoning models
 )
 print(sentiment.tolist())
 ```
@@ -83,7 +83,7 @@ client = BatchResponses.of(
 
 result = client.parse(
     ["panda", "rabbit", "koala"],
-    reasoning={"effort": "medium"},
+    reasoning={"effort": "none"},
 )
 print(result)  # Expected output: ['bear family', 'rabbit family', 'koala family']
 ```
@@ -121,15 +121,15 @@ df = pd.DataFrame({"name": ["panda", "rabbit", "koala"]})
 result = df.assign(
     family=lambda df: df.name.ai.responses(
         "What animal family? Answer with 'X family'",
-        reasoning={"effort": "medium"},
+        reasoning={"effort": "none"},
     ),
     habitat=lambda df: df.name.ai.responses(
         "Primary habitat in one word",
-        reasoning={"effort": "medium"},
+        reasoning={"effort": "none"},
     ),
     fun_fact=lambda df: df.name.ai.responses(
         "One interesting fact in 10 words or less",
-        reasoning={"effort": "medium"},
+        reasoning={"effort": "none"},
     ),
 )
 ```
@@ -152,7 +152,7 @@ pandas_ext.set_responses_model("o1-mini")  # Set your reasoning model
 result = df.assign(
     analysis=lambda df: df.text.ai.responses(
         "Analyze this text step by step",
-        reasoning={"effort": "medium"}  # Optional: mirrors the OpenAI SDK argument
+        reasoning={"effort": "none"}  # Optional: mirrors the OpenAI SDK argument
     )
 )
 ```
@@ -206,7 +206,7 @@ df = pd.DataFrame({"text": [
 async def process_data():
     return await df["text"].aio.responses(
         "Analyze sentiment and classify as positive/negative/neutral",
-        reasoning={"effort": "medium"},  # Required for gpt-5.1
+        reasoning={"effort": "none"},  # Required for gpt-5.1
         max_concurrency=12    # Allow up to 12 concurrent requests
     )
 
@@ -258,7 +258,7 @@ spark.udf.register(
     "extract_brand",
     responses_udf(
         instructions="Extract the brand name from the product. Return only the brand name.",
-        reasoning={"effort": "medium"},  # Recommended with gpt-5.1
+        reasoning={"effort": "none"},  # Recommended with gpt-5.1
     )
 )
 
@@ -272,7 +272,7 @@ spark.udf.register(
     responses_udf(
         instructions="Translate the text to English, French, and Japanese.",
         response_format=Translation,
-        reasoning={"effort": "medium"},  # Recommended with gpt-5.1
+        reasoning={"effort": "none"},  # Recommended with gpt-5.1
     )
 )
 
