@@ -310,7 +310,7 @@ prompt = (
 
 ## Using with Microsoft Fabric
 
-[Microsoft Fabric](https://www.microsoft.com/en-us/microsoft-fabric/) is a unified, cloud-based analytics platform. Add `openaivec` from PyPI in your Fabric environment, select it in your notebook, and use `openaivec.spark` like standard Spark. Detailed walkthrough: 📓 **[Fabric guide →](https://microsoft.github.io/openaivec/examples/fabric/)**.
+[Microsoft Fabric](https://www.microsoft.com/en-us/microsoft-fabric/) is a unified, cloud-based analytics platform. Add `openaivec` from PyPI in your Fabric environment, select it in your notebook, and use `openaivec.spark` like standard Spark.
 
 ## Contributing
 
