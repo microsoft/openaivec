@@ -348,4 +348,4 @@ uv run pytest -m "not slow and not requires_api"
 
 ## Community
 
-Join our Discord community for support and announcements: https://discord.gg/vbb83Pgn
+Join our Discord community for support and announcements: https://discord.gg/hXCS9J6Qek
