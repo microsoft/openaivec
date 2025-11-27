@@ -292,4 +292,4 @@ Provide detailed analysis with clear reasoning for urgency level and response ti
 
 
 # Backward compatibility - default configuration
-URGENCY_ANALYSIS = urgency_analysis(temperature=0.0, top_p=1.0)
+URGENCY_ANALYSIS = urgency_analysis(temperature=0.0, top_p=1.0, reasoning={"effort": "none"})

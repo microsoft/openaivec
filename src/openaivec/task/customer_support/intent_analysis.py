@@ -174,4 +174,4 @@ Provide comprehensive intent analysis with actionable recommendations."""
 
 
 # Backward compatibility - default configuration
-INTENT_ANALYSIS = intent_analysis(temperature=0.0, top_p=1.0)
+INTENT_ANALYSIS = intent_analysis(temperature=0.0, top_p=1.0, reasoning={"effort": "none"})

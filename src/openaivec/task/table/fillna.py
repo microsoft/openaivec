@@ -185,5 +185,5 @@ def fillna(df: pd.DataFrame, target_column_name: str, max_examples: int = 500, *
     instructions = get_instructions(df, target_column_name, max_examples)
     # Set default values for deterministic results if not provided
     if not api_kwargs:
-        api_kwargs = {"temperature": 0.0, "top_p": 1.0}
+        api_kwargs = {"temperature": 0.0, "top_p": 1.0, "reasoning": {"effort": "none"}}
     return PreparedTask(instructions=instructions, response_format=FillNaResponse, api_kwargs=api_kwargs)

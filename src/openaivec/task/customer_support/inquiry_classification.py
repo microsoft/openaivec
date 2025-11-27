@@ -259,4 +259,4 @@ Provide accurate classification with detailed reasoning."""
 
 
 # Backward compatibility - default configuration
-INQUIRY_CLASSIFICATION = inquiry_classification(temperature=0.0, top_p=1.0)
+INQUIRY_CLASSIFICATION = inquiry_classification(temperature=0.0, top_p=1.0, reasoning={"effort": "none"})

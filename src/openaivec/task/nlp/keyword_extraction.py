@@ -76,5 +76,5 @@ KEYWORD_EXTRACTION = PreparedTask(
     instructions="Extract important keywords and phrases from the following text. Rank them "
     "by importance, provide frequency counts, identify main topics, and generate a brief summary.",
     response_format=KeywordExtraction,
-    api_kwargs={"temperature": 0.0, "top_p": 1.0},
+    api_kwargs={"temperature": 0.0, "top_p": 1.0, "reasoning": {"effort": "none"}},
 )

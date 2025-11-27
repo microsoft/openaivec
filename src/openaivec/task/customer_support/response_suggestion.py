@@ -194,4 +194,4 @@ positive customer relationship."""
 
 
 # Backward compatibility - default configuration
-RESPONSE_SUGGESTION = response_suggestion(temperature=0.0, top_p=1.0)
+RESPONSE_SUGGESTION = response_suggestion(temperature=0.0, top_p=1.0, reasoning={"effort": "none"})

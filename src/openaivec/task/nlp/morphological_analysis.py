@@ -71,5 +71,5 @@ MORPHOLOGICAL_ANALYSIS = PreparedTask(
     "identify part-of-speech tags, provide lemmatized forms, and extract morphological features "
     "for each token.",
     response_format=MorphologicalAnalysis,
-    api_kwargs={"temperature": 0.0, "top_p": 1.0},
+    api_kwargs={"temperature": 0.0, "top_p": 1.0, "reasoning": {"effort": "none"}},
 )

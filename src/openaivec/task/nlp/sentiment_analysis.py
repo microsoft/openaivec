@@ -79,5 +79,5 @@ SENTIMENT_ANALYSIS = PreparedTask(
     "English values specified (positive/negative/neutral for sentiment, and "
     "joy/sadness/anger/fear/surprise/disgust for emotions).",
     response_format=SentimentAnalysis,
-    api_kwargs={"temperature": 0.0, "top_p": 1.0},
+    api_kwargs={"temperature": 0.0, "top_p": 1.0, "reasoning": {"effort": "none"}},
 )

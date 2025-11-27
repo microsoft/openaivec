@@ -167,4 +167,4 @@ Provide accurate, actionable summary that enables efficient support resolution."
 
 
 # Backward compatibility - default configuration
-INQUIRY_SUMMARY = inquiry_summary(temperature=0.0, top_p=1.0)
+INQUIRY_SUMMARY = inquiry_summary(temperature=0.0, top_p=1.0, reasoning={"effort": "none"})

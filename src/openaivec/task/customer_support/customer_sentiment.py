@@ -171,4 +171,4 @@ Provide comprehensive sentiment analysis with business context and recommended r
 
 
 # Backward compatibility - default configuration
-CUSTOMER_SENTIMENT = customer_sentiment(temperature=0.0, top_p=1.0)
+CUSTOMER_SENTIMENT = customer_sentiment(temperature=0.0, top_p=1.0, reasoning={"effort": "none"})
