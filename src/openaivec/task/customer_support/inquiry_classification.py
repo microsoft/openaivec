@@ -15,7 +15,8 @@ Example:
     classifier = BatchResponses.of_task(
         client=client,
         model_name="gpt-5.1",
-        task=customer_support.inquiry_classification()
+        task=customer_support.inquiry_classification(),
+        reasoning={"effort": "none"},
     )
 
     inquiries = [
@@ -65,7 +66,8 @@ Example:
     classifier = BatchResponses.of_task(
         client=client,
         model_name="gpt-5.1",
-        task=task
+        task=task,
+        reasoning={"effort": "none"},
     )
     ```
 

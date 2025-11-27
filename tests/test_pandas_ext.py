@@ -764,8 +764,8 @@ class TestPandasExt:
             pandas_ext.set_async_client(async_openai_client)
             assert pandas_ext.get_async_client() is async_openai_client
 
-            pandas_ext.set_responses_model("gpt-5.1")
-            assert pandas_ext.get_responses_model() == "gpt-5.1"
+            pandas_ext.set_responses_model("gpt-4.1-mini")
+            assert pandas_ext.get_responses_model() == "gpt-4.1-mini"
 
             pandas_ext.set_embeddings_model("text-embedding-3-small")
             assert pandas_ext.get_embeddings_model() == "text-embedding-3-small"

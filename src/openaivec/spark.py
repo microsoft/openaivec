@@ -62,7 +62,8 @@ spark.udf.register(
         response_format=Translation,
         model_name="gpt-5.1",  # For Azure: deployment name, for OpenAI: model name
         batch_size=64,              # Rows per API request within partition
-        max_concurrency=8           # Concurrent requests PER EXECUTOR
+        max_concurrency=8,          # Concurrent requests PER EXECUTOR
+        reasoning={"effort": "none"},  # Required for gpt-5.1
     ),
 )
 

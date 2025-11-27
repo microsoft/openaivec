@@ -68,7 +68,7 @@ def async_openai_client() -> Generator[AsyncOpenAI, None, None]:
 @pytest.fixture(scope="session")
 def responses_model_name() -> str:
     """Default model name for response generation."""
-    return "gpt-5.1"
+    return "gpt-4.1-mini"
 
 
 @pytest.fixture(scope="session")

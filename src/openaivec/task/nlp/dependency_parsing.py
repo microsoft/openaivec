@@ -15,7 +15,8 @@ Example:
     analyzer = BatchResponses.of_task(
         client=client,
         model_name="gpt-5.1",
-        task=nlp.DEPENDENCY_PARSING
+        task=nlp.DEPENDENCY_PARSING,
+        reasoning={"effort": "none"},
     )
 
     texts = ["The cat sat on the mat.", "She quickly ran to the store."]

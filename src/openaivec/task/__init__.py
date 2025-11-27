@@ -41,13 +41,15 @@ client = OpenAI()
 sentiment_analyzer = BatchResponses.of_task(
     client=client,
     model_name="gpt-5.1",
-    task=nlp.SENTIMENT_ANALYSIS
+    task=nlp.SENTIMENT_ANALYSIS,
+    reasoning={"effort": "none"},
 )
 
 intent_analyzer = BatchResponses.of_task(
     client=client,
     model_name="gpt-5.1",
-    task=customer_support.INTENT_ANALYSIS
+    task=customer_support.INTENT_ANALYSIS,
+    reasoning={"effort": "none"},
 )
 ```
 
@@ -69,7 +71,8 @@ custom_urgency = urgency_analysis(
 analyzer = BatchResponses.of_task(
     client=client,
     model_name="gpt-5.1",
-    task=custom_urgency
+    task=custom_urgency,
+    reasoning={"effort": "none"},
 )
 ```
 
@@ -100,6 +103,7 @@ spark.udf.register(
         model_name="gpt-5.1",
         batch_size=64,
         max_concurrency=8,
+        reasoning={"effort": "none"},
     ),
 )
 

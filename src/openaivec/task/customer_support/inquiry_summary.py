@@ -16,7 +16,8 @@ Example:
     summarizer = BatchResponses.of_task(
         client=client,
         model_name="gpt-5.1",
-        task=customer_support.INQUIRY_SUMMARY
+        task=customer_support.INQUIRY_SUMMARY,
+        reasoning={"effort": "none"},
     )
 
     inquiries = [

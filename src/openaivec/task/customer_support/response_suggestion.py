@@ -16,7 +16,8 @@ Example:
     responder = BatchResponses.of_task(
         client=client,
         model_name="gpt-5.1",
-        task=customer_support.RESPONSE_SUGGESTION
+        task=customer_support.RESPONSE_SUGGESTION,
+        reasoning={"effort": "none"},
     )
 
     inquiries = [

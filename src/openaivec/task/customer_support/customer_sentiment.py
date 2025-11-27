@@ -16,7 +16,8 @@ Example:
     analyzer = BatchResponses.of_task(
         client=client,
         model_name="gpt-5.1",
-        task=customer_support.CUSTOMER_SENTIMENT
+        task=customer_support.CUSTOMER_SENTIMENT,
+        reasoning={"effort": "none"},
     )
 
     inquiries = [

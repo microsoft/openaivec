@@ -15,7 +15,8 @@ Example:
     analyzer = BatchResponses.of_task(
         client=client,
         model_name="gpt-5.1",
-        task=nlp.KEYWORD_EXTRACTION
+        task=nlp.KEYWORD_EXTRACTION,
+        reasoning={"effort": "none"},
     )
 
     texts = ["Machine learning is transforming the technology industry.",

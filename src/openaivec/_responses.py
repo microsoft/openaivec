@@ -327,6 +327,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             system_message="You are a helpful assistant.",
             batch_size=64,
             max_concurrency=5,
+            reasoning={"effort": "none"},
         )
         questions = [
             "What is the capital of France?",
