@@ -50,7 +50,7 @@ Simple task benchmark from [benchmark.ipynb](https://github.com/microsoft/openai
 
 Batching alone removes most HTTP overhead, and letting batching overlap with concurrency cuts total runtime to a few seconds while still yielding one output per input.
 
-![Benchmark comparison for simple task](https://private-user-images.githubusercontent.com/6128022/519474214-d1931e34-6f9e-4695-8042-88b771e002c3.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NjQyMDc5ODAsIm5iZiI6MTc2NDIwNzY4MCwicGF0aCI6Ii82MTI4MDIyLzUxOTQ3NDIxNC1kMTkzMWUzNC02ZjllLTQ2OTUtODA0Mi04OGI3NzFlMDAyYzMucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI1MTEyNyUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNTExMjdUMDE0MTIwWiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9Y2JhYmU2YjZhNDUxNDkxZDg5NGMxZGI1OTUzODgyYjQ4OTVhYzEzZjU3NmRkMjE1M2Y1ZDI3ZTdiNWI0M2VlMCZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QifQ.yuxT4AbDIBNsRGCIxPMjpGiHFqLcQUCLg_DjpqH02Lw)
+<img alt="image" src="https://github.com/user-attachments/assets/8ace9bcd-bcae-4023-a37e-13082cd645e5" />
 
 ## Contents
 
