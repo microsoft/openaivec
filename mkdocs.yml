@@ -63,6 +63,7 @@ nav:
       - Prompt Engineering: examples/prompt.ipynb
       - FAQ Generation: examples/generate_faq.ipynb
       - Token Count and Processing Time: examples/batch_size.ipynb
+      - Request Batching Benchmark: examples/benchmark.ipynb
   - API Reference:
       - Main Package: api/main.md
       - pandas_ext: api/pandas_ext.md
@@ -121,7 +122,7 @@ extra:
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/openaivec/
     - icon: fontawesome/brands/discord
-      link: https://discord.gg/vbb83Pgn
+      link: https://discord.gg/hXCS9J6Qek
 
 plugins:
   - search:
