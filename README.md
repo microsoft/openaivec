@@ -40,7 +40,7 @@ print(sentiment.tolist())
 
 ## Benchmarks
 
-Simple task benchmark from `docs/examples/benchmark.ipynb` (100 numeric strings → integer literals, `Series.aio.responses`, model `gpt-5.1`):
+Simple task benchmark from [benchmark.ipynb](https://github.com/microsoft/openaivec/blob/main/docs/examples/benchmark.ipynb) (100 numeric strings → integer literals, `Series.aio.responses`, model `gpt-5.1`):
 
 | Mode                | Settings                                        | Time (s) |
 | ------------------- | ----------------------------------------------- | -------- |
