@@ -38,6 +38,20 @@ print(sentiment.tolist())
 
 **Try it live:** https://microsoft.github.io/openaivec/examples/pandas/
 
+## Benchmarks
+
+Simple task benchmark from `docs/examples/benchmark.ipynb` (100 numeric strings → integer literals, `Series.aio.responses`, model `gpt-5.1`):
+
+| Mode                | Settings                                        | Time (s) |
+| ------------------- | ----------------------------------------------- | -------- |
+| Serial              | `batch_size=1`, `max_concurrency=1`             | ~141     |
+| Batching            | default `batch_size`, `max_concurrency=1`       | ~15      |
+| Concurrent batching | default `batch_size`, default `max_concurrency` | ~6       |
+
+Batching alone removes most HTTP overhead, and letting batching overlap with concurrency cuts total runtime to a few seconds while still yielding one output per input.
+
+![Benchmark comparison for simple task](https://private-user-images.githubusercontent.com/6128022/519474214-d1931e34-6f9e-4695-8042-88b771e002c3.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NjQyMDc5ODAsIm5iZiI6MTc2NDIwNzY4MCwicGF0aCI6Ii82MTI4MDIyLzUxOTQ3NDIxNC1kMTkzMWUzNC02ZjllLTQ2OTUtODA0Mi04OGI3NzFlMDAyYzMucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI1MTEyNyUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNTExMjdUMDE0MTIwWiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9Y2JhYmU2YjZhNDUxNDkxZDg5NGMxZGI1OTUzODgyYjQ4OTVhYzEzZjU3NmRkMjE1M2Y1ZDI3ZTdiNWI0M2VlMCZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QifQ.yuxT4AbDIBNsRGCIxPMjpGiHFqLcQUCLg_DjpqH02Lw)
+
 ## Contents
 
 - [Why openaivec?](#why-openaivec)
