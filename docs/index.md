@@ -87,7 +87,7 @@ from typing import List
 pandas_ext.set_client(OpenAI())
 
 # Set models for responses and embeddings (optional; defaults shown)
-pandas_ext.set_responses_model("gpt-4.1-mini")
+pandas_ext.set_responses_model("gpt-5.1")
 pandas_ext.set_embeddings_model("text-embedding-3-small")
 
 

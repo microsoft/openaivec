@@ -458,7 +458,7 @@ class FewShotPromptBuilder:
 
         Args:
             client (OpenAI | None): Configured OpenAI client. If None, uses DI container with environment variables.
-            model_name (str | None): Model identifier. If None, uses default ``gpt-4.1-mini``.
+            model_name (str | None): Model identifier. If None, uses default ``gpt-5.1``.
             **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
 
         Returns:

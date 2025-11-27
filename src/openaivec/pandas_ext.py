@@ -31,7 +31,7 @@ async_azure_client = AsyncAzureOpenAI(
 pandas_ext.set_async_client(async_azure_client)
 
 # Set up model names (optional, defaults shown)
-pandas_ext.set_responses_model("gpt-4.1-mini")
+pandas_ext.set_responses_model("gpt-5.1")
 pandas_ext.set_embeddings_model("text-embedding-3-small")
 
 # Inspect current configuration
@@ -143,7 +143,7 @@ def set_responses_model(name: str) -> None:
 
     Args:
         name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name
-            (for example, ``gpt-4.1-mini``).
+            (for example, ``gpt-5.1``).
     """
     CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName(name))
 
@@ -152,7 +152,7 @@ def get_responses_model() -> str:
     """Get the currently registered model name for text responses.
 
     Returns:
-        str: The model name (for example, ``gpt-4.1-mini``).
+        str: The model name (for example, ``gpt-5.1``).
     """
     return CONTAINER.resolve(ResponsesModelName).value
 

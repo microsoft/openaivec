@@ -131,7 +131,7 @@ def provide_async_openai_client() -> AsyncOpenAI:
 
 
 def set_default_registrations():
-    CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName("gpt-4.1-mini"))
+    CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName("gpt-5.1"))
     CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName("text-embedding-3-small"))
     CONTAINER.register(OpenAIAPIKey, lambda: OpenAIAPIKey(os.getenv("OPENAI_API_KEY")))
     CONTAINER.register(AzureOpenAIAPIKey, lambda: AzureOpenAIAPIKey(os.getenv("AZURE_OPENAI_API_KEY")))

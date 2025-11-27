@@ -15,7 +15,7 @@ Example:
     client = OpenAI()
     responder = BatchResponses.of_task(
         client=client,
-        model_name="gpt-4.1-mini",
+        model_name="gpt-5.1",
         task=customer_support.RESPONSE_SUGGESTION
     )
 

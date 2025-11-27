@@ -323,7 +323,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
 
         vector_llm = AsyncBatchResponses.of(
             client=openai_async_client,
-            model_name="gpt-4.1-mini",
+            model_name="gpt-5.1",
             system_message="You are a helpful assistant.",
             batch_size=64,
             max_concurrency=5,

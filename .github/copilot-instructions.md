@@ -306,7 +306,7 @@ azure_async = AsyncAzureOpenAI(
 pandas_ext.use_async(azure_async)
 
 // Override model names (optional)
-pandas_ext.responses_model("gpt-4.1-mini")
+pandas_ext.responses_model("gpt-5.1")
 pandas_ext.embeddings_model("text-embedding-3-small")
 ```
 

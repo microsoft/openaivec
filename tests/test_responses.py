@@ -82,7 +82,7 @@ class TestAsyncBatchResponses:
     @pytest.fixture(autouse=True)
     def setup_client(self, async_openai_client):
         self.openai_client = async_openai_client
-        self.model_name = "gpt-4.1-mini"
+        self.model_name = "gpt-5.1"
         yield
 
     @pytest.mark.asyncio

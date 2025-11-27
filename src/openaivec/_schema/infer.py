@@ -41,7 +41,7 @@ Design constraints (updated):
 Example (conceptual):
         from openai import OpenAI
         client = OpenAI()
-        inferer = SchemaInferer(client=client, model_name="gpt-4.1-mini")
+        inferer = SchemaInferer(client=client, model_name="gpt-5.1")
         schema = inferer.infer_schema(
                 SchemaInferenceInput(
                         examples=["Order #123 delayed due to weather", "Order #456 delivered"],
