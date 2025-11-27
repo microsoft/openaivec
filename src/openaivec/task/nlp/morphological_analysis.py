@@ -17,7 +17,6 @@ Example:
         client=client,
         model_name="gpt-5.1",
         task=nlp.MORPHOLOGICAL_ANALYSIS,
-        reasoning={"effort": "none"},
     )
 
     texts = ["Running quickly", "The cats are sleeping"]

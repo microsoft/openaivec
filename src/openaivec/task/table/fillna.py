@@ -50,7 +50,6 @@ Example:
         client=client,
         model_name="gpt-5.1",
         task=task,
-        reasoning={"effort": "none"},
     )
 
     # Generate inputs for missing rows

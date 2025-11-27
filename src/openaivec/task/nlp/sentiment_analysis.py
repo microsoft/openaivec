@@ -16,7 +16,6 @@ Example:
         client=client,
         model_name="gpt-5.1",
         task=nlp.SENTIMENT_ANALYSIS,
-        reasoning={"effort": "none"},
     )
 
     texts = ["I love this product!", "This is terrible and disappointing."]

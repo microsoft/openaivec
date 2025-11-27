@@ -21,7 +21,6 @@ Example:
         client=client,
         model_name="gpt-5.1",
         task=nlp.MULTILINGUAL_TRANSLATION,
-        reasoning={"effort": "none"},
     )
 
     texts = ["Hello", "Good morning", "Thank you"]

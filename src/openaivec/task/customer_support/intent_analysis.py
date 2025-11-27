@@ -16,7 +16,6 @@ Example:
         client=client,
         model_name="gpt-5.1",
         task=customer_support.INTENT_ANALYSIS,
-        reasoning={"effort": "none"},
     )
 
     inquiries = [

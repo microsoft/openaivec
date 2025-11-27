@@ -16,7 +16,6 @@ Example:
         client=client,
         model_name="gpt-5.1",
         task=customer_support.urgency_analysis(),
-        reasoning={"effort": "none"},
     )
 
     inquiries = [
@@ -74,7 +73,6 @@ Example:
         client=client,
         model_name="gpt-5.1",
         task=task,
-        reasoning={"effort": "none"},
     )
     ```
 

@@ -16,7 +16,6 @@ Example:
         client=client,
         model_name="gpt-5.1",
         task=nlp.NAMED_ENTITY_RECOGNITION,
-        reasoning={"effort": "none"},
     )
 
     texts = ["John works at Microsoft in Seattle", "The meeting is on March 15th"]
