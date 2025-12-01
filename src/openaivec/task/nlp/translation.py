@@ -49,8 +49,8 @@ Example:
 
 Attributes:
     MULTILINGUAL_TRANSLATION (PreparedTask): A prepared task instance configured
-        for multilingual translation with temperature=0.0 and top_p=1.0 for
-        deterministic output.
+        for multilingual translation. Provide ``temperature=0.0`` and ``top_p=1.0``
+        to the calling API wrapper for deterministic output.
 
 Note:
     The translation covers 58 languages across major language families. All field
@@ -156,6 +156,4 @@ class TranslatedString(BaseModel):
 
 instructions = "Translate the following text into multiple languages. "
 
-MULTILINGUAL_TRANSLATION = PreparedTask(
-    instructions=instructions, response_format=TranslatedString, api_kwargs={"temperature": 0.0, "top_p": 1.0}
-)
+MULTILINGUAL_TRANSLATION = PreparedTask(instructions=instructions, response_format=TranslatedString)

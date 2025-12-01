@@ -92,7 +92,6 @@ def response_suggestion(
     response_style: str = "professional",
     company_name: str = "our company",
     business_context: str = "general customer support",
-    **api_kwargs,
 ) -> PreparedTask:
     """Create a configurable response suggestion task.
 
@@ -100,8 +99,6 @@ def response_suggestion(
         response_style (str): Style of response (professional, friendly, empathetic, formal).
         company_name (str): Name of the company for personalization.
         business_context (str): Business context for responses.
-        **api_kwargs: Additional keyword arguments to pass to the OpenAI API,
-            such as temperature, top_p, etc.
 
     Returns:
         PreparedTask configured for response suggestions.
@@ -189,8 +186,8 @@ but use English values like "empathetic" for tone.
 Generate helpful, professional response that moves toward resolution while maintaining
 positive customer relationship."""
 
-    return PreparedTask(instructions=instructions, response_format=ResponseSuggestion, api_kwargs=api_kwargs)
+    return PreparedTask(instructions=instructions, response_format=ResponseSuggestion)
 
 
 # Backward compatibility - default configuration
-RESPONSE_SUGGESTION = response_suggestion(temperature=0.0, top_p=1.0)
+RESPONSE_SUGGESTION = response_suggestion()

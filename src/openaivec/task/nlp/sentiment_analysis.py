@@ -43,9 +43,9 @@ Example:
     ```
 
 Attributes:
-    SENTIMENT_ANALYSIS (PreparedTask): A prepared task instance
-        configured for sentiment analysis with temperature=0.0 and
-        top_p=1.0 for deterministic output.
+    SENTIMENT_ANALYSIS (PreparedTask): A prepared task instance configured for sentiment
+        analysis. Provide ``temperature=0.0`` and ``top_p=1.0`` to API calls for
+        deterministic output.
 """
 
 from typing import Literal
@@ -78,5 +78,4 @@ SENTIMENT_ANALYSIS = PreparedTask(
     "English values specified (positive/negative/neutral for sentiment, and "
     "joy/sadness/anger/fear/surprise/disgust for emotions).",
     response_format=SentimentAnalysis,
-    api_kwargs={"temperature": 0.0, "top_p": 1.0},
 )

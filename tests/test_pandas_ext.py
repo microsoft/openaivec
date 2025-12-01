@@ -85,12 +85,10 @@ class TestPandasExt:
         """Test Series.ai.task method with actual task execution."""
         from openaivec._model import PreparedTask
 
-        task = PreparedTask(
-            instructions="Translate to French", response_format=str, api_kwargs={"temperature": 0.0, "top_p": 1.0}
-        )
+        task = PreparedTask(instructions="Translate to French", response_format=str)
 
         series = pd.Series(["cat", "dog"])
-        results = series.ai.task(task=task, batch_size=2, show_progress=False)
+        results = series.ai.task(task=task, batch_size=2, show_progress=False, temperature=0.0, top_p=1.0)
 
         assert len(results) == 2
         assert results.index.equals(series.index)
@@ -142,12 +140,11 @@ class TestPandasExt:
         task = PreparedTask(
             instructions="Extract the animal name from the data",
             response_format=str,
-            api_kwargs={"temperature": 0.0, "top_p": 1.0},
         )
 
         df = pd.DataFrame([{"animal": "cat", "legs": 4}, {"animal": "dog", "legs": 4}])
 
-        results = df.ai.task(task=task, batch_size=2, show_progress=False)
+        results = df.ai.task(task=task, batch_size=2, show_progress=False, temperature=0.0, top_p=1.0)
 
         assert len(results) == 2
         assert results.index.equals(df.index)
@@ -236,12 +233,18 @@ class TestPandasExt:
             task = PreparedTask(
                 instructions="Classify sentiment as positive or negative",
                 response_format=str,
-                api_kwargs={"temperature": 0.0, "top_p": 1.0},
             )
 
             series = pd.Series(["I love this!", "This is terrible"])
 
-            return await series.aio.task(task=task, batch_size=2, max_concurrency=2, show_progress=False)
+            return await series.aio.task(
+                task=task,
+                batch_size=2,
+                max_concurrency=2,
+                show_progress=False,
+                temperature=0.0,
+                top_p=1.0,
+            )
 
         results = asyncio.run(run_test())
 
@@ -287,13 +290,18 @@ class TestPandasExt:
         from openaivec._model import PreparedTask
 
         async def run_test():
-            task = PreparedTask(
-                instructions="Describe the animal", response_format=str, api_kwargs={"temperature": 0.0, "top_p": 1.0}
-            )
+            task = PreparedTask(instructions="Describe the animal", response_format=str)
 
             df = pd.DataFrame([{"name": "fluffy", "type": "cat"}, {"name": "buddy", "type": "dog"}])
 
-            return await df.aio.task(task=task, batch_size=2, max_concurrency=2, show_progress=False)
+            return await df.aio.task(
+                task=task,
+                batch_size=2,
+                max_concurrency=2,
+                show_progress=False,
+                temperature=0.0,
+                top_p=1.0,
+            )
 
         results = asyncio.run(run_test())
 
@@ -627,8 +635,10 @@ class TestPandasExt:
         task = fillna(df_with_missing, "name")
 
         assert task is not None
-        assert task.api_kwargs.get("temperature") == 0.0
-        assert task.api_kwargs.get("top_p") == 1.0
+        assert isinstance(task.instructions, str)
+        assert task.response_format.__name__ == "FillNaResponse"
+        with pytest.raises(AttributeError):
+            _ = task.api_kwargs
 
     def test_fillna_task_validation(self):
         """Test fillna validation with various edge cases."""

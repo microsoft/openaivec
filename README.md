@@ -189,8 +189,14 @@ text_df = pd.DataFrame({
 })
 
 results = text_df.assign(
-    sentiment=lambda df: df.text.ai.task(nlp.SENTIMENT_ANALYSIS),
-    intent=lambda df: df.text.ai.task(customer_support.INTENT_ANALYSIS),
+    sentiment=lambda df: df.text.ai.task(
+        nlp.SENTIMENT_ANALYSIS,
+        reasoning={"effort": "none"},
+    ),
+    intent=lambda df: df.text.ai.task(
+        customer_support.INTENT_ANALYSIS,
+        reasoning={"effort": "none"},
+    ),
 )
 
 # Extract structured results into separate columns

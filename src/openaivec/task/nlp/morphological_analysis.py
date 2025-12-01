@@ -44,9 +44,9 @@ Example:
     ```
 
 Attributes:
-    MORPHOLOGICAL_ANALYSIS (PreparedTask): A prepared task instance
-        configured for morphological analysis with temperature=0.0 and
-        top_p=1.0 for deterministic output.
+    MORPHOLOGICAL_ANALYSIS (PreparedTask): A prepared task instance configured
+        for morphological analysis. Provide ``temperature=0.0`` and ``top_p=1.0`` to
+        API calls for deterministic output.
 """
 
 from pydantic import BaseModel, Field
@@ -70,5 +70,4 @@ MORPHOLOGICAL_ANALYSIS = PreparedTask(
     "identify part-of-speech tags, provide lemmatized forms, and extract morphological features "
     "for each token.",
     response_format=MorphologicalAnalysis,
-    api_kwargs={"temperature": 0.0, "top_p": 1.0},
 )

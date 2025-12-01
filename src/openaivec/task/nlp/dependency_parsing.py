@@ -43,9 +43,9 @@ Example:
     ```
 
 Attributes:
-    DEPENDENCY_PARSING (PreparedTask): A prepared task instance
-        configured for dependency parsing with temperature=0.0 and
-        top_p=1.0 for deterministic output.
+    DEPENDENCY_PARSING (PreparedTask): A prepared task instance configured for dependency
+        parsing. Provide ``temperature=0.0`` and ``top_p=1.0`` when calling the API for
+        deterministic output.
 """
 
 from pydantic import BaseModel, Field
@@ -75,5 +75,4 @@ DEPENDENCY_PARSING = PreparedTask(
     "relations between words, determine the root word, and provide a tree representation of the "
     "syntactic structure.",
     response_format=DependencyParsing,
-    api_kwargs={"temperature": 0.0, "top_p": 1.0},
 )

@@ -202,7 +202,12 @@ class BatchResponses(Generic[ResponseFormat]):
 
     @classmethod
     def of_task(
-        cls, client: OpenAI, model_name: str, task: PreparedTask[ResponseFormat], batch_size: int | None = None
+        cls,
+        client: OpenAI,
+        model_name: str,
+        task: PreparedTask[ResponseFormat],
+        batch_size: int | None = None,
+        **api_kwargs,
     ) -> "BatchResponses":
         """Factory from a PreparedTask.
 
@@ -212,6 +217,7 @@ class BatchResponses(Generic[ResponseFormat]):
             task (PreparedTask): Prepared task with instructions and response format.
             batch_size (int | None, optional): Max unique prompts per API call. Defaults to None
                 (automatic batch size optimization). Set to a positive integer for fixed batch size.
+            **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
 
         Returns:
             BatchResponses: Configured instance backed by a batching proxy.
@@ -222,7 +228,7 @@ class BatchResponses(Generic[ResponseFormat]):
             system_message=task.instructions,
             response_format=task.response_format,
             cache=BatchingMapProxy(batch_size=batch_size),
-            api_kwargs=task.api_kwargs,
+            api_kwargs=api_kwargs,
         )
 
     def __post_init__(self):
@@ -403,6 +409,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         task: PreparedTask[ResponseFormat],
         batch_size: int | None = None,
         max_concurrency: int = 8,
+        **api_kwargs,
     ) -> "AsyncBatchResponses":
         """Factory from a PreparedTask.
 
@@ -413,6 +420,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             batch_size (int | None, optional): Max unique prompts per API call. Defaults to None
                 (automatic batch size optimization). Set to a positive integer for fixed batch size.
             max_concurrency (int, optional): Max concurrent API calls. Defaults to 8.
+            **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
 
         Returns:
             AsyncBatchResponses: Configured instance backed by an async batching proxy.
@@ -423,7 +431,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             system_message=task.instructions,
             response_format=task.response_format,
             cache=AsyncBatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency),
-            api_kwargs=task.api_kwargs,
+            api_kwargs=api_kwargs,
         )
 
     def __post_init__(self):

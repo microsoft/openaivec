@@ -378,12 +378,13 @@ class OpenAIVecSeriesAccessor:
         self,
         task: PreparedTask[ResponseFormat],
         cache: BatchingMapProxy[str, ResponseFormat],
+        **api_kwargs,
     ) -> pd.Series:
         """Execute a prepared task on every Series element using a provided cache.
 
-        This mirrors ``responses_with_cache`` but uses the task's stored instructions,
-        response format, and API parameters. A supplied ``BatchingMapProxy`` enables
-        cross‑operation deduplicated reuse and external batch size / progress control.
+        This mirrors ``responses_with_cache`` but uses the task's stored instructions
+        and response format. A supplied ``BatchingMapProxy`` enables cross‑operation
+        deduplicated reuse and external batch size / progress control.
 
         Example:
             ```python
@@ -393,12 +394,13 @@ class OpenAIVecSeriesAccessor:
             ```
 
         Args:
-            task (PreparedTask): Prepared task (instructions + response_format + sampling params).
+            task (PreparedTask): Prepared task (instructions + response_format).
             cache (BatchingMapProxy[str, ResponseFormat]): Pre‑configured cache instance.
+            **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
 
         Note:
-            The task's stored API parameters are used. Core routing keys (``model``, system
-            instructions, user input) are managed internally and cannot be overridden.
+            Core routing keys (``model``, system instructions, user input) are managed
+            internally and cannot be overridden.
 
         Returns:
             pandas.Series: Task results aligned with the original Series index.
@@ -409,7 +411,7 @@ class OpenAIVecSeriesAccessor:
             system_message=task.instructions,
             response_format=task.response_format,
             cache=cache,
-            api_kwargs=task.api_kwargs,
+            api_kwargs=api_kwargs,
         )
         return pd.Series(client.parse(self._obj.tolist()), index=self._obj.index, name=self._obj.name)
 
@@ -418,6 +420,7 @@ class OpenAIVecSeriesAccessor:
         task: PreparedTask,
         batch_size: int | None = None,
         show_progress: bool = True,
+        **api_kwargs,
     ) -> pd.Series:
         """Execute a prepared task on every Series element.
 
@@ -443,16 +446,16 @@ class OpenAIVecSeriesAccessor:
 
         Args:
             task (PreparedTask): A pre-configured task containing instructions,
-                response format, and other parameters for processing the inputs.
+                response format for processing the inputs.
             batch_size (int | None, optional): Number of prompts grouped into a single
                 request to optimize API usage. Defaults to ``None`` (automatic batch size
                 optimization based on execution time). Set to a positive integer for fixed batch size.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
+            **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
 
         Note:
-            The task's stored API parameters are used. Core batching / routing keys
-            (``model``, ``instructions`` / system message, user ``input``) are managed by the
-            library and cannot be overridden.
+            Core batching / routing keys (``model``, ``instructions`` / system message,
+            user ``input``) are managed by the library and cannot be overridden.
 
         Returns:
             pandas.Series: Series whose values are instances of the task's response format.
@@ -460,6 +463,7 @@ class OpenAIVecSeriesAccessor:
         return self.task_with_cache(
             task=task,
             cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
+            **api_kwargs,
         )
 
     def parse_with_cache(
@@ -818,15 +822,17 @@ class OpenAIVecDataFrameAccessor:
         self,
         task: PreparedTask[ResponseFormat],
         cache: BatchingMapProxy[str, ResponseFormat],
+        **api_kwargs,
     ) -> pd.Series:
         """Execute a prepared task on each DataFrame row after serializing it to JSON using a provided cache.
 
         Args:
-            task (PreparedTask): Prepared task (instructions + response_format + sampling params).
+            task (PreparedTask): Prepared task (instructions + response_format).
             cache (BatchingMapProxy[str, ResponseFormat]): Pre‑configured cache instance.
+            **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
 
         Note:
-            The task's stored API parameters are used. Core routing keys are managed internally.
+            Core routing keys are managed internally.
 
         Returns:
             pandas.Series: Task results aligned with the DataFrame's original index.
@@ -834,6 +840,7 @@ class OpenAIVecDataFrameAccessor:
         return _df_rows_to_json_series(self._obj).ai.task_with_cache(
             task=task,
             cache=cache,
+            **api_kwargs,
         )
 
     def task(
@@ -841,6 +848,7 @@ class OpenAIVecDataFrameAccessor:
         task: PreparedTask,
         batch_size: int | None = None,
         show_progress: bool = True,
+        **api_kwargs,
     ) -> pd.Series:
         """Execute a prepared task on each DataFrame row after serializing it to JSON.
 
@@ -870,16 +878,16 @@ class OpenAIVecDataFrameAccessor:
 
         Args:
             task (PreparedTask): A pre-configured task containing instructions,
-                response format, and other parameters for processing the inputs.
+                response format for processing the inputs.
             batch_size (int | None, optional): Number of requests sent in one batch
                 to optimize API usage. Defaults to ``None`` (automatic batch size
                 optimization based on execution time). Set to a positive integer for fixed batch size.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
+            **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
 
         Note:
-            The task's stored API parameters are used. Core batching / routing
-            keys (``model``, ``instructions`` / system message, user ``input``) are managed by the
-            library and cannot be overridden.
+            Core batching / routing keys (``model``, ``instructions`` / system message, user ``input``)
+            are managed by the library and cannot be overridden.
 
         Returns:
             pandas.Series: Series whose values are instances of the task's
@@ -889,6 +897,7 @@ class OpenAIVecDataFrameAccessor:
             task=task,
             batch_size=batch_size,
             show_progress=show_progress,
+            **api_kwargs,
         )
 
     def parse_with_cache(
@@ -1406,6 +1415,7 @@ class AsyncOpenAIVecSeriesAccessor:
         self,
         task: PreparedTask[ResponseFormat],
         cache: AsyncBatchingMapProxy[str, ResponseFormat],
+        **api_kwargs,
     ) -> pd.Series:
         """Execute a prepared task on every Series element using a provided cache (asynchronously).
 
@@ -1416,10 +1426,11 @@ class AsyncOpenAIVecSeriesAccessor:
 
         Args:
             task (PreparedTask): A pre-configured task containing instructions,
-                response format, and other parameters for processing the inputs.
+                response format for processing the inputs.
             cache (AsyncBatchingMapProxy[str, ResponseFormat]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
+            **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
 
         Example:
             ```python
@@ -1456,7 +1467,7 @@ class AsyncOpenAIVecSeriesAccessor:
             system_message=task.instructions,
             response_format=task.response_format,
             cache=cache,
-            api_kwargs=task.api_kwargs,
+            api_kwargs=api_kwargs,
         )
         results = await client.parse(self._obj.tolist())
 
@@ -1468,6 +1479,7 @@ class AsyncOpenAIVecSeriesAccessor:
         batch_size: int | None = None,
         max_concurrency: int = 8,
         show_progress: bool = True,
+        **api_kwargs,
     ) -> pd.Series:
         """Execute a prepared task on every Series element (asynchronously).
 
@@ -1494,13 +1506,14 @@ class AsyncOpenAIVecSeriesAccessor:
 
         Args:
             task (PreparedTask): A pre-configured task containing instructions,
-                response format, and other parameters for processing the inputs.
+                response format for processing the inputs.
             batch_size (int | None, optional): Number of prompts grouped into a single
                 request to optimize API usage. Defaults to ``None`` (automatic batch size
                 optimization based on execution time). Set to a positive integer for fixed batch size.
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to 8.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
+            **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
 
         Note:
             The task's stored API parameters are used. Core batching / routing
@@ -1519,6 +1532,7 @@ class AsyncOpenAIVecSeriesAccessor:
             cache=AsyncBatchingMapProxy(
                 batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
             ),
+            **api_kwargs,
         )
 
     async def parse_with_cache(
@@ -1752,17 +1766,19 @@ class AsyncOpenAIVecDataFrameAccessor:
         self,
         task: PreparedTask[ResponseFormat],
         cache: AsyncBatchingMapProxy[str, ResponseFormat],
+        **api_kwargs,
     ) -> pd.Series:
         """Execute a prepared task on each DataFrame row using a provided cache (asynchronously).
 
         After serializing each row to JSON, this method executes the prepared task.
 
         Args:
-            task (PreparedTask): Prepared task (instructions + response_format + sampling params).
+            task (PreparedTask): Prepared task (instructions + response_format).
             cache (AsyncBatchingMapProxy[str, ResponseFormat]): Pre‑configured async cache instance.
+            **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
 
         Note:
-            The task's stored API parameters are used. Core routing keys are managed internally.
+            Core routing keys are managed internally.
 
         Returns:
             pandas.Series: Task results aligned with the DataFrame's original index.
@@ -1773,6 +1789,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         return await _df_rows_to_json_series(self._obj).aio.task_with_cache(
             task=task,
             cache=cache,
+            **api_kwargs,
         )
 
     async def task(
@@ -1781,6 +1798,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         batch_size: int | None = None,
         max_concurrency: int = 8,
         show_progress: bool = True,
+        **api_kwargs,
     ) -> pd.Series:
         """Execute a prepared task on each DataFrame row after serializing it to JSON (asynchronously).
 
@@ -1811,18 +1829,18 @@ class AsyncOpenAIVecDataFrameAccessor:
 
         Args:
             task (PreparedTask): A pre-configured task containing instructions,
-                response format, and other parameters for processing the inputs.
+                response format for processing the inputs.
             batch_size (int | None, optional): Number of requests sent in one batch
                 to optimize API usage. Defaults to ``None`` (automatic batch size
                 optimization based on execution time). Set to a positive integer for fixed batch size.
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to 8.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
+            **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
 
         Note:
-            The task's stored API parameters are used. Core batching / routing
-            keys (``model``, ``instructions`` / system message, user ``input``) are managed by the
-            library and cannot be overridden.
+            Core batching / routing keys (``model``, ``instructions`` / system message, user ``input``)
+            are managed by the library and cannot be overridden.
 
         Returns:
             pandas.Series: Series whose values are instances of the task's
@@ -1837,6 +1855,7 @@ class AsyncOpenAIVecDataFrameAccessor:
             batch_size=batch_size,
             max_concurrency=max_concurrency,
             show_progress=show_progress,
+            **api_kwargs,
         )
 
     async def parse_with_cache(

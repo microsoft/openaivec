@@ -52,9 +52,9 @@ Example:
     ```
 
 Attributes:
-    INTENT_ANALYSIS (PreparedTask): A prepared task instance
-        configured for intent analysis with temperature=0.0 and
-        top_p=1.0 for deterministic output.
+    INTENT_ANALYSIS (PreparedTask): A prepared task instance configured for intent
+        analysis. Provide ``temperature=0.0`` and ``top_p=1.0`` to your API calls
+        for deterministic output.
 """
 
 from typing import Literal
@@ -100,13 +100,11 @@ class IntentAnalysis(BaseModel):
     )
 
 
-def intent_analysis(business_context: str = "general customer support", **api_kwargs) -> PreparedTask:
+def intent_analysis(business_context: str = "general customer support") -> PreparedTask:
     """Create a configurable intent analysis task.
 
     Args:
         business_context (str): Business context for intent analysis.
-        **api_kwargs: Additional keyword arguments to pass to the OpenAI API,
-            such as temperature, top_p, etc.
 
     Returns:
         PreparedTask configured for intent analysis.
@@ -169,8 +167,8 @@ next_steps, and reasoning in Japanese, but use English values like "get_help" fo
 
 Provide comprehensive intent analysis with actionable recommendations."""
 
-    return PreparedTask(instructions=instructions, response_format=IntentAnalysis, api_kwargs=api_kwargs)
+    return PreparedTask(instructions=instructions, response_format=IntentAnalysis)
 
 
 # Backward compatibility - default configuration
-INTENT_ANALYSIS = intent_analysis(temperature=0.0, top_p=1.0)
+INTENT_ANALYSIS = intent_analysis()

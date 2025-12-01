@@ -43,9 +43,9 @@ Example:
     ```
 
 Attributes:
-    NAMED_ENTITY_RECOGNITION (PreparedTask): A prepared task instance
-        configured for named entity recognition with temperature=0.0 and
-        top_p=1.0 for deterministic output.
+    NAMED_ENTITY_RECOGNITION (PreparedTask): A prepared task instance configured for named
+        entity recognition. Provide ``temperature=0.0`` and ``top_p=1.0`` to API calls for
+        deterministic output.
 """
 
 from pydantic import BaseModel, Field
@@ -78,5 +78,4 @@ NAMED_ENTITY_RECOGNITION = PreparedTask(
     "organizations, locations, dates, money, percentages, and other miscellaneous entities "
     "with their positions and confidence scores.",
     response_format=NamedEntityRecognition,
-    api_kwargs={"temperature": 0.0, "top_p": 1.0},
 )

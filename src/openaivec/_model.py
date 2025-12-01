@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Generic, TypeVar
 
 __all__ = [
@@ -12,19 +12,14 @@ ResponseFormat = TypeVar("ResponseFormat")
 class PreparedTask(Generic[ResponseFormat]):
     """A data class representing a complete task configuration for OpenAI API calls.
 
-    This class encapsulates all the necessary parameters for executing a task,
-    including the instructions to be sent to the model, the expected response
-    format using Pydantic models, and API parameters for controlling
-    the model's output behavior.
+    This class encapsulates the instructions and expected response format for
+    executing a task against the OpenAI Responses API.
 
     Attributes:
         instructions (str): The prompt or instructions to send to the OpenAI model.
             This should contain clear, specific directions for the task.
         response_format (type[ResponseFormat]): A Pydantic model class or str type that defines the expected
             structure of the response. Can be either a BaseModel subclass or str.
-        api_kwargs (dict[str, int | float | str | bool]): Additional OpenAI API parameters
-            such as temperature, top_p, frequency_penalty, presence_penalty, seed, etc.
-            Defaults to an empty dict.
 
     Example:
         Creating a custom task:
@@ -40,7 +35,6 @@ class PreparedTask(Generic[ResponseFormat]):
         custom_task = PreparedTask(
             instructions="Translate the following text to French:",
             response_format=TranslationResponse,
-            api_kwargs={"temperature": 0.1, "top_p": 0.9}
         )
         ```
 
@@ -51,7 +45,6 @@ class PreparedTask(Generic[ResponseFormat]):
 
     instructions: str
     response_format: type[ResponseFormat]
-    api_kwargs: dict[str, int | float | str | bool] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
