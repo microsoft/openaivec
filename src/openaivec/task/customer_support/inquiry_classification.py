@@ -119,7 +119,6 @@ def inquiry_classification(
     priority_rules: Dict[str, str] | None = None,
     business_context: str = "general customer support",
     custom_keywords: Dict[str, list[str]] | None = None,
-    **api_kwargs,
 ) -> PreparedTask:
     """Create a configurable inquiry classification task.
 
@@ -132,8 +131,6 @@ def inquiry_classification(
             Default uses standard priority indicators.
         business_context (str): Description of the business context to help with classification.
         custom_keywords (dict[str, list[str]] | None): Dictionary mapping categories to relevant keywords.
-        **api_kwargs: Additional keyword arguments to pass to the OpenAI API,
-            such as temperature, top_p, etc.
 
     Returns:
         PreparedTask configured for inquiry classification.
@@ -253,8 +250,8 @@ language where appropriate, but priority must use English values like "high".
 
 Provide accurate classification with detailed reasoning."""
 
-    return PreparedTask(instructions=instructions, response_format=InquiryClassification, api_kwargs=api_kwargs)
+    return PreparedTask(instructions=instructions, response_format=InquiryClassification)
 
 
 # Backward compatibility - default configuration
-INQUIRY_CLASSIFICATION = inquiry_classification(temperature=0.0, top_p=1.0)
+INQUIRY_CLASSIFICATION = inquiry_classification()

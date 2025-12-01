@@ -45,9 +45,9 @@ Example:
     ```
 
 Attributes:
-    KEYWORD_EXTRACTION (PreparedTask): A prepared task instance
-        configured for keyword extraction with temperature=0.0 and
-        top_p=1.0 for deterministic output.
+    KEYWORD_EXTRACTION (PreparedTask): A prepared task instance configured for keyword
+        extraction. Provide ``temperature=0.0`` and ``top_p=1.0`` when calling the API
+        for deterministic output.
 """
 
 from pydantic import BaseModel, Field
@@ -75,5 +75,4 @@ KEYWORD_EXTRACTION = PreparedTask(
     instructions="Extract important keywords and phrases from the following text. Rank them "
     "by importance, provide frequency counts, identify main topics, and generate a brief summary.",
     response_format=KeywordExtraction,
-    api_kwargs={"temperature": 0.0, "top_p": 1.0},
 )

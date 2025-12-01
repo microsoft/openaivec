@@ -503,8 +503,8 @@ def task_udf(
     datasets with overlapping content.
 
     Args:
-        task (PreparedTask): A predefined task configuration containing instructions,
-            response format, and API parameters.
+        task (PreparedTask): A predefined task configuration containing instructions
+            and response format.
         model_name (str | None): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
             For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to configured model in DI container
             via ResponsesModelName if not provided.
@@ -522,7 +522,7 @@ def task_udf(
         Arbitrary OpenAI Responses API parameters (e.g. ``temperature``, ``top_p``,
         ``frequency_penalty``, ``presence_penalty``, ``seed``, ``max_output_tokens``, etc.)
         are forwarded verbatim to the underlying API calls. These parameters are applied to
-        all API requests made by the UDF and override any parameters set in the task configuration.
+        all API requests made by the UDF.
 
     Returns:
         UserDefinedFunction: A Spark pandas UDF configured to execute the specified task
@@ -543,16 +543,13 @@ def task_udf(
         **Automatic Caching**: Duplicate inputs within each partition are cached,
         reducing API calls and costs significantly on datasets with repeated content.
     """
-    # Merge task's api_kwargs with caller's api_kwargs (caller takes precedence)
-    merged_kwargs = {**task.api_kwargs, **api_kwargs}
-
     return responses_udf(
         instructions=task.instructions,
         response_format=task.response_format,
         model_name=model_name,
         batch_size=batch_size,
         max_concurrency=max_concurrency,
-        **merged_kwargs,
+        **api_kwargs,
     )
 
 

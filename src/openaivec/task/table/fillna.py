@@ -125,7 +125,7 @@ class FillNaResponse(BaseModel):
     )
 
 
-def fillna(df: pd.DataFrame, target_column_name: str, max_examples: int = 500, **api_kwargs) -> PreparedTask:
+def fillna(df: pd.DataFrame, target_column_name: str, max_examples: int = 500) -> PreparedTask:
     """Create a prepared task for filling missing values in a DataFrame column.
 
     Analyzes the provided DataFrame to understand data patterns and creates
@@ -141,8 +141,6 @@ def fillna(df: pd.DataFrame, target_column_name: str, max_examples: int = 500, *
         max_examples (int): Maximum number of example rows to use for few-shot
             learning. Defaults to 500. Higher values provide more context
             but increase token usage and processing time.
-        **api_kwargs: Additional keyword arguments to pass to the OpenAI API,
-            such as temperature, top_p, etc.
 
     Returns:
         PreparedTask configured for missing value imputation with:
@@ -182,7 +180,4 @@ def fillna(df: pd.DataFrame, target_column_name: str, max_examples: int = 500, *
     if df[target_column_name].notna().sum() == 0:
         raise ValueError(f"Column '{target_column_name}' contains no non-null values for training examples.")
     instructions = get_instructions(df, target_column_name, max_examples)
-    # Set default values for deterministic results if not provided
-    if not api_kwargs:
-        api_kwargs = {"temperature": 0.0, "top_p": 1.0}
-    return PreparedTask(instructions=instructions, response_format=FillNaResponse, api_kwargs=api_kwargs)
+    return PreparedTask(instructions=instructions, response_format=FillNaResponse)
