@@ -1,8 +1,5 @@
 ---
 title: AI-Powered Data Processing for Pandas & Spark
-meta:
-  - name: google-site-verification
-    content: QpxZNQ4jEzpHbZub9MuNGEal-GydEEMr_JIx0oiSPIM
 ---
 
 # AI-Powered Data Processing for Pandas & Spark
