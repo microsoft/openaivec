@@ -1,3 +1,10 @@
+---
+title: AI-Powered Data Processing for Pandas & Spark
+meta:
+  - name: google-site-verification
+    content: QpxZNQ4jEzpHbZub9MuNGEal-GydEEMr_JIx0oiSPIM
+---
+
 # AI-Powered Data Processing for Pandas & Spark
 
 Welcome to **openaivec** - Transform your data analysis with OpenAI's language models! This library enables seamless integration of AI text processing, sentiment analysis, NLP tasks, and embeddings into your [**Pandas**](https://pandas.pydata.org/) DataFrames and [**Apache Spark**](https://spark.apache.org/) workflows for scalable data insights.
