@@ -8,6 +8,7 @@ edit_uri: edit/main/docs/
 theme:
   name: material
   language: en
+  custom_dir: docs/overrides
   palette:
     # Palette toggle for light mode
     - media: "(prefers-color-scheme: light)"
@@ -116,6 +117,9 @@ extra:
   analytics:
     provider: google
     property: G-ZZ7FDHLKYS
+  meta:
+    - name: google-site-verification
+      content: UZhByQkwHoP8ke9kNHhrVrXNM_nnHFGd6ycOKKcBRcs
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/microsoft/openaivec

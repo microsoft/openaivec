@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{% block extrahead %}
+  {{ super() }}
+  {%- set site_meta = config.extra.get("meta", []) -%}
+  {%- set page_meta = page.meta.get("meta", []) if page and page.meta else [] -%}
+  {%- for meta in site_meta + page_meta %}
+    <meta{% for attr, value in meta.items() %} {{ attr }}="{{ value }}"{% endfor %}>
+  {%- endfor %}
+{% endblock %}
