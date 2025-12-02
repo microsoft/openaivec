@@ -115,7 +115,7 @@ extra:
     - scalable AI
   analytics:
     provider: google
-    property: G-J7N4M1XMRZ
+    property: G-ZZ7FDHLKYS
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/microsoft/openaivec
