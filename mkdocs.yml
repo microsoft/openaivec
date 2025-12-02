@@ -116,6 +116,9 @@ extra:
   analytics:
     provider: google
     property: G-ZZ7FDHLKYS
+  meta:
+    - name: google-site-verification
+      content: QpxZNQ4jEzpHbZub9MuNGEal-GydEEMr_JIx0oiSPIM
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/microsoft/openaivec
