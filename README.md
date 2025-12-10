@@ -1,6 +1,6 @@
 # openaivec
 
-Transform pandas and Spark workflows with AI-powered text processing—batching, caching, and guardrails included.
+Transform pandas and Spark workflows with AI-powered text processing—batching, caching, and guardrails included. Built for OpenAI batch pipelines so you can group prompts, cut API overhead, and keep outputs aligned with your data.
 
 [Contributor guidelines](AGENTS.md)
 
@@ -66,6 +66,7 @@ Batching alone removes most HTTP overhead, and letting batching overlap with con
 ## Why openaivec?
 
 - Drop-in `.ai` and `.aio` accessors keep pandas analysts in familiar tooling.
+- OpenAI batch-optimized: `BatchingMapProxy`/`AsyncBatchingMapProxy` coalesce requests, dedupe prompts, and keep column order stable.
 - Smart batching (`BatchingMapProxy`/`AsyncBatchingMapProxy`) dedupes prompts, preserves order, and releases waiters on failure.
 - Reasoning support mirrors the OpenAI SDK; structured outputs accept Pydantic `response_format`.
 - Built-in caches and retries remove boilerplate; helpers reuse caches across pandas, Spark, and async flows.
@@ -74,7 +75,7 @@ Batching alone removes most HTTP overhead, and letting batching overlap with con
 
 # Overview
 
-Vectorized OpenAI access so you process many inputs per call instead of one-by-one. Batching proxies dedupe inputs, enforce ordered outputs, and unblock waiters even on upstream errors. Cache helpers (`responses_with_cache`, Spark UDF builders) plug into the same layer so expensive prompts are reused across pandas, Spark, and async flows. Reasoning models honor SDK semantics. Requires Python 3.10+.
+Vectorized OpenAI batch processing so you handle many inputs per call instead of one-by-one. Batching proxies dedupe inputs, enforce ordered outputs, and unblock waiters even on upstream errors. Cache helpers (`responses_with_cache`, Spark UDF builders) plug into the same layer so expensive prompts are reused across pandas, Spark, and async flows. Reasoning models honor SDK semantics. Requires Python 3.10+.
 
 ## Core Workflows
 

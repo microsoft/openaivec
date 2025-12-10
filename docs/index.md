@@ -1,10 +1,10 @@
 ---
-title: AI-Powered Data Processing for Pandas & Spark
+title: OpenAI Batch Processing for Pandas & Spark
 ---
 
-# AI-Powered Data Processing for Pandas & Spark
+# OpenAI Batch Processing for Pandas & Spark
 
-Welcome to **openaivec** - Transform your data analysis with OpenAI's language models! This library enables seamless integration of AI text processing, sentiment analysis, NLP tasks, and embeddings into your [**Pandas**](https://pandas.pydata.org/) DataFrames and [**Apache Spark**](https://spark.apache.org/) workflows for scalable data insights.
+Welcome to **openaivec** - Transform your data analysis with OpenAI's language models and batch-first pipelines! This library enables seamless integration of AI text processing, sentiment analysis, NLP tasks, and embeddings into your [**Pandas**](https://pandas.pydata.org/) DataFrames and [**Apache Spark**](https://spark.apache.org/) workflows for scalable data insights, while automatically handling OpenAI batch orchestration.
 
 ## 🚀 Quick Start Example
 
@@ -45,6 +45,7 @@ Perfect for **data scientists**, **analysts**, and **ML engineers** who want to 
 
 - **🚀 Vectorized Processing**: Handle thousands of records in minutes, not hours
 - **⚡ Asynchronous Interface**: `.aio` accessor with `batch_size` and `max_concurrency` control
+- **📦 OpenAI Batch Friendly**: `BatchingMapProxy` groups prompts, dedupes inputs, and keeps outputs aligned for pandas and Spark
 - **💰 Cost Efficient**: Automatic deduplication significantly reduces API costs
 - **🔗 Seamless Integration**: Works within existing pandas/Spark workflows
 - **📈 Enterprise Scale**: From 100s to millions of records
