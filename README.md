@@ -34,6 +34,7 @@ sentiment = reviews.ai.responses(
     reasoning={"effort": "none"},  # Mirrors OpenAI SDK for reasoning models
 )
 print(sentiment.tolist())
+# Output: ['Positive sentiment', 'Negative sentiment']
 ```
 
 **Try it live:** https://microsoft.github.io/openaivec/examples/pandas/
