@@ -21,6 +21,51 @@ __all__ = []
 CONTAINER = di.Container()
 
 
+def _build_missing_credentials_error(
+    openai_api_key: str | None,
+    azure_api_key: str | None,
+    azure_base_url: str | None,
+    azure_api_version: str | None,
+) -> str:
+    """Build a detailed error message for missing credentials.
+
+    Args:
+        openai_api_key (str | None): The OpenAI API key value.
+        azure_api_key (str | None): The Azure OpenAI API key value.
+        azure_base_url (str | None): The Azure OpenAI base URL value.
+        azure_api_version (str | None): The Azure OpenAI API version value.
+
+    Returns:
+        str: A detailed error message with missing variables and setup instructions.
+    """
+    lines = ["No valid OpenAI or Azure OpenAI credentials found.", ""]
+
+    # Check OpenAI
+    lines.append("Option 1: Set OPENAI_API_KEY for OpenAI")
+    if openai_api_key:
+        lines.append("  ✓ OPENAI_API_KEY is set")
+    else:
+        lines.append("  ✗ OPENAI_API_KEY is not set")
+        lines.append('    Example: export OPENAI_API_KEY="sk-..."')
+    lines.append("")
+
+    # Check Azure OpenAI
+    lines.append("Option 2: Set all Azure OpenAI variables")
+    azure_vars = [
+        ("AZURE_OPENAI_API_KEY", azure_api_key, '"your-azure-api-key"'),
+        ("AZURE_OPENAI_BASE_URL", azure_base_url, '"https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"'),
+        ("AZURE_OPENAI_API_VERSION", azure_api_version, '"2024-12-01-preview"'),
+    ]
+    for var_name, var_value, example in azure_vars:
+        if var_value:
+            lines.append(f"  ✓ {var_name} is set")
+        else:
+            lines.append(f"  ✗ {var_name} is not set")
+            lines.append(f"    Example: export {var_name}={example}")
+
+    return "\n".join(lines)
+
+
 def _check_azure_v1_api_url(base_url: str) -> None:
     """Check if Azure OpenAI base URL uses the recommended v1 API format.
 
@@ -81,9 +126,12 @@ def provide_openai_client() -> OpenAI:
         )
 
     raise ValueError(
-        "No valid OpenAI or Azure OpenAI environment variables found. "
-        "Please set either OPENAI_API_KEY or AZURE_OPENAI_API_KEY, "
-        "AZURE_OPENAI_BASE_URL, and AZURE_OPENAI_API_VERSION."
+        _build_missing_credentials_error(
+            openai_api_key=openai_api_key.value,
+            azure_api_key=azure_api_key.value,
+            azure_base_url=azure_base_url.value,
+            azure_api_version=azure_api_version.value,
+        )
     )
 
 
@@ -124,9 +172,12 @@ def provide_async_openai_client() -> AsyncOpenAI:
         )
 
     raise ValueError(
-        "No valid OpenAI or Azure OpenAI environment variables found. "
-        "Please set either OPENAI_API_KEY or AZURE_OPENAI_API_KEY, "
-        "AZURE_OPENAI_BASE_URL, and AZURE_OPENAI_API_VERSION."
+        _build_missing_credentials_error(
+            openai_api_key=openai_api_key.value,
+            azure_api_key=azure_api_key.value,
+            azure_base_url=azure_base_url.value,
+            azure_api_version=azure_api_version.value,
+        )
     )
 
 
