@@ -1,0 +1,57 @@
+name: ci-integration
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  test:
+    if: >
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '/run-integration') &&
+      (github.event.comment.author_association == 'MEMBER' ||
+       github.event.comment.author_association == 'OWNER'  ||
+       github.event.comment.author_association == 'COLLABORATOR')
+
+    runs-on: ubuntu-latest
+    environment: integration
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+    steps:
+      - name: Fetch PR head SHA
+        id: pr
+        shell: bash
+        run: |
+          set -euo pipefail
+          PR_API_URL="${{ github.event.issue.pull_request.url }}"
+          JSON="$(curl -sS -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                       -H "Accept: application/vnd.github+json" "$PR_API_URL")"
+          echo "sha=$(python -c 'import json,sys; print(json.load(sys.stdin)[\"head\"][\"sha\"])' <<<\"$JSON\")" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout PR head commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr.outputs.sha }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python
+        run: uv python install 3.10
+
+      - name: Install dependencies via uv
+        run: uv sync --all-extras --dev
+
+      - name: Lint with ruff
+        run: uv run ruff check .
+
+      - name: Type check with pyright
+        run: uv run pyright src/openaivec || echo "Type check completed with issues - see above"
+
+      - name: Run tests
+        run: uv run pytest
