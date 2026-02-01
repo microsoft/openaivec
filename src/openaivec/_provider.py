@@ -53,7 +53,7 @@ def _build_missing_credentials_error(
     lines.append("Option 2: Set all Azure OpenAI variables")
     azure_vars = [
         ("AZURE_OPENAI_API_KEY", azure_api_key, '"your-azure-api-key"'),
-        ("AZURE_OPENAI_BASE_URL", azure_base_url, '"https://YOUR-RESOURCE.openai.azure.com/openai/v1/"'),
+        ("AZURE_OPENAI_BASE_URL", azure_base_url, '"https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"'),
         ("AZURE_OPENAI_API_VERSION", azure_api_version, '"2024-12-01-preview"'),
     ]
     for var_name, var_value, example in azure_vars:
