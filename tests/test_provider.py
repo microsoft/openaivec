@@ -4,7 +4,12 @@ import warnings
 import pytest
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
 
-from openaivec._provider import provide_async_openai_client, provide_openai_client, set_default_registrations
+from openaivec._provider import (
+    _build_missing_credentials_error,
+    provide_async_openai_client,
+    provide_openai_client,
+    set_default_registrations,
+)
 
 
 class TestProvideOpenAIClient:
@@ -80,7 +85,7 @@ class TestProvideOpenAIClient:
         with pytest.raises(ValueError) as context:
             provide_openai_client()
 
-        assert "No valid OpenAI or Azure OpenAI environment variables found" in str(context.value)
+        assert "No valid OpenAI or Azure OpenAI credentials found" in str(context.value)
 
     def test_provide_openai_client_with_azure_keys_default_version(self):
         """Test creating Azure OpenAI client with default API version when not specified."""
@@ -98,12 +103,16 @@ class TestProvideOpenAIClient:
         with pytest.raises(ValueError) as context:
             provide_openai_client()
 
-        expected_message = (
-            "No valid OpenAI or Azure OpenAI environment variables found. "
-            "Please set either OPENAI_API_KEY or AZURE_OPENAI_API_KEY, "
-            "AZURE_OPENAI_BASE_URL, and AZURE_OPENAI_API_VERSION."
-        )
-        assert str(context.value) == expected_message
+        error_message = str(context.value)
+        # Check that the error message contains helpful information
+        assert "No valid OpenAI or Azure OpenAI credentials found" in error_message
+        assert "OPENAI_API_KEY" in error_message
+        assert "AZURE_OPENAI_API_KEY" in error_message
+        assert "AZURE_OPENAI_BASE_URL" in error_message
+        assert "AZURE_OPENAI_API_VERSION" in error_message
+        # Check that setup examples are provided
+        assert "export OPENAI_API_KEY" in error_message
+        assert "export AZURE_OPENAI_API_KEY" in error_message
 
     def test_provide_openai_client_with_empty_openai_key(self):
         """Test that empty OPENAI_API_KEY is treated as not set."""
@@ -199,7 +208,7 @@ class TestProvideAsyncOpenAIClient:
         with pytest.raises(ValueError) as context:
             provide_async_openai_client()
 
-        assert "No valid OpenAI or Azure OpenAI environment variables found" in str(context.value)
+        assert "No valid OpenAI or Azure OpenAI credentials found" in str(context.value)
 
     def test_provide_async_openai_client_with_azure_keys_default_version(self):
         """Test creating async Azure OpenAI client with default API version when not specified."""
@@ -217,12 +226,16 @@ class TestProvideAsyncOpenAIClient:
         with pytest.raises(ValueError) as context:
             provide_async_openai_client()
 
-        expected_message = (
-            "No valid OpenAI or Azure OpenAI environment variables found. "
-            "Please set either OPENAI_API_KEY or AZURE_OPENAI_API_KEY, "
-            "AZURE_OPENAI_BASE_URL, and AZURE_OPENAI_API_VERSION."
-        )
-        assert str(context.value) == expected_message
+        error_message = str(context.value)
+        # Check that the error message contains helpful information
+        assert "No valid OpenAI or Azure OpenAI credentials found" in error_message
+        assert "OPENAI_API_KEY" in error_message
+        assert "AZURE_OPENAI_API_KEY" in error_message
+        assert "AZURE_OPENAI_BASE_URL" in error_message
+        assert "AZURE_OPENAI_API_VERSION" in error_message
+        # Check that setup examples are provided
+        assert "export OPENAI_API_KEY" in error_message
+        assert "export AZURE_OPENAI_API_KEY" in error_message
 
     def test_provide_async_openai_client_with_empty_openai_key(self):
         """Test that empty OPENAI_API_KEY is treated as not set."""
@@ -399,3 +412,78 @@ class TestAzureV1ApiWarning:
             assert "v1 API is recommended" in str(w[0].message)
 
         set_default_registrations()
+
+
+class TestBuildMissingCredentialsError:
+    """Test the _build_missing_credentials_error helper function."""
+
+    def test_all_variables_missing(self):
+        """Test error message when all variables are missing."""
+        message = _build_missing_credentials_error(
+            openai_api_key=None,
+            azure_api_key=None,
+            azure_base_url=None,
+            azure_api_version=None,
+        )
+
+        assert "No valid OpenAI or Azure OpenAI credentials found" in message
+        assert "✗ OPENAI_API_KEY is not set" in message
+        assert "✗ AZURE_OPENAI_API_KEY is not set" in message
+        assert "✗ AZURE_OPENAI_BASE_URL is not set" in message
+        assert "✗ AZURE_OPENAI_API_VERSION is not set" in message
+        assert 'export OPENAI_API_KEY="sk-..."' in message
+
+    def test_only_openai_key_set(self):
+        """Test error message when only OpenAI key is set (but this shouldn't trigger error)."""
+        message = _build_missing_credentials_error(
+            openai_api_key="sk-test",
+            azure_api_key=None,
+            azure_base_url=None,
+            azure_api_version=None,
+        )
+
+        assert "✓ OPENAI_API_KEY is set" in message
+        assert "✗ AZURE_OPENAI_API_KEY is not set" in message
+
+    def test_partial_azure_config(self):
+        """Test error message when Azure config is partially set."""
+        message = _build_missing_credentials_error(
+            openai_api_key=None,
+            azure_api_key="test-key",
+            azure_base_url=None,
+            azure_api_version="preview",
+        )
+
+        assert "✗ OPENAI_API_KEY is not set" in message
+        assert "✓ AZURE_OPENAI_API_KEY is set" in message
+        assert "✗ AZURE_OPENAI_BASE_URL is not set" in message
+        assert "✓ AZURE_OPENAI_API_VERSION is set" in message
+        # Should include example for missing URL
+        assert "export AZURE_OPENAI_BASE_URL=" in message
+
+    def test_all_azure_variables_set(self):
+        """Test error message when all Azure variables are set."""
+        message = _build_missing_credentials_error(
+            openai_api_key=None,
+            azure_api_key="test-key",
+            azure_base_url="https://test.openai.azure.com/openai/v1/",
+            azure_api_version="preview",
+        )
+
+        assert "✗ OPENAI_API_KEY is not set" in message
+        assert "✓ AZURE_OPENAI_API_KEY is set" in message
+        assert "✓ AZURE_OPENAI_BASE_URL is set" in message
+        assert "✓ AZURE_OPENAI_API_VERSION is set" in message
+
+    def test_error_message_includes_examples(self):
+        """Test that error message includes setup examples."""
+        message = _build_missing_credentials_error(
+            openai_api_key=None,
+            azure_api_key=None,
+            azure_base_url=None,
+            azure_api_version=None,
+        )
+
+        assert "Option 1: Set OPENAI_API_KEY for OpenAI" in message
+        assert "Option 2: Set all Azure OpenAI variables" in message
+        assert "Example:" in message
