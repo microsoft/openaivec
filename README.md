@@ -37,7 +37,7 @@ print(sentiment.tolist())
 # Output: ['Positive sentiment', 'Negative sentiment']
 ```
 
-**Try it live:** https://microsoft.github.io/openaivec/examples/pandas/
+**Pandas tutorial (GitHub Pages):** https://microsoft.github.io/openaivec/examples/pandas/
 
 ## Benchmarks
 
@@ -56,6 +56,7 @@ Batching alone removes most HTTP overhead, and letting batching overlap with con
 ## Contents
 
 - [Why openaivec?](#why-openaivec)
+- [Overview](#overview)
 - [Core Workflows](#core-workflows)
 - [Using with Apache Spark UDFs](#using-with-apache-spark-udfs)
 - [Building Prompts](#building-prompts)
@@ -67,14 +68,13 @@ Batching alone removes most HTTP overhead, and letting batching overlap with con
 ## Why openaivec?
 
 - Drop-in `.ai` and `.aio` accessors keep pandas analysts in familiar tooling.
-- OpenAI batch-optimized: `BatchingMapProxy`/`AsyncBatchingMapProxy` coalesce requests, dedupe prompts, and keep column order stable.
-- Smart batching (`BatchingMapProxy`/`AsyncBatchingMapProxy`) dedupes prompts, preserves order, and releases waiters on failure.
+- OpenAI batch-optimized: `BatchingMapProxy`/`AsyncBatchingMapProxy` coalesce requests, dedupe prompts, preserve order, and release waiters on failure.
 - Reasoning support mirrors the OpenAI SDK; structured outputs accept Pydantic `response_format`.
 - Built-in caches and retries remove boilerplate; helpers reuse caches across pandas, Spark, and async flows.
 - Spark UDFs and Microsoft Fabric guides move notebooks into production-scale ETL.
 - Prompt tooling (`FewShotPromptBuilder`, `improve`) and the task library ship curated prompts with validated outputs.
 
-# Overview
+## Overview
 
 Vectorized OpenAI batch processing so you handle many inputs per call instead of one-by-one. Batching proxies dedupe inputs, enforce ordered outputs, and unblock waiters even on upstream errors. Cache helpers (`responses_with_cache`, Spark UDF builders) plug into the same layer so expensive prompts are reused across pandas, Spark, and async flows. Reasoning models honor SDK semantics. Requires Python 3.10+.
 
@@ -160,7 +160,7 @@ result = df.assign(
 
 ### Using with reasoning models
 
-Reasoning models (o1-preview, o1-mini, o3-mini, etc.) work without special flags. `reasoning` mirrors the OpenAI SDK.
+Reasoning models (o1-preview, o1-mini, o3-mini, etc.) follow OpenAI SDK semantics. Set `temperature=None` explicitly to avoid API errors, and pass `reasoning` when you want to override model defaults.
 
 ```python
 pandas_ext.set_responses_model("o1-mini")  # Set your reasoning model
@@ -168,7 +168,8 @@ pandas_ext.set_responses_model("o1-mini")  # Set your reasoning model
 result = df.assign(
     analysis=lambda df: df.text.ai.responses(
         "Analyze this text step by step",
-        reasoning={"effort": "none"}  # Optional: mirrors the OpenAI SDK argument
+        reasoning={"effort": "none"},  # Optional: mirrors the OpenAI SDK argument
+        temperature=None,
     )
 )
 ```
@@ -228,7 +229,7 @@ df = pd.DataFrame({"text": [
 async def process_data():
     return await df["text"].aio.responses(
         "Analyze sentiment and classify as positive/negative/neutral",
-        reasoning={"effort": "none"},  # Required for gpt-5.1
+        reasoning={"effort": "none"},  # Recommended for reasoning models
         max_concurrency=12    # Allow up to 12 concurrent requests
     )
 
