@@ -160,7 +160,7 @@ result = df.assign(
 
 ### Using with reasoning models
 
-Reasoning models (o1-preview, o1-mini, o3-mini, etc.) follow OpenAI SDK semantics. Set `temperature=None` explicitly to avoid API errors, and pass `reasoning` when you want to override model defaults.
+Reasoning models (o1-preview, o1-mini, o3-mini, etc.) follow OpenAI SDK semantics. Pass `reasoning` when you want to override model defaults.
 
 ```python
 pandas_ext.set_responses_model("o1-mini")  # Set your reasoning model
@@ -169,7 +169,6 @@ result = df.assign(
     analysis=lambda df: df.text.ai.responses(
         "Analyze this text step by step",
         reasoning={"effort": "none"},  # Optional: mirrors the OpenAI SDK argument
-        temperature=None,
     )
 )
 ```
