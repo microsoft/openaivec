@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
   pull-requests: read
 
 jobs:
@@ -23,6 +24,19 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
     steps:
+      - name: Comment workflow run link
+        shell: bash
+        run: |
+          set -euo pipefail
+          COMMENTS_URL="${{ github.event.issue.comments_url }}"
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          export RUN_URL
+          PAYLOAD="$(python -c 'import json,os; print(json.dumps({\"body\": f\"Integration workflow started: {os.environ[\\\"RUN_URL\\\"]}\"}))')"
+          curl -sS -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+               -H "Accept: application/vnd.github+json" \
+               -d "$PAYLOAD" \
+               "$COMMENTS_URL"
+
       - name: Fetch PR head SHA
         id: pr
         shell: bash
