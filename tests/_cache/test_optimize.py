@@ -33,21 +33,35 @@ class TestBatchSizeSuggester:
         assert suggester.min_batch_size == 10
         assert suggester.min_duration == 30.0
         assert suggester.max_duration == 60.0
-        assert suggester.step_ratio == 0.2
+        assert suggester.step_ratio_up == 0.1
+        assert suggester.step_ratio_down == 0.2
+        assert suggester.max_step is None
+        assert suggester.min_step == 1
         assert suggester.sample_size == 4
         assert len(suggester._history) == 0
         assert suggester._batch_size_changed_at is None
 
     def test_custom_initialization(self):
         suggester = BatchSizeSuggester(
-            current_batch_size=20, min_batch_size=5, min_duration=15.0, max_duration=45.0, step_ratio=0.2, sample_size=5
+            current_batch_size=20,
+            min_batch_size=5,
+            min_duration=15.0,
+            max_duration=45.0,
+            step_ratio_up=0.15,
+            step_ratio_down=0.25,
+            min_step=2,
+            max_step=5,
+            sample_size=5,
         )
 
         assert suggester.current_batch_size == 20
         assert suggester.min_batch_size == 5
         assert suggester.min_duration == 15.0
         assert suggester.max_duration == 45.0
-        assert suggester.step_ratio == 0.2
+        assert suggester.step_ratio_up == 0.15
+        assert suggester.step_ratio_down == 0.25
+        assert suggester.min_step == 2
+        assert suggester.max_step == 5
         assert suggester.sample_size == 5
 
     @pytest.mark.parametrize(
@@ -56,7 +70,10 @@ class TestBatchSizeSuggester:
             ({"min_batch_size": 0}, "min_batch_size must be > 0"),
             ({"current_batch_size": 5, "min_batch_size": 10}, "current_batch_size must be >= min_batch_size"),
             ({"sample_size": 0}, "sample_size must be > 0"),
-            ({"step_ratio": 0}, "step_ratio must be > 0"),
+            ({"step_ratio_up": 0}, "step_ratio_up must be > 0"),
+            ({"step_ratio_down": 0}, "step_ratio_down must be > 0"),
+            ({"min_step": 0}, "min_step must be > 0"),
+            ({"max_step": 0}, "max_step must be > 0"),
             ({"min_duration": 0}, "min_duration and max_duration must be > 0"),
             ({"max_duration": 0}, "min_duration and max_duration must be > 0"),
             ({"min_duration": 60, "max_duration": 30}, "min_duration must be < max_duration"),
@@ -190,7 +207,8 @@ class TestBatchSizeSuggester:
             min_batch_size=min_batch_size,
             min_duration=0.5,  # 0.5 seconds (test scale)
             max_duration=1.0,  # 1.0 seconds (test scale)
-            step_ratio=0.1,
+            step_ratio_up=0.1,
+            step_ratio_down=0.1,
             sample_size=3,
         )
 
@@ -214,7 +232,7 @@ class TestBatchSizeSuggester:
             min_batch_size=5,
             min_duration=0.5,  # 0.5 seconds (test scale)
             max_duration=1.0,  # 1.0 seconds (test scale)
-            step_ratio=0.5,  # Large step to force below minimum
+            step_ratio_down=0.5,  # Large step to force below minimum
             sample_size=3,
         )
 
@@ -226,6 +244,60 @@ class TestBatchSizeSuggester:
         new_size = suggester.suggest_batch_size()
         assert new_size == 5  # Should not go below min_batch_size
         assert suggester.current_batch_size == 5
+
+    def test_min_step_enforces_minimum_delta_on_increase(self):
+        suggester = BatchSizeSuggester(
+            current_batch_size=10,
+            min_batch_size=1,
+            min_duration=0.5,
+            max_duration=1.0,
+            step_ratio_up=0.1,  # 10 * 0.1 = 1
+            min_step=5,  # force delta to 5
+            sample_size=3,
+        )
+
+        for i in range(3):
+            with suggester.record(batch_size=10):
+                time.sleep(0.1)  # fast -> increase
+
+        new_size = suggester.suggest_batch_size()
+        assert new_size == 15
+
+    def test_min_step_enforces_minimum_delta_on_decrease(self):
+        suggester = BatchSizeSuggester(
+            current_batch_size=20,
+            min_batch_size=1,
+            min_duration=0.5,
+            max_duration=1.0,
+            step_ratio_down=0.1,  # 20 * 0.1 = 2
+            min_step=5,  # force delta to 5
+            sample_size=3,
+        )
+
+        for i in range(3):
+            with suggester.record(batch_size=20):
+                time.sleep(1.5)  # slow -> decrease
+
+        new_size = suggester.suggest_batch_size()
+        assert new_size == 15
+
+    def test_max_step_caps_delta(self):
+        suggester = BatchSizeSuggester(
+            current_batch_size=50,
+            min_batch_size=1,
+            min_duration=0.5,
+            max_duration=1.0,
+            step_ratio_up=0.5,  # 50 * 0.5 = 25
+            max_step=10,  # cap delta at 10
+            sample_size=3,
+        )
+
+        for i in range(3):
+            with suggester.record(batch_size=50):
+                time.sleep(0.1)  # fast -> increase
+
+        new_size = suggester.suggest_batch_size()
+        assert new_size == 60
 
     def test_thread_safety(self):
         suggester = BatchSizeSuggester(sample_size=10)

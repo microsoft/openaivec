@@ -21,7 +21,10 @@ class BatchSizeSuggester:
     min_batch_size: int = 10
     min_duration: float = 30.0
     max_duration: float = 60.0
-    step_ratio: float = 0.2
+    step_ratio_up: float = 0.1
+    step_ratio_down: float = 0.2
+    max_step: int | None = None
+    min_step: int = 1
     sample_size: int = 4
     _history: list[PerformanceMetric] = field(default_factory=list)
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
@@ -34,8 +37,14 @@ class BatchSizeSuggester:
             raise ValueError("current_batch_size must be >= min_batch_size")
         if self.sample_size <= 0:
             raise ValueError("sample_size must be > 0")
-        if self.step_ratio <= 0:
-            raise ValueError("step_ratio must be > 0")
+        if self.step_ratio_up <= 0:
+            raise ValueError("step_ratio_up must be > 0")
+        if self.step_ratio_down <= 0:
+            raise ValueError("step_ratio_down must be > 0")
+        if self.max_step is not None and self.max_step <= 0:
+            raise ValueError("max_step must be > 0")
+        if self.min_step <= 0:
+            raise ValueError("min_step must be > 0")
         if self.min_duration <= 0 or self.max_duration <= 0:
             raise ValueError("min_duration and max_duration must be > 0")
         if self.min_duration >= self.max_duration:
@@ -94,9 +103,15 @@ class BatchSizeSuggester:
             current_size = self.current_batch_size
 
             if average_duration < self.min_duration:
-                new_batch_size = int(current_size * (1 + self.step_ratio))
+                delta = max(self.min_step, int(current_size * self.step_ratio_up))
+                if self.max_step is not None:
+                    delta = min(delta, self.max_step)
+                new_batch_size = current_size + delta
             elif average_duration > self.max_duration:
-                new_batch_size = int(current_size * (1 - self.step_ratio))
+                delta = max(self.min_step, int(current_size * self.step_ratio_down))
+                if self.max_step is not None:
+                    delta = min(delta, self.max_step)
+                new_batch_size = current_size - delta
             else:
                 new_batch_size = current_size
 

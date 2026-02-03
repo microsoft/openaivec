@@ -42,7 +42,8 @@ def test_sync_proxy_suggester_adapts_batch_size():
     proxy.suggester.min_duration = 0.001  # 1ms
     proxy.suggester.max_duration = 0.002  # 2ms
     proxy.suggester.sample_size = 2
-    proxy.suggester.step_ratio = 0.5
+    proxy.suggester.step_ratio_up = 0.5
+    proxy.suggester.step_ratio_down = 0.5
 
     import time
 
