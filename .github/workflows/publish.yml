@@ -52,8 +52,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/*
-            signatures/*
+            dist/*.whl
+            dist/*.tar.gz
+            signatures/*.sig
+            signatures/*.pem
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
