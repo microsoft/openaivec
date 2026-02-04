@@ -6,7 +6,7 @@ on:
       - "v*.*.*"
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 jobs:
@@ -29,6 +29,31 @@ jobs:
 
       - name: Build with uv
         run: uv build
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign artifacts with cosign (OIDC)
+        run: |
+          set -euo pipefail
+          ls -la dist
+          mkdir -p signatures
+          for f in dist/*; do
+            if [ -f "$f" ]; then
+              base="$(basename "$f")"
+              cosign sign-blob --yes \
+                --output-signature "signatures/${base}.sig" \
+                --output-certificate "signatures/${base}.pem" \
+                "$f"
+            fi
+          done
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*
+            signatures/*
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
