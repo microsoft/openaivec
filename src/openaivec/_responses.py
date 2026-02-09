@@ -1,11 +1,11 @@
 import warnings
 from dataclasses import dataclass, field
 from logging import Logger, getLogger
-from typing import Generic, cast
+from typing import Any, Generic, cast
 
 from openai import AsyncOpenAI, BadRequestError, InternalServerError, OpenAI, RateLimitError
 from openai.types.responses import ParsedResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from openaivec._cache import AsyncBatchingMapProxy, BatchingMapProxy
 from openaivec._log import observe
@@ -18,6 +18,56 @@ __all__ = [
 ]
 
 _LOGGER: Logger = getLogger(__name__)
+_MAX_VALIDATION_FEEDBACK_ITEMS = 8
+
+
+def _format_validation_error_location(loc: tuple[Any, ...]) -> str:
+    """Format a Pydantic validation location tuple into a readable path."""
+    path = ""
+    for part in loc:
+        if isinstance(part, int):
+            path = f"{path}[{part}]" if path else f"[{part}]"
+        else:
+            token = str(part)
+            path = f"{path}.{token}" if path else token
+    return path or "<root>"
+
+
+def _extract_validation_feedback(error: ValidationError) -> list[str]:
+    """Extract concise validation feedback lines from a ``ValidationError``."""
+    errors = error.errors()
+    feedback_lines: list[str] = []
+    for item in errors[:_MAX_VALIDATION_FEEDBACK_ITEMS]:
+        loc_raw = item.get("loc", ())
+        loc = tuple(loc_raw) if isinstance(loc_raw, (list, tuple)) else (loc_raw,)
+        location = _format_validation_error_location(loc)
+        message = str(item.get("msg", "Validation error"))
+        feedback_lines.append(f"{location}: {message}")
+
+    omitted = len(errors) - len(feedback_lines)
+    if omitted > 0:
+        feedback_lines.append(f"... and {omitted} more issues.")
+    return feedback_lines
+
+
+def _build_retry_instructions(base_instructions: str, error: ValidationError) -> str:
+    """Append schema-validation feedback to instructions for a retry attempt."""
+    feedback = _extract_validation_feedback(error)
+    lines = [
+        "--- PRIOR VALIDATION FEEDBACK ---",
+        "The previous response failed schema validation.",
+        "Fix ONLY the issues below and regenerate the full JSON response.",
+    ]
+    for i, issue in enumerate(feedback, start=1):
+        lines.append(f"{i}. {issue}")
+    lines.extend(
+        [
+            "Return exactly one assistant_messages item per input user message.",
+            "Keep every assistant_messages.id aligned with the input id.",
+            "Ensure each assistant_messages.body strictly matches the required schema and types.",
+        ]
+    )
+    return base_instructions + "\n\n" + "\n".join(lines)
 
 
 def _handle_temperature_error(error: BadRequestError, model_name: str, temperature: float) -> None:
@@ -150,12 +200,14 @@ class BatchResponses(Generic[ResponseFormat]):
         system_message (str): System prompt prepended to every request.
         response_format (type[ResponseFormat]): Expected Pydantic model class or ``str`` for each assistant message.
         cache (BatchingMapProxy[str, ResponseFormat]): Order‑preserving batching proxy with de‑duplication and caching.
+        max_validation_retries (int): Number of retries when structured output fails
+            local schema validation.
 
     Notes:
         Internally the work is delegated to two helpers:
 
         * ``_predict_chunk`` – fragments the workload and restores ordering.
-        * ``_request_llm`` – performs a single OpenAI API call.
+        * ``_request_llm`` – issues OpenAI API calls and retries with validation feedback when needed.
     """
 
     client: OpenAI
@@ -164,6 +216,7 @@ class BatchResponses(Generic[ResponseFormat]):
     response_format: type[ResponseFormat] = str  # type: ignore[assignment]
     cache: BatchingMapProxy[str, ResponseFormat] = field(default_factory=lambda: BatchingMapProxy(batch_size=None))
     api_kwargs: dict[str, int | float | str | bool] = field(default_factory=dict)
+    max_validation_retries: int = 3
     _vectorized_system_message: str = field(init=False)
     _model_json_schema: dict = field(init=False)
 
@@ -175,6 +228,7 @@ class BatchResponses(Generic[ResponseFormat]):
         system_message: str,
         response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
+        max_validation_retries: int = 3,
         **api_kwargs,
     ) -> "BatchResponses":
         """Factory constructor.
@@ -186,6 +240,8 @@ class BatchResponses(Generic[ResponseFormat]):
             response_format (type[ResponseFormat], optional): Expected output type. Defaults to ``str``.
             batch_size (int | None, optional): Max unique prompts per API call. Defaults to None
                 (automatic batch size optimization). Set to a positive integer for fixed batch size.
+            max_validation_retries (int, optional): Retry count when structured output fails local
+                schema validation. Defaults to 3.
             **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
 
         Returns:
@@ -198,6 +254,7 @@ class BatchResponses(Generic[ResponseFormat]):
             response_format=response_format,
             cache=BatchingMapProxy(batch_size=batch_size),
             api_kwargs=api_kwargs,
+            max_validation_retries=max_validation_retries,
         )
 
     @classmethod
@@ -207,6 +264,7 @@ class BatchResponses(Generic[ResponseFormat]):
         model_name: str,
         task: PreparedTask[ResponseFormat],
         batch_size: int | None = None,
+        max_validation_retries: int = 3,
         **api_kwargs,
     ) -> "BatchResponses":
         """Factory from a PreparedTask.
@@ -217,6 +275,8 @@ class BatchResponses(Generic[ResponseFormat]):
             task (PreparedTask): Prepared task with instructions and response format.
             batch_size (int | None, optional): Max unique prompts per API call. Defaults to None
                 (automatic batch size optimization). Set to a positive integer for fixed batch size.
+            max_validation_retries (int, optional): Retry count when structured output fails local
+                schema validation. Defaults to 3.
             **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
 
         Returns:
@@ -229,9 +289,12 @@ class BatchResponses(Generic[ResponseFormat]):
             response_format=task.response_format,
             cache=BatchingMapProxy(batch_size=batch_size),
             api_kwargs=api_kwargs,
+            max_validation_retries=max_validation_retries,
         )
 
     def __post_init__(self):
+        if self.max_validation_retries < 0:
+            raise ValueError("max_validation_retries must be >= 0")
         object.__setattr__(
             self,
             "_vectorized_system_message",
@@ -241,7 +304,7 @@ class BatchResponses(Generic[ResponseFormat]):
     @observe(_LOGGER)
     @backoff(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
     def _request_llm(self, user_messages: list[Message[str]]) -> ParsedResponse[Response[ResponseFormat]]:
-        """Make a single call to the OpenAI JSON‑mode endpoint.
+        """Call the OpenAI JSON‑mode endpoint, retrying on schema validation failures.
 
         Args:
             user_messages (list[Message[str]]): Sequence of ``Message[str]`` representing the
@@ -254,6 +317,8 @@ class BatchResponses(Generic[ResponseFormat]):
         Raises:
             openai.RateLimitError: Transparently re‑raised after the
                 exponential back‑off decorator exhausts all retries.
+            pydantic.ValidationError: Re‑raised when validation still fails after
+                ``max_validation_retries`` correction attempts.
         """
         response_format = self.response_format
 
@@ -264,19 +329,26 @@ class BatchResponses(Generic[ResponseFormat]):
         class ResponseT(BaseModel):
             assistant_messages: list[MessageT]
 
-        try:
-            response: ParsedResponse[ResponseT] = self.client.responses.parse(
-                instructions=self._vectorized_system_message,
-                model=self.model_name,
-                input=Request(user_messages=user_messages).model_dump_json(),
-                text_format=ResponseT,
-                **self.api_kwargs,
-            )
-        except BadRequestError as e:
-            _handle_temperature_error(e, self.model_name, self.api_kwargs.get("temperature", 0.0))
-            raise  # Re-raise if it wasn't a temperature error
+        instructions = self._vectorized_system_message
+        for attempt in range(self.max_validation_retries + 1):
+            try:
+                response: ParsedResponse[ResponseT] = self.client.responses.parse(
+                    instructions=instructions,
+                    model=self.model_name,
+                    input=Request(user_messages=user_messages).model_dump_json(),
+                    text_format=ResponseT,
+                    **self.api_kwargs,
+                )
+                return cast(ParsedResponse[Response[ResponseFormat]], response)
+            except BadRequestError as e:
+                _handle_temperature_error(e, self.model_name, self.api_kwargs.get("temperature", 0.0))
+                raise  # Re-raise if it wasn't a temperature error
+            except ValidationError as e:
+                if attempt >= self.max_validation_retries:
+                    raise
+                instructions = _build_retry_instructions(self._vectorized_system_message, e)
 
-        return cast(ParsedResponse[Response[ResponseFormat]], response)
+        raise RuntimeError("unreachable validation retry loop state")
 
     @observe(_LOGGER)
     def _predict_chunk(self, user_messages: list[str]) -> list[ResponseFormat | None]:
@@ -353,6 +425,8 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         response_format (type[ResponseFormat]): Expected Pydantic model class or ``str`` for each assistant message.
         cache (AsyncBatchingMapProxy[str, ResponseFormat]): Async batching proxy with de‑duplication
             and concurrency control.
+        max_validation_retries (int): Number of retries when structured output fails
+            local schema validation.
     """
 
     client: AsyncOpenAI
@@ -363,6 +437,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         default_factory=lambda: AsyncBatchingMapProxy(batch_size=None, max_concurrency=8)
     )
     api_kwargs: dict[str, int | float | str | bool] = field(default_factory=dict)
+    max_validation_retries: int = 3
     _vectorized_system_message: str = field(init=False)
     _model_json_schema: dict = field(init=False)
 
@@ -375,6 +450,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
         max_concurrency: int = 8,
+        max_validation_retries: int = 3,
         **api_kwargs,
     ) -> "AsyncBatchResponses":
         """Factory constructor.
@@ -387,6 +463,8 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             batch_size (int | None, optional): Max unique prompts per API call. Defaults to None
                 (automatic batch size optimization). Set to a positive integer for fixed batch size.
             max_concurrency (int, optional): Max concurrent API calls. Defaults to 8.
+            max_validation_retries (int, optional): Retry count when structured output fails local
+                schema validation. Defaults to 3.
             **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
 
         Returns:
@@ -399,6 +477,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             response_format=response_format,
             cache=AsyncBatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency),
             api_kwargs=api_kwargs,
+            max_validation_retries=max_validation_retries,
         )
 
     @classmethod
@@ -409,6 +488,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         task: PreparedTask[ResponseFormat],
         batch_size: int | None = None,
         max_concurrency: int = 8,
+        max_validation_retries: int = 3,
         **api_kwargs,
     ) -> "AsyncBatchResponses":
         """Factory from a PreparedTask.
@@ -420,6 +500,8 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             batch_size (int | None, optional): Max unique prompts per API call. Defaults to None
                 (automatic batch size optimization). Set to a positive integer for fixed batch size.
             max_concurrency (int, optional): Max concurrent API calls. Defaults to 8.
+            max_validation_retries (int, optional): Retry count when structured output fails local
+                schema validation. Defaults to 3.
             **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
 
         Returns:
@@ -432,9 +514,12 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             response_format=task.response_format,
             cache=AsyncBatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency),
             api_kwargs=api_kwargs,
+            max_validation_retries=max_validation_retries,
         )
 
     def __post_init__(self):
+        if self.max_validation_retries < 0:
+            raise ValueError("max_validation_retries must be >= 0")
         object.__setattr__(
             self,
             "_vectorized_system_message",
@@ -444,7 +529,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
     @backoff_async(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
     @observe(_LOGGER)
     async def _request_llm(self, user_messages: list[Message[str]]) -> ParsedResponse[Response[ResponseFormat]]:
-        """Make a single async call to the OpenAI JSON‑mode endpoint.
+        """Call the OpenAI JSON‑mode endpoint asynchronously with validation retries.
 
         Args:
             user_messages (list[Message[str]]): Sequence of ``Message[str]`` representing the minibatch prompts.
@@ -454,6 +539,8 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
 
         Raises:
             RateLimitError: Re‑raised after back‑off retries are exhausted.
+            pydantic.ValidationError: Re‑raised when validation still fails after
+                ``max_validation_retries`` correction attempts.
         """
         response_format = self.response_format
 
@@ -464,19 +551,26 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         class ResponseT(BaseModel):
             assistant_messages: list[MessageT]
 
-        try:
-            response: ParsedResponse[ResponseT] = await self.client.responses.parse(
-                instructions=self._vectorized_system_message,
-                model=self.model_name,
-                input=Request(user_messages=user_messages).model_dump_json(),
-                text_format=ResponseT,
-                **self.api_kwargs,
-            )
-        except BadRequestError as e:
-            _handle_temperature_error(e, self.model_name, self.api_kwargs.get("temperature", 0.0))
-            raise  # Re-raise if it wasn't a temperature error
+        instructions = self._vectorized_system_message
+        for attempt in range(self.max_validation_retries + 1):
+            try:
+                response: ParsedResponse[ResponseT] = await self.client.responses.parse(
+                    instructions=instructions,
+                    model=self.model_name,
+                    input=Request(user_messages=user_messages).model_dump_json(),
+                    text_format=ResponseT,
+                    **self.api_kwargs,
+                )
+                return cast(ParsedResponse[Response[ResponseFormat]], response)
+            except BadRequestError as e:
+                _handle_temperature_error(e, self.model_name, self.api_kwargs.get("temperature", 0.0))
+                raise  # Re-raise if it wasn't a temperature error
+            except ValidationError as e:
+                if attempt >= self.max_validation_retries:
+                    raise
+                instructions = _build_retry_instructions(self._vectorized_system_message, e)
 
-        return cast(ParsedResponse[Response[ResponseFormat]], response)
+        raise RuntimeError("unreachable validation retry loop state")
 
     @observe(_LOGGER)
     async def _predict_chunk(self, user_messages: list[str]) -> list[ResponseFormat | None]:
