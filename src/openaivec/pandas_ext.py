@@ -1087,7 +1087,7 @@ class OpenAIVecDataFrameAccessor:
             self._obj.pipe(lambda df: df.reset_index(drop=True))
             .pipe(lambda df: df.join(df[column].ai.extract()))
             .pipe(lambda df: df.set_index(self._obj.index))
-            .pipe(lambda df: df.drop(columns=[column], axis=1))
+            .pipe(lambda df: df.drop(columns=[column]))
         )
 
     def fillna(
