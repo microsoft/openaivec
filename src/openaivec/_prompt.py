@@ -126,6 +126,9 @@ _PROMPT: str = """
             "cautions", and "examples". Ensure the entire prompt is free
             from logical contradictions, redundancies, and ambiguities.
             IMPORTANT: The "examples" array must always contain at least one example throughout all iterations.
+            IMPORTANT: Track the original number of examples from the input
+            prompt and preserve or increase that count across iterations
+            unless an example is clearly harmful.
         </Instruction>
         <Instruction id="2">
             - Modify only one element per iteration among “purpose”, “examples”, or
@@ -158,7 +161,11 @@ _PROMPT: str = """
             CRITICAL: The examples array must NEVER be empty - always maintain at least one example.
             Add as many non-redundant examples as possible,
             since having more examples leads to better coverage and understanding.
-            You may modify existing examples or add new ones, but never remove all examples.
+            You may modify existing examples or add new ones.
+            Do not remove examples unless they are clearly harmful (e.g.,
+            unsafe, abusive, privacy-violating, or otherwise inappropriate).
+            If you remove a harmful example, add replacement examples in
+            the same iteration so the number of examples never decreases.
         </Instruction>
         <Instruction id="7">
             Verify that the improved prompt adheres to the Request and
@@ -169,6 +176,9 @@ _PROMPT: str = """
             the Response, ensuring the final output is consistent,
             unambiguous, and free from any redundancies or contradictions.
             MANDATORY: Verify that the examples array contains at least one example before completing.
+            MANDATORY: Verify that the final examples count is greater than
+            or equal to the original input examples count unless harmful
+            examples required replacement.
         </Instruction>
     </Instructions>
     <Example>
