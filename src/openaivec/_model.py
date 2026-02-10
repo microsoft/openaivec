@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
@@ -111,3 +112,8 @@ class AzureOpenAIAPIVersion:
     """
 
     value: str
+
+@dataclass(frozen=True)
+class BearerTokenProvider:
+    value: Callable[[], str]
+

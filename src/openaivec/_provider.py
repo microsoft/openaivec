@@ -2,6 +2,7 @@ import os
 import warnings
 
 import tiktoken
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
 
 from openaivec import _di as di
@@ -9,6 +10,7 @@ from openaivec._model import (
     AzureOpenAIAPIKey,
     AzureOpenAIAPIVersion,
     AzureOpenAIBaseURL,
+    BearerTokenProvider,
     EmbeddingsModelName,
     OpenAIAPIKey,
     ResponsesModelName,
@@ -184,6 +186,13 @@ def provide_async_openai_client() -> AsyncOpenAI:
 def set_default_registrations():
     CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName("gpt-4.1-mini"))
     CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName("text-embedding-3-small"))
+    CONTAINER.register(DefaultAzureCredential, lambda: DefaultAzureCredential())
+    CONTAINER.register(BearerTokenProvider, lambda: BearerTokenProvider(
+        value=get_bearer_token_provider(
+            CONTAINER.resolve(DefaultAzureCredential),
+            "https://cognitiveservices.azure.com/.default",
+        )
+    ))
     CONTAINER.register(OpenAIAPIKey, lambda: OpenAIAPIKey(os.getenv("OPENAI_API_KEY")))
     CONTAINER.register(AzureOpenAIAPIKey, lambda: AzureOpenAIAPIKey(os.getenv("AZURE_OPENAI_API_KEY")))
     CONTAINER.register(AzureOpenAIBaseURL, lambda: AzureOpenAIBaseURL(os.getenv("AZURE_OPENAI_BASE_URL")))
