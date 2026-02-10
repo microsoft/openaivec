@@ -6,8 +6,10 @@ from openai import OpenAI, AzureOpenAI, AsyncOpenAI, AsyncAzureOpenAI
 from openaivec import pandas_ext
 
 # Option 1: Use environment variables (automatic detection)
-# Set OPENAI_API_KEY or Azure OpenAI environment variables
-# (AZURE_OPENAI_API_KEY, AZURE_OPENAI_BASE_URL, AZURE_OPENAI_API_VERSION)
+# Set OPENAI_API_KEY or Azure OpenAI environment variables.
+# For Azure OpenAI, set AZURE_OPENAI_BASE_URL and AZURE_OPENAI_API_VERSION.
+# Authentication uses AZURE_OPENAI_API_KEY when present, otherwise Entra ID
+# via DefaultAzureCredential.
 # No explicit setup needed - clients are automatically created
 
 # Option 2: Register an existing OpenAI client instance
@@ -18,7 +20,7 @@ pandas_ext.set_client(client)
 azure_client = AzureOpenAI(
     api_key="your-azure-key",
     base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
-    api_version="preview"
+    api_version="v1"
 )
 pandas_ext.set_client(azure_client)
 
@@ -26,7 +28,7 @@ pandas_ext.set_client(azure_client)
 async_azure_client = AsyncAzureOpenAI(
     api_key="your-azure-key",
     base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
-    api_version="preview"
+    api_version="v1"
 )
 pandas_ext.set_async_client(async_azure_client)
 

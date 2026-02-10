@@ -36,10 +36,14 @@ setup(
 #     spark,
 #     api_key="your-azure-openai-api-key",
 #     base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
-#     api_version="preview",
+#     api_version="v1",
 #     responses_model_name="my-gpt4-deployment",  # Optional: set default deployment
 #     embeddings_model_name="my-embedding-deployment"  # Optional: set default deployment
 # )
+
+# Option 3: Using Azure OpenAI with Entra ID (no API key)
+# Set AZURE_OPENAI_BASE_URL and AZURE_OPENAI_API_VERSION in your environment.
+# openaivec automatically uses DefaultAzureCredential when AZURE_OPENAI_API_KEY is not set.
 ```
 
 Next, create UDFs and register them:
@@ -218,19 +222,24 @@ def setup_azure(
     spark: SparkSession,
     api_key: str,
     base_url: str,
-    api_version: str = "preview",
+    api_version: str = "v1",
     responses_model_name: str | None = None,
     embeddings_model_name: str | None = None,
 ):
-    """Setup Azure OpenAI authentication and default model names in Spark environment.
+    """Setup Azure OpenAI API-key authentication and default model names in Spark environment.
     1. Configures Azure OpenAI API key, base URL, and API version in SparkContext environment.
     2. Configures Azure OpenAI API key, base URL, and API version in local process environment.
     3. Optionally registers default model names for responses and embeddings in the DI container.
+
+    Note:
+        This helper configures API-key authentication. For Entra ID authentication,
+        set ``AZURE_OPENAI_BASE_URL`` and ``AZURE_OPENAI_API_VERSION`` in your
+        environment and do not set ``AZURE_OPENAI_API_KEY``.
     Args:
         spark (SparkSession): The Spark session to configure.
         api_key (str): Azure OpenAI API key for authentication.
         base_url (str): Base URL for the Azure OpenAI resource.
-        api_version (str): API version to use. Defaults to "preview".
+        api_version (str): API version to use. Defaults to "v1".
         responses_model_name (str | None): Default model name for response generation.
             If provided, registers `ResponsesModelName` in the DI container.
         embeddings_model_name (str | None): Default model name for embeddings.
@@ -246,7 +255,7 @@ def setup_azure(
             spark,
             api_key="azure-key",
             base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
-            api_version="preview",
+            api_version="v1",
             responses_model_name="gpt4-deployment",
             embeddings_model_name="embedding-deployment",
         )
@@ -373,9 +382,14 @@ def responses_udf(
             sc.environment["OPENAI_API_KEY"] = "your-openai-api-key"
 
         For Azure OpenAI:
-            sc.environment["AZURE_OPENAI_API_KEY"] = "your-azure-openai-api-key"
-            sc.environment["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
-            sc.environment["AZURE_OPENAI_API_VERSION"] = "preview"
+            API key auth:
+                sc.environment["AZURE_OPENAI_API_KEY"] = "your-azure-openai-api-key"
+                sc.environment["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
+                sc.environment["AZURE_OPENAI_API_VERSION"] = "v1"
+            Entra ID auth:
+                sc.environment["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
+                sc.environment["AZURE_OPENAI_API_VERSION"] = "v1"
+                # Do not set AZURE_OPENAI_API_KEY
 
     Args:
         instructions (str): The system prompt or instructions for the model.
@@ -719,9 +733,14 @@ def embeddings_udf(
             sc.environment["OPENAI_API_KEY"] = "your-openai-api-key"
 
         For Azure OpenAI:
-            sc.environment["AZURE_OPENAI_API_KEY"] = "your-azure-openai-api-key"
-            sc.environment["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
-            sc.environment["AZURE_OPENAI_API_VERSION"] = "preview"
+            API key auth:
+                sc.environment["AZURE_OPENAI_API_KEY"] = "your-azure-openai-api-key"
+                sc.environment["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
+                sc.environment["AZURE_OPENAI_API_VERSION"] = "v1"
+            Entra ID auth:
+                sc.environment["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
+                sc.environment["AZURE_OPENAI_API_VERSION"] = "v1"
+                # Do not set AZURE_OPENAI_API_KEY
 
     Args:
         model_name (str | None): For Azure OpenAI, use your deployment name (e.g., "my-embedding-deployment").

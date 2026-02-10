@@ -20,7 +20,11 @@ os.environ["OPENAI_API_KEY"] = "your-api-key"
 # Azure alternative:
 # os.environ["AZURE_OPENAI_API_KEY"] = "your-azure-key"
 # os.environ["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
-# os.environ["AZURE_OPENAI_API_VERSION"] = "preview"
+# os.environ["AZURE_OPENAI_API_VERSION"] = "v1"
+# Azure Entra ID alternative (no API key):
+# os.environ["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
+# os.environ["AZURE_OPENAI_API_VERSION"] = "v1"
+# openaivec will use DefaultAzureCredential when AZURE_OPENAI_API_KEY is not set.
 
 pandas_ext.set_responses_model("gpt-5.1")  # Optional override (use deployment name for Azure)
 
@@ -120,7 +124,11 @@ os.environ["OPENAI_API_KEY"] = "your-api-key-here"
 # Or for Azure OpenAI:
 # os.environ["AZURE_OPENAI_API_KEY"] = "your-azure-key"
 # os.environ["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
-# os.environ["AZURE_OPENAI_API_VERSION"] = "preview"
+# os.environ["AZURE_OPENAI_API_VERSION"] = "v1"
+# Or for Azure OpenAI with Entra ID (no API key):
+# os.environ["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
+# os.environ["AZURE_OPENAI_API_VERSION"] = "v1"
+# openaivec uses DefaultAzureCredential when AZURE_OPENAI_API_KEY is absent.
 
 # Authentication Option 2: Custom client (optional)
 # from openai import OpenAI, AsyncOpenAI
@@ -264,10 +272,14 @@ setup(
 #     spark,
 #     api_key="your-azure-openai-api-key",
 #     base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
-#     api_version="preview",
+#     api_version="v1",
 #     responses_model_name="my-gpt4-deployment",  # Optional: set default deployment
 #     embeddings_model_name="my-embedding-deployment"  # Optional: set default deployment
 # )
+
+# Option 3: Using Azure OpenAI with Entra ID (no API key)
+# Set AZURE_OPENAI_BASE_URL and AZURE_OPENAI_API_VERSION in your environment.
+# openaivec uses DefaultAzureCredential when AZURE_OPENAI_API_KEY is not set.
 ```
 
 Create and register UDFs using the provided helpers:

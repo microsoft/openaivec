@@ -55,7 +55,7 @@ class TestProvideOpenAIClient:
         self.set_env_and_reset(
             AZURE_OPENAI_API_KEY="test-azure-key",
             AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
-            AZURE_OPENAI_API_VERSION="preview",
+            AZURE_OPENAI_API_VERSION="v1",
         )
 
         client = provide_openai_client()
@@ -68,7 +68,7 @@ class TestProvideOpenAIClient:
             OPENAI_API_KEY="test-key",
             AZURE_OPENAI_API_KEY="test-azure-key",
             AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
-            AZURE_OPENAI_API_VERSION="preview",
+            AZURE_OPENAI_API_VERSION="v1",
         )
 
         client = provide_openai_client()
@@ -76,16 +76,13 @@ class TestProvideOpenAIClient:
         assert isinstance(client, OpenAI)
 
     def test_provide_openai_client_with_incomplete_azure_config(self):
-        """Test error when Azure config is incomplete - missing API key."""
+        """Test creating Azure OpenAI client via Entra ID when API key is missing."""
         self.set_env_and_reset(
-            AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/", AZURE_OPENAI_API_VERSION="preview"
+            AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/", AZURE_OPENAI_API_VERSION="v1"
         )
-        # Missing AZURE_OPENAI_API_KEY
-
-        with pytest.raises(ValueError) as context:
-            provide_openai_client()
-
-        assert "No valid OpenAI or Azure OpenAI credentials found" in str(context.value)
+        # Missing AZURE_OPENAI_API_KEY should fall back to Entra ID token provider.
+        client = provide_openai_client()
+        assert isinstance(client, AzureOpenAI)
 
     def test_provide_openai_client_with_azure_keys_default_version(self):
         """Test creating Azure OpenAI client with default API version when not specified."""
@@ -120,7 +117,7 @@ class TestProvideOpenAIClient:
             OPENAI_API_KEY="",
             AZURE_OPENAI_API_KEY="test-azure-key",
             AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
-            AZURE_OPENAI_API_VERSION="preview",
+            AZURE_OPENAI_API_VERSION="v1",
         )
 
         client = provide_openai_client()
@@ -128,13 +125,14 @@ class TestProvideOpenAIClient:
         assert isinstance(client, AzureOpenAI)
 
     def test_provide_openai_client_with_empty_azure_keys(self):
-        """Test that empty Azure keys are treated as not set."""
+        """Test that empty Azure keys fall back to Entra ID token provider."""
         os.environ["AZURE_OPENAI_API_KEY"] = ""
         os.environ["AZURE_OPENAI_BASE_URL"] = "https://test.services.ai.azure.com/openai/v1/"
-        os.environ["AZURE_OPENAI_API_VERSION"] = "preview"
+        os.environ["AZURE_OPENAI_API_VERSION"] = "v1"
+        set_default_registrations()
 
-        with pytest.raises(ValueError):
-            provide_openai_client()
+        client = provide_openai_client()
+        assert isinstance(client, AzureOpenAI)
 
 
 class TestProvideAsyncOpenAIClient:
@@ -180,7 +178,7 @@ class TestProvideAsyncOpenAIClient:
         self.set_env_and_reset(
             AZURE_OPENAI_API_KEY="test-azure-key",
             AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
-            AZURE_OPENAI_API_VERSION="preview",
+            AZURE_OPENAI_API_VERSION="v1",
         )
 
         client = provide_async_openai_client()
@@ -193,7 +191,7 @@ class TestProvideAsyncOpenAIClient:
             OPENAI_API_KEY="test-key",
             AZURE_OPENAI_API_KEY="test-azure-key",
             AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
-            AZURE_OPENAI_API_VERSION="preview",
+            AZURE_OPENAI_API_VERSION="v1",
         )
 
         client = provide_async_openai_client()
@@ -202,7 +200,7 @@ class TestProvideAsyncOpenAIClient:
 
     def test_provide_async_openai_client_with_incomplete_azure_config(self):
         """Test error when Azure config is incomplete - missing endpoint."""
-        self.set_env_and_reset(AZURE_OPENAI_API_KEY="test-azure-key", AZURE_OPENAI_API_VERSION="preview")
+        self.set_env_and_reset(AZURE_OPENAI_API_KEY="test-azure-key", AZURE_OPENAI_API_VERSION="v1")
         # Missing AZURE_OPENAI_BASE_URL
 
         with pytest.raises(ValueError) as context:
@@ -243,7 +241,7 @@ class TestProvideAsyncOpenAIClient:
             OPENAI_API_KEY="",
             AZURE_OPENAI_API_KEY="test-azure-key",
             AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
-            AZURE_OPENAI_API_VERSION="preview",
+            AZURE_OPENAI_API_VERSION="v1",
         )
 
         client = provide_async_openai_client()
@@ -251,15 +249,15 @@ class TestProvideAsyncOpenAIClient:
         assert isinstance(client, AsyncAzureOpenAI)
 
     def test_provide_async_openai_client_with_empty_azure_keys(self):
-        """Test that empty Azure keys are treated as not set."""
+        """Test that empty Azure keys fall back to Entra ID token provider."""
         self.set_env_and_reset(
             AZURE_OPENAI_API_KEY="",
             AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
-            AZURE_OPENAI_API_VERSION="preview",
+            AZURE_OPENAI_API_VERSION="v1",
         )
 
-        with pytest.raises(ValueError):
-            provide_async_openai_client()
+        client = provide_async_openai_client()
+        assert isinstance(client, AsyncAzureOpenAI)
 
 
 @pytest.mark.integration
@@ -310,7 +308,7 @@ class TestProviderIntegration:
         self.set_env_and_reset(
             AZURE_OPENAI_API_KEY="test-azure-key",
             AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
-            AZURE_OPENAI_API_VERSION="preview",
+            AZURE_OPENAI_API_VERSION="v1",
         )
 
         sync_client = provide_openai_client()
@@ -324,7 +322,7 @@ class TestProviderIntegration:
         self.set_env_and_reset(
             AZURE_OPENAI_API_KEY="test-azure-key",
             AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
-            AZURE_OPENAI_API_VERSION="preview",
+            AZURE_OPENAI_API_VERSION="v1",
         )
 
         sync_client = provide_openai_client()
@@ -402,7 +400,7 @@ class TestAzureV1ApiWarning:
 
         # Test with legacy URL (non-v1)
         legacy_client = AzureOpenAI(
-            api_key="test-key", base_url="https://test.openai.azure.com/", api_version="preview"
+            api_key="test-key", base_url="https://test.openai.azure.com/", api_version="v1"
         )
 
         with warnings.catch_warnings(record=True) as w:
@@ -428,7 +426,7 @@ class TestBuildMissingCredentialsError:
 
         assert "No valid OpenAI or Azure OpenAI credentials found" in message
         assert "✗ OPENAI_API_KEY is not set" in message
-        assert "✗ AZURE_OPENAI_API_KEY is not set" in message
+        assert "✗ AZURE_OPENAI_API_KEY (optional) is not set" in message
         assert "✗ AZURE_OPENAI_BASE_URL is not set" in message
         assert "✗ AZURE_OPENAI_API_VERSION is not set" in message
         assert 'export OPENAI_API_KEY="sk-..."' in message
@@ -443,7 +441,7 @@ class TestBuildMissingCredentialsError:
         )
 
         assert "✓ OPENAI_API_KEY is set" in message
-        assert "✗ AZURE_OPENAI_API_KEY is not set" in message
+        assert "✗ AZURE_OPENAI_API_KEY (optional) is not set" in message
 
     def test_partial_azure_config(self):
         """Test error message when Azure config is partially set."""
@@ -451,11 +449,11 @@ class TestBuildMissingCredentialsError:
             openai_api_key=None,
             azure_api_key="test-key",
             azure_base_url=None,
-            azure_api_version="preview",
+            azure_api_version="v1",
         )
 
         assert "✗ OPENAI_API_KEY is not set" in message
-        assert "✓ AZURE_OPENAI_API_KEY is set" in message
+        assert "✓ AZURE_OPENAI_API_KEY (optional) is set" in message
         assert "✗ AZURE_OPENAI_BASE_URL is not set" in message
         assert "✓ AZURE_OPENAI_API_VERSION is set" in message
         # Should include example for missing URL
@@ -467,11 +465,11 @@ class TestBuildMissingCredentialsError:
             openai_api_key=None,
             azure_api_key="test-key",
             azure_base_url="https://test.openai.azure.com/openai/v1/",
-            azure_api_version="preview",
+            azure_api_version="v1",
         )
 
         assert "✗ OPENAI_API_KEY is not set" in message
-        assert "✓ AZURE_OPENAI_API_KEY is set" in message
+        assert "✓ AZURE_OPENAI_API_KEY (optional) is set" in message
         assert "✓ AZURE_OPENAI_BASE_URL is set" in message
         assert "✓ AZURE_OPENAI_API_VERSION is set" in message
 
@@ -485,5 +483,5 @@ class TestBuildMissingCredentialsError:
         )
 
         assert "Option 1: Set OPENAI_API_KEY for OpenAI" in message
-        assert "Option 2: Set all Azure OpenAI variables" in message
+        assert "Option 2: Configure Azure OpenAI endpoint (API key or Entra ID)" in message
         assert "Example:" in message

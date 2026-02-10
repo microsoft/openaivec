@@ -454,7 +454,8 @@ class FewShotPromptBuilder:
 
         When client is None, automatically creates a client using environment variables:
         - For OpenAI: ``OPENAI_API_KEY``
-        - For Azure OpenAI: ``AZURE_OPENAI_API_KEY``, ``AZURE_OPENAI_BASE_URL``, ``AZURE_OPENAI_API_VERSION``
+        - For Azure OpenAI: ``AZURE_OPENAI_BASE_URL`` and ``AZURE_OPENAI_API_VERSION``
+          with ``AZURE_OPENAI_API_KEY`` or Entra ID (``DefaultAzureCredential``)
 
         Args:
             client (OpenAI | None): Configured OpenAI client. If None, uses DI container with environment variables.
