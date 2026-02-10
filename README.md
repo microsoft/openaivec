@@ -20,7 +20,7 @@ os.environ["OPENAI_API_KEY"] = "your-api-key"
 # Azure alternative:
 # os.environ["AZURE_OPENAI_API_KEY"] = "your-azure-key"
 # os.environ["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
-# os.environ["AZURE_OPENAI_API_VERSION"] = "preview"
+# os.environ["AZURE_OPENAI_API_VERSION"] = "v1"
 
 pandas_ext.set_responses_model("gpt-5.1")  # Optional override (use deployment name for Azure)
 
@@ -120,7 +120,7 @@ os.environ["OPENAI_API_KEY"] = "your-api-key-here"
 # Or for Azure OpenAI:
 # os.environ["AZURE_OPENAI_API_KEY"] = "your-azure-key"
 # os.environ["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
-# os.environ["AZURE_OPENAI_API_VERSION"] = "preview"
+# os.environ["AZURE_OPENAI_API_VERSION"] = "v1"
 
 # Authentication Option 2: Custom client (optional)
 # from openai import OpenAI, AsyncOpenAI
@@ -264,7 +264,7 @@ setup(
 #     spark,
 #     api_key="your-azure-openai-api-key",
 #     base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
-#     api_version="preview",
+#     api_version="v1",
 #     responses_model_name="my-gpt4-deployment",  # Optional: set default deployment
 #     embeddings_model_name="my-embedding-deployment"  # Optional: set default deployment
 # )

@@ -58,7 +58,7 @@ def _build_missing_credentials_error(
     azure_vars = [
         ("AZURE_OPENAI_API_KEY (optional)", azure_api_key, '"your-azure-api-key"'),
         ("AZURE_OPENAI_BASE_URL", azure_base_url, '"https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"'),
-        ("AZURE_OPENAI_API_VERSION", azure_api_version, '"2024-12-01-preview"'),
+        ("AZURE_OPENAI_API_VERSION", azure_api_version, '"v1"'),
     ]
     for var_name, var_value, example in azure_vars:
         if var_value:
@@ -208,7 +208,7 @@ def set_default_registrations():
     CONTAINER.register(AzureOpenAIBaseURL, lambda: AzureOpenAIBaseURL(os.getenv("AZURE_OPENAI_BASE_URL")))
     CONTAINER.register(
         cls=AzureOpenAIAPIVersion,
-        provider=lambda: AzureOpenAIAPIVersion(os.getenv("AZURE_OPENAI_API_VERSION", "preview")),
+        provider=lambda: AzureOpenAIAPIVersion(os.getenv("AZURE_OPENAI_API_VERSION", "v1")),
     )
     CONTAINER.register(OpenAI, provide_openai_client)
     CONTAINER.register(AsyncOpenAI, provide_async_openai_client)

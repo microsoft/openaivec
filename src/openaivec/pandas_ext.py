@@ -18,7 +18,7 @@ pandas_ext.set_client(client)
 azure_client = AzureOpenAI(
     api_key="your-azure-key",
     base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
-    api_version="preview"
+    api_version="v1"
 )
 pandas_ext.set_client(azure_client)
 
@@ -26,7 +26,7 @@ pandas_ext.set_client(azure_client)
 async_azure_client = AsyncAzureOpenAI(
     api_key="your-azure-key",
     base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
-    api_version="preview"
+    api_version="v1"
 )
 pandas_ext.set_async_client(async_azure_client)
 
