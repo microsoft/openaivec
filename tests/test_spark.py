@@ -476,6 +476,33 @@ class TestSparkNonApiUdfs:
         assert os.environ["AZURE_OPENAI_BASE_URL"] == "https://example.services.ai.azure.com/openai/v1/"
         assert os.environ["AZURE_OPENAI_API_VERSION"] == "v1"
 
+    def test_setup_azure_without_api_key_clears_azure_key(self, spark_session, reset_environment):
+        set_default_registrations()
+
+        spark_session.sparkContext.environment["AZURE_OPENAI_API_KEY"] = "stale-key"
+        os.environ["AZURE_OPENAI_API_KEY"] = "stale-key"
+
+        setup_azure(
+            spark=spark_session,
+            base_url="https://example.services.ai.azure.com/openai/v1/",
+            api_version="v1",
+            responses_model_name="responses-deployment",
+            embeddings_model_name="embeddings-deployment",
+        )
+
+        sc_env = spark_session.sparkContext.environment
+        assert "AZURE_OPENAI_API_KEY" not in sc_env
+        assert sc_env["AZURE_OPENAI_BASE_URL"] == "https://example.services.ai.azure.com/openai/v1/"
+        assert sc_env["AZURE_OPENAI_API_VERSION"] == "v1"
+
+        assert "AZURE_OPENAI_API_KEY" not in os.environ
+        assert os.environ["AZURE_OPENAI_BASE_URL"] == "https://example.services.ai.azure.com/openai/v1/"
+        assert os.environ["AZURE_OPENAI_API_VERSION"] == "v1"
+
+    def test_setup_azure_requires_base_url(self, spark_session):
+        with pytest.raises(ValueError, match="base_url is required"):
+            setup_azure(spark=spark_session, api_key="azure-key")
+
     def test_split_to_chunks_udf(self, spark_session):
         spark_session.udf.register("split_chunks", split_to_chunks_udf(max_tokens=8, sep=[".", " "]))
 
