@@ -7,7 +7,7 @@
 
 ## Core Components & Contracts
 - Remote work goes through `BatchingMapProxy`/`AsyncBatchingMapProxy`; they dedupe inputs, require same-length outputs, release waiters on failure, and show progress only when `show_progress=True` in notebooks.
-- `_responses.py` enforces reasoning rules: o1/o3-family models must use `temperature=None`, and structured scenarios pass a Pydantic `response_format`.
+- `_responses.py` handles batched Responses API calls, and structured scenarios pass a Pydantic `response_format`.
 - Reuse caches from `*_with_cache` or Spark UDF builders per operation and clear them afterward to avoid large payloads.
 
 ## Development Workflow

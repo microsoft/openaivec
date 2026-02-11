@@ -2,9 +2,7 @@ from logging import Handler, StreamHandler, basicConfig
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
-import httpx
 import pytest
-from openai import BadRequestError
 from pydantic import BaseModel, ValidationError
 
 from openaivec import BatchResponses
@@ -123,53 +121,6 @@ class TestResponsesCachingAndErrors:
         assert first == [None]
         assert second == ["recomputed-value"]
         assert parse.call_count == 2
-
-    def test_sync_temperature_error_adds_guidance(self):
-        request = httpx.Request("POST", "https://example.com/v1/responses")
-        response = httpx.Response(400, request=request)
-        parse = Mock(
-            side_effect=BadRequestError(
-                message="temperature is not supported for this model",
-                response=response,
-                body={"error": {"message": "temperature is not supported for this model"}},
-            )
-        )
-        client = BatchResponses(
-            client=SimpleNamespace(responses=SimpleNamespace(parse=parse)),  # type: ignore[arg-type]
-            model_name="o3-mini",
-            system_message="return json",
-            response_format=str,
-            api_kwargs={"temperature": 0.7},
-        )
-
-        with pytest.warns(UserWarning, match="temperature=None"):
-            with pytest.raises(BadRequestError, match="SUGGESTION: Set temperature=None"):
-                client._predict_chunk(["hello"])
-        assert parse.call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_async_temperature_error_adds_guidance(self):
-        request = httpx.Request("POST", "https://example.com/v1/responses")
-        response = httpx.Response(400, request=request)
-        parse = AsyncMock(
-            side_effect=BadRequestError(
-                message="temperature is not supported for this model",
-                response=response,
-                body={"error": {"message": "temperature is not supported for this model"}},
-            )
-        )
-        client = AsyncBatchResponses(
-            client=SimpleNamespace(responses=SimpleNamespace(parse=parse)),  # type: ignore[arg-type]
-            model_name="o3-mini",
-            system_message="return json",
-            response_format=str,
-            api_kwargs={"temperature": 0.7},
-        )
-
-        with pytest.warns(UserWarning, match="temperature=None"):
-            with pytest.raises(BadRequestError, match="SUGGESTION: Set temperature=None"):
-                await client._predict_chunk(["hello"])
-        assert parse.call_count == 1
 
     def test_sync_retry_exhaustion_raises(self):
         class Fruit(BaseModel):

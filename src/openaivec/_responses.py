@@ -1,9 +1,8 @@
-import warnings
 from dataclasses import dataclass, field
 from logging import Logger, getLogger
 from typing import Any, Generic, cast
 
-from openai import AsyncOpenAI, BadRequestError, InternalServerError, OpenAI, RateLimitError
+from openai import AsyncOpenAI, InternalServerError, OpenAI, RateLimitError
 from openai.types.responses import ParsedResponse
 from pydantic import BaseModel, ValidationError
 
@@ -68,35 +67,6 @@ def _build_retry_instructions(base_instructions: str, error: ValidationError) ->
         ]
     )
     return base_instructions + "\n\n" + "\n".join(lines)
-
-
-def _handle_temperature_error(error: BadRequestError, model_name: str, temperature: float) -> None:
-    """Handle temperature-related errors for reasoning models.
-
-    Detects when a model doesn't support temperature parameter and provides guidance.
-
-    Args:
-        error (BadRequestError): The OpenAI API error.
-        model_name (str): The model that caused the error.
-        temperature (float): The temperature value that was rejected.
-    """
-    error_message = str(error)
-    if "temperature" in error_message.lower() and "not supported" in error_message.lower():
-        guidance_message = (
-            f"🔧 Model '{model_name}' rejected temperature parameter (value: {temperature}). "
-            f"This typically happens with reasoning models (o1-preview, o1-mini, o3, etc.). "
-            f"To fix this, you MUST explicitly set temperature=None:\n"
-            f"• For pandas: df.col.ai.responses('prompt', temperature=None)\n"
-            f"• For Spark UDFs: responses_udf('prompt', temperature=None)\n"
-            f"• For direct API: BatchResponses.of(client, model, temperature=None)\n"
-            f"• Original error: {error_message}\n"
-            f"See: https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/reasoning"
-        )
-        warnings.warn(guidance_message, UserWarning, stacklevel=5)
-
-        # Re-raise with enhanced message
-        enhanced_message = f"{error_message}\n\nSUGGESTION: Set temperature=None to resolve this error."
-        raise BadRequestError(message=enhanced_message, response=error.response, body=error.body)
 
 
 def _vectorize_system_message(system_message: str) -> str:
@@ -340,9 +310,6 @@ class BatchResponses(Generic[ResponseFormat]):
                     **self.api_kwargs,
                 )
                 return cast(ParsedResponse[Response[ResponseFormat]], response)
-            except BadRequestError as e:
-                _handle_temperature_error(e, self.model_name, self.api_kwargs.get("temperature", 0.0))
-                raise  # Re-raise if it wasn't a temperature error
             except ValidationError as e:
                 if attempt >= self.max_validation_retries:
                     raise
@@ -562,9 +529,6 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
                     **self.api_kwargs,
                 )
                 return cast(ParsedResponse[Response[ResponseFormat]], response)
-            except BadRequestError as e:
-                _handle_temperature_error(e, self.model_name, self.api_kwargs.get("temperature", 0.0))
-                raise  # Re-raise if it wasn't a temperature error
             except ValidationError as e:
                 if attempt >= self.max_validation_retries:
                     raise
