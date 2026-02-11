@@ -56,6 +56,7 @@ nav:
   - Contributor Guidelines: contributor-guide.md
   - Examples:
       - Getting Started: examples/pandas.ipynb
+      - PreparedTask Guide: examples/prepared_task.ipynb
       - Intelligent Fill: examples/intelligent_fill.ipynb
       - Customer Analysis: examples/customer_analysis.ipynb
       - Survey Transformation: examples/survey_transformation.ipynb

@@ -61,6 +61,7 @@ Perfect for **data scientists**, **analysts**, and **ML engineers** who want to 
 Get started with these comprehensive examples:
 
 📓 **[Getting Started](examples/pandas.ipynb)** - Basic pandas integration and usage  
+📓 **[PreparedTask Guide](examples/prepared_task.ipynb)** - Define and reuse custom task schemas  
 📓 **[Customer Feedback Analysis](examples/customer_analysis.ipynb)** - Sentiment analysis & prioritization  
 📓 **[Survey Data Transformation](examples/survey_transformation.ipynb)** - Unstructured to structured data  
 📓 **[Spark Processing](examples/spark.ipynb)** - Enterprise-scale distributed processing  
