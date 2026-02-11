@@ -1,3 +1,3 @@
 from .fillna import FillNaResponse, fillna
 
-__all__ = ["fillna", "FillNaResponse"]
+__all__ = ["FillNaResponse", "fillna"]

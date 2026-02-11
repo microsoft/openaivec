@@ -1,61 +1,19 @@
-"""Dependency parsing task for OpenAI API.
+"""Dependency parsing task definition."""
 
-This module provides a predefined task for dependency parsing that analyzes
-syntactic dependencies between words in sentences using OpenAI's language models.
-
-Example:
-    Basic usage with BatchResponses:
-
-    ```python
-    from openai import OpenAI
-    from openaivec import BatchResponses
-    from openaivec.task import nlp
-
-    client = OpenAI()
-    analyzer = BatchResponses.of_task(
-        client=client,
-        model_name="gpt-4.1-mini",
-        task=nlp.DEPENDENCY_PARSING
-    )
-
-    texts = ["The cat sat on the mat.", "She quickly ran to the store."]
-    analyses = analyzer.parse(texts)
-
-    for analysis in analyses:
-        print(f"Tokens: {analysis.tokens}")
-        print(f"Dependencies: {analysis.dependencies}")
-        print(f"Root: {analysis.root_word}")
-    ```
-
-    With pandas integration:
-
-    ```python
-    import pandas as pd
-    from openaivec import pandas_ext  # Required for .ai accessor
-    from openaivec.task import nlp
-
-    df = pd.DataFrame({"text": ["The cat sat on the mat.", "She quickly ran to the store."]})
-    df["parsing"] = df["text"].ai.task(nlp.DEPENDENCY_PARSING)
-
-    # Extract parsing components
-    extracted_df = df.ai.extract("parsing")
-    print(extracted_df[["text", "parsing_tokens", "parsing_root_word", "parsing_syntactic_structure"]])
-    ```
-
-Attributes:
-    DEPENDENCY_PARSING (PreparedTask): A prepared task instance configured for dependency
-        parsing. Provide ``temperature=0.0`` and ``top_p=1.0`` when calling the API for
-        deterministic output.
-"""
-
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from openaivec._model import PreparedTask
+from openaivec.task._prompt_templates import join_sections, same_language_policy
+from openaivec.task._registry import TaskSpec
 
-__all__ = ["DEPENDENCY_PARSING"]
+__all__ = ["dependency_parsing"]
 
 
 class DependencyRelation(BaseModel):
+    """Single dependency edge."""
+
+    model_config = ConfigDict(extra="forbid")
+
     head: str = Field(description="Head word in the dependency relation")
     dependent: str = Field(description="Dependent word in the dependency relation")
     relation: str = Field(description="Type of dependency relation")
@@ -64,15 +22,37 @@ class DependencyRelation(BaseModel):
 
 
 class DependencyParsing(BaseModel):
+    """Dependency parsing output."""
+
+    model_config = ConfigDict(extra="forbid")
+
     tokens: list[str] = Field(description="List of tokens in the sentence")
     dependencies: list[DependencyRelation] = Field(description="Dependency relations between tokens")
     root_word: str = Field(description="Root word of the sentence")
     syntactic_structure: str = Field(description="Tree representation of the syntactic structure")
 
 
-DEPENDENCY_PARSING = PreparedTask(
-    instructions="Parse the syntactic dependencies in the following text. Identify dependency "
-    "relations between words, determine the root word, and provide a tree representation of the "
-    "syntactic structure.",
+def _build_instructions() -> str:
+    return join_sections(
+        "Parse syntactic dependencies in the input text.",
+        "Return tokens, dependency relations, root word, and a concise syntactic structure string.",
+        same_language_policy(),
+    )
+
+
+def dependency_parsing() -> PreparedTask[DependencyParsing]:
+    """Create a dependency parsing task."""
+    return PreparedTask(
+        instructions=_build_instructions(),
+        response_format=DependencyParsing,
+    )
+
+
+TASK_SPEC = TaskSpec(
+    key="nlp.dependency_parsing",
+    domain="nlp",
+    summary="Parse dependency relations and syntactic structure.",
+    factory=dependency_parsing,
     response_format=DependencyParsing,
 )
+

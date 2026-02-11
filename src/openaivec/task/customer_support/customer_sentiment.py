@@ -1,172 +1,78 @@
-"""Customer sentiment analysis task for support interactions.
-
-This module provides a predefined task for analyzing customer sentiment specifically
-in support contexts, including satisfaction levels and emotional states that affect
-customer experience and support strategy.
-
-Example:
-    Basic usage with BatchResponses:
-
-    ```python
-    from openai import OpenAI
-    from openaivec import BatchResponses
-    from openaivec.task import customer_support
-
-    client = OpenAI()
-    analyzer = BatchResponses.of_task(
-        client=client,
-        model_name="gpt-4.1-mini",
-        task=customer_support.CUSTOMER_SENTIMENT
-    )
-
-    inquiries = [
-        "I'm really disappointed with your service. This is the third time I've had this issue.",
-        "Thank you so much for your help! You've been incredibly patient.",
-        "I need to cancel my subscription. It's not working for me."
-    ]
-    sentiments = analyzer.parse(inquiries)
-
-    for sentiment in sentiments:
-        print(f"Sentiment: {sentiment.sentiment}")
-        print(f"Satisfaction: {sentiment.satisfaction_level}")
-        print(f"Churn Risk: {sentiment.churn_risk}")
-        print(f"Emotional State: {sentiment.emotional_state}")
-    ```
-
-    With pandas integration:
-
-    ```python
-    import pandas as pd
-    from openaivec import pandas_ext  # Required for .ai accessor
-    from openaivec.task import customer_support
-
-    df = pd.DataFrame({"inquiry": [
-        "I'm really disappointed with your service. This is the third time I've had this issue.",
-        "Thank you so much for your help! You've been incredibly patient.",
-        "I need to cancel my subscription. It's not working for me."
-    ]})
-    df["sentiment"] = df["inquiry"].ai.task(customer_support.CUSTOMER_SENTIMENT)
-
-    # Extract sentiment components
-    extracted_df = df.ai.extract("sentiment")
-    print(extracted_df[[
-        "inquiry", "sentiment_satisfaction_level",
-        "sentiment_churn_risk", "sentiment_emotional_state"
-    ]])
-    ```
-
-Attributes:
-    CUSTOMER_SENTIMENT (PreparedTask): A prepared task instance
-        configured for customer sentiment analysis with temperature=0.0 and
-        top_p=1.0 for deterministic output.
-"""
+"""Customer support sentiment task definition."""
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from openaivec._model import PreparedTask
+from openaivec.task._prompt_templates import english_categorical_policy, join_sections, same_language_policy
+from openaivec.task._registry import TaskSpec
 
 __all__ = ["customer_sentiment"]
 
 
 class CustomerSentiment(BaseModel):
+    """Customer sentiment analysis output."""
+
+    model_config = ConfigDict(extra="forbid")
+
     sentiment: Literal["positive", "negative", "neutral", "mixed"] = Field(
         description="Overall sentiment (positive, negative, neutral, mixed)"
     )
     satisfaction_level: Literal["very_satisfied", "satisfied", "neutral", "dissatisfied", "very_dissatisfied"] = Field(
-        description="Customer satisfaction (very_satisfied, satisfied, neutral, dissatisfied, very_dissatisfied)"
+        description="Customer satisfaction level"
     )
-    emotional_state: Literal["happy", "frustrated", "angry", "disappointed", "confused", "grateful", "worried"] = Field(
-        description="Primary emotional state (happy, frustrated, angry, disappointed, confused, grateful, worried)"
+    emotional_state: Literal["happy", "frustrated", "angry", "disappointed", "confused", "grateful", "worried"] = (
+        Field(description="Primary emotional state")
     )
-    confidence: float = Field(description="Confidence score for sentiment analysis (0.0-1.0)")
-    churn_risk: Literal["low", "medium", "high", "critical"] = Field(
-        description="Risk of customer churn (low, medium, high, critical)"
-    )
-    sentiment_intensity: float = Field(description="Intensity of sentiment from 0.0 (mild) to 1.0 (extreme)")
-    polarity_score: float = Field(description="Polarity score from -1.0 (very negative) to 1.0 (very positive)")
+    confidence: float = Field(ge=0, le=1, description="Confidence score for sentiment analysis (0.0-1.0)")
+    churn_risk: Literal["low", "medium", "high", "critical"] = Field(description="Risk of customer churn")
+    sentiment_intensity: float = Field(ge=0, le=1, description="Intensity of sentiment from 0.0 to 1.0")
+    polarity_score: float = Field(ge=-1, le=1, description="Polarity score from -1.0 to 1.0")
     tone_indicators: list[str] = Field(description="Specific words or phrases indicating tone")
     relationship_status: Literal["new", "loyal", "at_risk", "detractor", "advocate"] = Field(
-        description="Customer relationship status (new, loyal, at_risk, detractor, advocate)"
+        description="Customer relationship status"
     )
     response_approach: Literal["empathetic", "professional", "solution_focused", "escalation_required"] = Field(
-        description="Recommended response approach (empathetic, professional, solution_focused, escalation_required)"
+        description="Recommended response approach"
     )
 
 
-def customer_sentiment(business_context: str = "general customer support") -> PreparedTask:
-    """Create a configurable customer sentiment analysis task.
-
-    Args:
-        business_context (str): Business context for sentiment analysis.
-
-    Returns:
-        PreparedTask configured for customer sentiment analysis.
-    """
-
-    instructions = f"""Analyze customer sentiment in the context of support interactions, focusing on
-satisfaction, emotional state, and business implications.
-
-Business Context: {business_context}
-
-Sentiment Categories:
-- positive: Customer is happy, satisfied, or grateful
-- negative: Customer is unhappy, frustrated, or disappointed
-- neutral: Customer is matter-of-fact, without strong emotions
-- mixed: Customer expresses both positive and negative sentiments
-
-Satisfaction Levels:
-- very_satisfied: Extremely happy, praising service, expressing gratitude
-- satisfied: Content, appreciative, positive feedback
-- neutral: Neither satisfied nor dissatisfied, factual communication
-- dissatisfied: Unhappy, expressing concerns, mild complaints
-- very_dissatisfied: Extremely unhappy, angry, threatening to leave
-
-Emotional States:
-- happy: Cheerful, pleased, content
-- frustrated: Annoyed, impatient, struggling with issues
-- angry: Hostile, aggressive, demanding immediate action
-- disappointed: Let down, expectations not met
-- confused: Lost, needing clarification, overwhelmed
-- grateful: Thankful, appreciative of help received
-- worried: Anxious, concerned about outcomes
-
-Churn Risk Assessment:
-- low: Happy customers, positive experience
-- medium: Neutral customers, some concerns but manageable
-- high: Dissatisfied customers, multiple issues, expressing frustration
-- critical: Extremely unhappy, threatening to cancel, demanding escalation
-
-Relationship Status:
-- new: First-time contact, tentative, learning
-- loyal: Long-term customer, familiar with service
-- at_risk: Showing signs of dissatisfaction, needs attention
-- detractor: Actively unhappy, may spread negative feedback
-- advocate: Extremely satisfied, promotes service to others
-
-Response Approach:
-- empathetic: Use compassionate language, acknowledge feelings
-- professional: Maintain formal, solution-oriented communication
-- solution_focused: Directly address problems, provide clear next steps
-- escalation_required: Immediately involve management or specialists
-
-Analyze tone indicators like:
-- Positive: "thank you", "great", "helpful", "love", "excellent"
-- Negative: "terrible", "disappointed", "frustrated", "awful", "horrible"
-- Urgency: "urgent", "immediately", "ASAP", "critical"
-- Threat: "cancel", "switch", "competitor", "lawyer", "report"
-
-IMPORTANT: Provide analysis responses in the same language as the input text, except for the
-predefined categorical fields (sentiment, satisfaction_level, emotional_state, churn_risk,
-relationship_status, response_approach) which must use the exact English values specified above.
-For example, if the input is in Spanish, provide tone_indicators in Spanish, but use English
-values like "positive" for sentiment.
-
-Provide comprehensive sentiment analysis with business context and recommended response strategy."""
-
-    return PreparedTask(instructions=instructions, response_format=CustomerSentiment)
+def _build_instructions(business_context: str) -> str:
+    return join_sections(
+        "Analyze customer sentiment in support interactions.",
+        f"Business context: {business_context}",
+        (
+            "Assess sentiment, satisfaction level, emotional state, churn risk, relationship status, "
+            "and recommended response approach."
+        ),
+        same_language_policy(),
+        english_categorical_policy(
+            [
+                "sentiment",
+                "satisfaction_level",
+                "emotional_state",
+                "churn_risk",
+                "relationship_status",
+                "response_approach",
+            ]
+        ),
+    )
 
 
-# Backward compatibility - default configuration
-CUSTOMER_SENTIMENT = customer_sentiment()
+def customer_sentiment(business_context: str = "general customer support") -> PreparedTask[CustomerSentiment]:
+    """Create a customer support sentiment analysis task."""
+    return PreparedTask(
+        instructions=_build_instructions(business_context=business_context),
+        response_format=CustomerSentiment,
+    )
+
+
+TASK_SPEC = TaskSpec(
+    key="customer_support.customer_sentiment",
+    domain="customer_support",
+    summary="Analyze sentiment and churn risk for customer inquiries.",
+    factory=customer_sentiment,
+    response_format=CustomerSentiment,
+)
+

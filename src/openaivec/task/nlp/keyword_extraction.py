@@ -1,78 +1,57 @@
-"""Keyword extraction task for OpenAI API.
+"""Keyword extraction task definition."""
 
-This module provides a predefined task for keyword extraction that identifies
-important keywords and phrases from text using OpenAI's language models.
-
-Example:
-    Basic usage with BatchResponses:
-
-    ```python
-    from openai import OpenAI
-    from openaivec import BatchResponses
-    from openaivec.task import nlp
-
-    client = OpenAI()
-    analyzer = BatchResponses.of_task(
-        client=client,
-        model_name="gpt-4.1-mini",
-        task=nlp.KEYWORD_EXTRACTION
-    )
-
-    texts = ["Machine learning is transforming the technology industry.",
-             "Climate change affects global weather patterns."]
-    analyses = analyzer.parse(texts)
-
-    for analysis in analyses:
-        print(f"Keywords: {analysis.keywords}")
-        print(f"Key phrases: {analysis.keyphrases}")
-        print(f"Topics: {analysis.topics}")
-    ```
-
-    With pandas integration:
-
-    ```python
-    import pandas as pd
-    from openaivec import pandas_ext  # Required for .ai accessor
-    from openaivec.task import nlp
-
-    df = pd.DataFrame({"text": ["Machine learning is transforming the technology industry.",
-                               "Climate change affects global weather patterns."]})
-    df["keywords"] = df["text"].ai.task(nlp.KEYWORD_EXTRACTION)
-
-    # Extract keyword components
-    extracted_df = df.ai.extract("keywords")
-    print(extracted_df[["text", "keywords_keywords", "keywords_topics", "keywords_summary"]])
-    ```
-
-Attributes:
-    KEYWORD_EXTRACTION (PreparedTask): A prepared task instance configured for keyword
-        extraction. Provide ``temperature=0.0`` and ``top_p=1.0`` when calling the API
-        for deterministic output.
-"""
-
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from openaivec._model import PreparedTask
+from openaivec.task._prompt_templates import join_sections, same_language_policy
+from openaivec.task._registry import TaskSpec
 
-__all__ = ["KEYWORD_EXTRACTION"]
+__all__ = ["keyword_extraction"]
 
 
 class Keyword(BaseModel):
+    """Single keyword or keyphrase entry."""
+
+    model_config = ConfigDict(extra="forbid")
+
     text: str = Field(description="The keyword or phrase")
-    score: float = Field(description="Importance score (0.0-1.0)")
-    frequency: int = Field(description="Frequency of occurrence in the text")
-    context: str | None = Field(description="Context where the keyword appears")
+    score: float = Field(ge=0, le=1, description="Importance score (0.0-1.0)")
+    frequency: int = Field(ge=0, description="Frequency of occurrence in the text")
+    context: str | None = Field(default=None, description="Context where the keyword appears")
 
 
 class KeywordExtraction(BaseModel):
+    """Keyword extraction output."""
+
+    model_config = ConfigDict(extra="forbid")
+
     keywords: list[Keyword] = Field(description="Extracted keywords ranked by importance")
     keyphrases: list[Keyword] = Field(description="Extracted multi-word phrases ranked by importance")
     topics: list[str] = Field(description="Identified main topics in the text")
     summary: str = Field(description="Brief summary of the text content")
 
 
-KEYWORD_EXTRACTION = PreparedTask(
-    instructions="Extract important keywords and phrases from the following text. Rank them "
-    "by importance, provide frequency counts, identify main topics, and generate a brief summary.",
+def _build_instructions() -> str:
+    return join_sections(
+        "Extract important keywords and keyphrases from the input text.",
+        "Rank keywords by importance, include frequency and context, identify topics, and provide a short summary.",
+        same_language_policy(),
+    )
+
+
+def keyword_extraction() -> PreparedTask[KeywordExtraction]:
+    """Create a keyword extraction task."""
+    return PreparedTask(
+        instructions=_build_instructions(),
+        response_format=KeywordExtraction,
+    )
+
+
+TASK_SPEC = TaskSpec(
+    key="nlp.keyword_extraction",
+    domain="nlp",
+    summary="Extract ranked keywords, keyphrases, and topics.",
+    factory=keyword_extraction,
     response_format=KeywordExtraction,
 )
+

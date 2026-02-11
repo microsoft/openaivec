@@ -1,69 +1,31 @@
-"""Named entity recognition task for OpenAI API.
+"""Named entity recognition task definition."""
 
-This module provides a predefined task for named entity recognition that
-identifies and classifies named entities in text using OpenAI's language models.
-
-Example:
-    Basic usage with BatchResponses:
-
-    ```python
-    from openai import OpenAI
-    from openaivec import BatchResponses
-    from openaivec.task import nlp
-
-    client = OpenAI()
-    analyzer = BatchResponses.of_task(
-        client=client,
-        model_name="gpt-4.1-mini",
-        task=nlp.NAMED_ENTITY_RECOGNITION
-    )
-
-    texts = ["John works at Microsoft in Seattle", "The meeting is on March 15th"]
-    analyses = analyzer.parse(texts)
-
-    for analysis in analyses:
-        print(f"Persons: {analysis.persons}")
-        print(f"Organizations: {analysis.organizations}")
-        print(f"Locations: {analysis.locations}")
-    ```
-
-    With pandas integration:
-
-    ```python
-    import pandas as pd
-    from openaivec import pandas_ext  # Required for .ai accessor
-    from openaivec.task import nlp
-
-    df = pd.DataFrame({"text": ["John works at Microsoft in Seattle", "The meeting is on March 15th"]})
-    df["entities"] = df["text"].ai.task(nlp.NAMED_ENTITY_RECOGNITION)
-
-    # Extract entity components
-    extracted_df = df.ai.extract("entities")
-    print(extracted_df[["text", "entities_persons", "entities_organizations", "entities_locations"]])
-    ```
-
-Attributes:
-    NAMED_ENTITY_RECOGNITION (PreparedTask): A prepared task instance configured for named
-        entity recognition. Provide ``temperature=0.0`` and ``top_p=1.0`` to API calls for
-        deterministic output.
-"""
-
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from openaivec._model import PreparedTask
+from openaivec.task._prompt_templates import join_sections, same_language_policy
+from openaivec.task._registry import TaskSpec
 
-__all__ = ["NAMED_ENTITY_RECOGNITION"]
+__all__ = ["named_entity_recognition"]
 
 
 class NamedEntity(BaseModel):
+    """Single named-entity span."""
+
+    model_config = ConfigDict(extra="forbid")
+
     text: str = Field(description="The entity text")
     label: str = Field(description="Entity type label")
     start: int = Field(description="Start position in the original text")
     end: int = Field(description="End position in the original text")
-    confidence: float | None = Field(description="Confidence score (0.0-1.0)")
+    confidence: float | None = Field(default=None, ge=0, le=1, description="Confidence score (0.0-1.0)")
 
 
 class NamedEntityRecognition(BaseModel):
+    """Named entity recognition output."""
+
+    model_config = ConfigDict(extra="forbid")
+
     persons: list[NamedEntity] = Field(description="Person entities")
     organizations: list[NamedEntity] = Field(description="Organization entities")
     locations: list[NamedEntity] = Field(description="Location entities")
@@ -73,9 +35,28 @@ class NamedEntityRecognition(BaseModel):
     miscellaneous: list[NamedEntity] = Field(description="Other named entities")
 
 
-NAMED_ENTITY_RECOGNITION = PreparedTask(
-    instructions="Identify and classify named entities in the following text. Extract persons, "
-    "organizations, locations, dates, money, percentages, and other miscellaneous entities "
-    "with their positions and confidence scores.",
+def _build_instructions() -> str:
+    return join_sections(
+        "Identify named entities in the input text.",
+        "Extract persons, organizations, locations, dates, money, percentages, and miscellaneous entities.",
+        "Each entity must include text, label, span offsets, and optional confidence.",
+        same_language_policy(),
+    )
+
+
+def named_entity_recognition() -> PreparedTask[NamedEntityRecognition]:
+    """Create a named entity recognition task."""
+    return PreparedTask(
+        instructions=_build_instructions(),
+        response_format=NamedEntityRecognition,
+    )
+
+
+TASK_SPEC = TaskSpec(
+    key="nlp.named_entity_recognition",
+    domain="nlp",
+    summary="Extract named entities with span offsets and confidence.",
+    factory=named_entity_recognition,
     response_format=NamedEntityRecognition,
 )
+

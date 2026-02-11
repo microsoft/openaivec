@@ -1538,9 +1538,8 @@ class AsyncOpenAIVecSeriesAccessor:
             **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
 
         Note:
-            The task's stored API parameters are used. Core batching / routing
-            keys (``model``, ``instructions`` / system message, user ``input``) are managed by the
-            library and cannot be overridden.
+            Core batching / routing keys (``model``, ``instructions`` / system message, user ``input``)
+            are managed by the library and cannot be overridden.
 
         Returns:
             pandas.Series: Series whose values are instances of the task's

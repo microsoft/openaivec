@@ -205,11 +205,11 @@ text_df = pd.DataFrame({
 
 results = text_df.assign(
     sentiment=lambda df: df.text.ai.task(
-        nlp.SENTIMENT_ANALYSIS,
+        nlp.sentiment_analysis(),
         reasoning={"effort": "none"},
     ),
     intent=lambda df: df.text.ai.task(
-        customer_support.INTENT_ANALYSIS,
+        customer_support.intent_analysis(),
         reasoning={"effort": "none"},
     ),
 )
@@ -217,8 +217,6 @@ results = text_df.assign(
 # Extract structured results into separate columns
 extracted_results = results.ai.extract("sentiment")
 ```
-
-**Task categories:** Text analysis (`nlp.SENTIMENT_ANALYSIS`, `nlp.MULTILINGUAL_TRANSLATION`, `nlp.NAMED_ENTITY_RECOGNITION`, `nlp.KEYWORD_EXTRACTION`); Content classification (`customer_support.INTENT_ANALYSIS`, `customer_support.URGENCY_ANALYSIS`, `customer_support.INQUIRY_CLASSIFICATION`).
 
 ### Asynchronous processing with `.aio`
 

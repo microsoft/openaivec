@@ -147,7 +147,7 @@ class SchemaInferenceOutput(BaseModel):
         return self.build_model()
 
     @property
-    def task(self) -> PreparedTask:
+    def task(self) -> PreparedTask[BaseModel]:
         """PreparedTask integrating the schema's extraction prompt & model.
 
         Returns:
