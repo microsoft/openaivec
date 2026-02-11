@@ -130,7 +130,7 @@ class FillNaResponse(BaseModel):
     )
 
 
-def fillna(df: pd.DataFrame, target_column_name: str, max_examples: int = 500) -> PreparedTask:
+def fillna(df: pd.DataFrame, target_column_name: str, max_examples: int = 500) -> PreparedTask[FillNaResponse]:
     """Create a prepared task for filling missing values in a DataFrame column.
 
     Analyzes the provided DataFrame to understand data patterns and creates
@@ -151,7 +151,7 @@ def fillna(df: pd.DataFrame, target_column_name: str, max_examples: int = 500) -
         PreparedTask configured for missing value imputation with:
         - Instructions based on DataFrame patterns
         - FillNaResponse format for structured output
-        - Default deterministic settings (temperature=0.0, top_p=1.0)
+        - No embedded API parameter defaults
 
     Raises:
         ValueError: If target_column_name doesn't exist in DataFrame,
