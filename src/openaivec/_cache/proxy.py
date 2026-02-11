@@ -344,26 +344,48 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         # Accumulate uncached items to maximize batch size utilization
         pending_to_call: list[S] = []
 
-        i = 0
-        while i < len(owned):
-            # Get dynamic batch size for each iteration
-            current_batch_size = self._normalized_batch_size(len(owned))
-            batch = owned[i : i + current_batch_size]
-            # Double-check cache right before processing
-            with self._lock:
-                uncached_in_batch = [x for x in batch if x not in self._cache]
+        try:
+            i = 0
+            while i < len(owned):
+                # Get dynamic batch size for each iteration
+                current_batch_size = self._normalized_batch_size(len(owned))
+                batch = owned[i : i + current_batch_size]
+                # Double-check cache right before processing
+                with self._lock:
+                    uncached_in_batch = [x for x in batch if x not in self._cache]
 
-            pending_to_call.extend(uncached_in_batch)
+                pending_to_call.extend(uncached_in_batch)
 
-            # Process accumulated items when we reach batch_size or at the end
-            is_last_batch = i + current_batch_size >= len(owned)
-            if len(pending_to_call) >= current_batch_size or (is_last_batch and pending_to_call):
-                # Take up to batch_size items to process
-                to_call = pending_to_call[:current_batch_size]
-                pending_to_call = pending_to_call[current_batch_size:]
+                # Process accumulated items when we reach batch_size or at the end
+                is_last_batch = i + current_batch_size >= len(owned)
+                if len(pending_to_call) >= current_batch_size or (is_last_batch and pending_to_call):
+                    # Take up to batch_size items to process
+                    to_call = pending_to_call[:current_batch_size]
+                    pending_to_call = pending_to_call[current_batch_size:]
+
+                    try:
+                        # Always measure execution time using suggester
+                        with self.suggester.record(len(to_call)):
+                            results = map_func(to_call)
+                    except Exception:
+                        self.__finalize_failure(to_call)
+                        raise
+                    self.__finalize_success(to_call, results)
+
+                    # Update progress bar
+                    self._update_progress_bar(progress_bar, len(to_call))
+
+                # Move to next batch
+                i += current_batch_size
+
+            # Process any remaining items
+            while pending_to_call:
+                # Get dynamic batch size for remaining items
+                remaining_batch_size = self._normalized_batch_size(len(pending_to_call))
+                to_call = pending_to_call[:remaining_batch_size]
+                pending_to_call = pending_to_call[remaining_batch_size:]
 
                 try:
-                    # Always measure execution time using suggester
                     with self.suggester.record(len(to_call)):
                         results = map_func(to_call)
                 except Exception:
@@ -373,30 +395,8 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
 
                 # Update progress bar
                 self._update_progress_bar(progress_bar, len(to_call))
-
-            # Move to next batch
-            i += current_batch_size
-
-        # Process any remaining items
-        while pending_to_call:
-            # Get dynamic batch size for remaining items
-            remaining_batch_size = self._normalized_batch_size(len(pending_to_call))
-            to_call = pending_to_call[:remaining_batch_size]
-            pending_to_call = pending_to_call[remaining_batch_size:]
-
-            try:
-                with self.suggester.record(len(to_call)):
-                    results = map_func(to_call)
-            except Exception:
-                self.__finalize_failure(to_call)
-                raise
-            self.__finalize_success(to_call, results)
-
-            # Update progress bar
-            self._update_progress_bar(progress_bar, len(to_call))
-
-        # Close progress bar
-        self._close_progress_bar(progress_bar)
+        finally:
+            self._close_progress_bar(progress_bar)
 
     def __wait_for(self, keys: list[S], map_func: Callable[[list[S]], list[T]]) -> None:
         """Wait for other threads to complete computations for the given keys.
@@ -475,7 +475,12 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         unique_items = self._unique_in_order(items)
         owned, wait_for = self.__acquire_ownership(unique_items)
 
-        self.__process_owned(owned, map_func)
+        try:
+            self.__process_owned(owned, map_func)
+        except Exception:
+            # Ensure unresolved owned keys never remain in-flight after failures.
+            self.__finalize_failure(owned)
+            raise
         self.__wait_for(wait_for, map_func)
 
         # Fetch results before purging None entries
@@ -540,25 +545,21 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     _cache: dict[S, T] = field(default_factory=dict, repr=False)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
     _inflight: dict[S, asyncio.Event] = field(default_factory=dict, repr=False)
-    __sema: asyncio.Semaphore | None = field(default=None, init=False, repr=False)
+    __sema: asyncio.Semaphore = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Initialize internal semaphore based on ``max_concurrency``.
 
-        If ``max_concurrency`` is a positive integer, an ``asyncio.Semaphore``
-        is created to limit the number of concurrent ``map_func`` calls across
-        overlapping ``map`` invocations. When non-positive or ``None``, no
-        semaphore is used and concurrency is unrestricted by this proxy.
+        An ``asyncio.Semaphore`` is created to limit the number of concurrent
+        ``map_func`` calls across overlapping ``map`` invocations.
 
         Notes:
             This method is invoked automatically by ``dataclasses`` after
             initialization and does not need to be called directly.
         """
-        # Initialize semaphore if limiting is requested; non-positive disables limiting
-        if self.max_concurrency and self.max_concurrency > 0:
-            self.__sema = asyncio.Semaphore(self.max_concurrency)
-        else:
-            self.__sema = None
+        if self.max_concurrency < 1:
+            raise ValueError("max_concurrency must be >= 1")
+        self.__sema = asyncio.Semaphore(self.max_concurrency)
 
     async def __all_cached(self, items: list[S]) -> bool:
         """Check whether all items are present in the cache.
@@ -699,9 +700,10 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                 finally:
                     batch_queue.task_done()
 
-        await asyncio.gather(producer(), *[consumer() for _ in range(self.max_concurrency)])
-
-        self._close_progress_bar(progress_bar)
+        try:
+            await asyncio.gather(producer(), *[consumer() for _ in range(self.max_concurrency)])
+        finally:
+            self._close_progress_bar(progress_bar)
 
     async def __process_single_batch(
         self, to_call: list[S], map_func: Callable[[list[S]], Awaitable[list[T]]], progress_bar
@@ -709,9 +711,8 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         """Process a single batch with semaphore control."""
         acquired = False
         try:
-            if self.__sema:
-                await self.__sema.acquire()
-                acquired = True
+            await self.__sema.acquire()
+            acquired = True
             # Measure async map_func execution using suggester
             with self.suggester.record(len(to_call)):
                 results = await map_func(to_call)
@@ -719,7 +720,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             await self.__finalize_failure(to_call)
             raise
         finally:
-            if self.__sema and acquired:
+            if acquired:
                 self.__sema.release()
         await self.__finalize_success(to_call, results)
 
@@ -791,7 +792,12 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         unique_items = self._unique_in_order(items)
         owned, wait_for = await self.__acquire_ownership(unique_items)
 
-        await self.__process_owned(owned, map_func)
+        try:
+            await self.__process_owned(owned, map_func)
+        except Exception:
+            # Ensure unresolved owned keys never remain in-flight after failures.
+            await self.__finalize_failure(owned)
+            raise
         await self.__wait_for(wait_for, map_func)
 
         results = await self.__values(items)

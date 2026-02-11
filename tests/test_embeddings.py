@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from openaivec._embeddings import AsyncBatchEmbeddings
+from openaivec._embeddings import AsyncBatchEmbeddings, BatchEmbeddings
 
 
 @pytest.mark.requires_api
@@ -157,3 +157,44 @@ class TestAsyncBatchEmbeddings:
 
         assert len(response) == len(inputs)
         assert client.cache.max_concurrency == concurrency
+
+
+@pytest.mark.requires_api
+class TestBatchEmbeddings:
+    @pytest.fixture(autouse=True)
+    def setup_client(self, openai_client, embeddings_model_name, embedding_dim):
+        self.openai_client = openai_client
+        self.model_name = embeddings_model_name
+        self.embedding_dim = embedding_dim
+        yield
+
+    def test_create_basic(self):
+        client = BatchEmbeddings.of(client=self.openai_client, model_name=self.model_name, batch_size=2)
+        inputs = ["apple", "banana", "orange"]
+
+        response = client.create(inputs)
+
+        assert len(response) == len(inputs)
+        for embedding in response:
+            assert isinstance(embedding, np.ndarray)
+            assert embedding.shape == (self.embedding_dim,)
+            assert embedding.dtype == np.float32
+            assert np.all(np.isfinite(embedding))
+
+    def test_create_empty_input(self):
+        client = BatchEmbeddings.of(client=self.openai_client, model_name=self.model_name, batch_size=2)
+
+        response = client.create([])
+
+        assert response == []
+
+    def test_create_with_duplicates_keeps_order(self):
+        client = BatchEmbeddings.of(client=self.openai_client, model_name=self.model_name, batch_size=3)
+        inputs = ["alpha", "beta", "alpha", "gamma", "beta"]
+
+        response = client.create(inputs)
+
+        assert len(response) == len(inputs)
+        first_occurrence = {text: response[inputs.index(text)] for text in set(inputs)}
+        for i, text in enumerate(inputs):
+            np.testing.assert_allclose(response[i], first_occurrence[text])

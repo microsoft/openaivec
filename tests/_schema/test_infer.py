@@ -1,5 +1,7 @@
 from enum import Enum
+from types import SimpleNamespace
 from typing import get_args, get_origin
+from unittest.mock import Mock
 
 import pytest
 from pydantic import BaseModel
@@ -190,6 +192,7 @@ class TestInferredSchemaBuildModel:
 
         # Verify enum field type
         status_annotation = model_cls.model_fields["status_field"].annotation
+        assert isinstance(status_annotation, type)
         assert issubclass(status_annotation, Enum)
         # Verify enum member names (uppercased unique set)
         member_names = {member.name for member in status_annotation}
@@ -299,6 +302,8 @@ class TestInferredSchemaBuildModel:
         # Verify enum fields
         priority_type = model_cls.model_fields["priority"].annotation
         category_type = model_cls.model_fields["category"].annotation
+        assert isinstance(priority_type, type)
+        assert isinstance(category_type, type)
         assert issubclass(priority_type, Enum)
         assert issubclass(category_type, Enum)
 
@@ -377,3 +382,72 @@ class TestInferredSchemaBuildModel:
         # All required
         for name in ["tags_array", "ids_array", "scores_array", "is_flags_array"]:
             assert name in js["required"]
+
+
+def _minimal_schema_output() -> SchemaInferenceOutput:
+    return SchemaInferenceOutput(
+        instructions="extract category and score",
+        examples_summary="examples contain concise category labels and numeric scores",
+        examples_instructions_alignment="examples consistently map to category/score pairs",
+        object_spec=ObjectSpec(
+            name="InferenceRoot",
+            fields=[
+                FieldSpec(name="category", type="string", description="Detected category"),
+                FieldSpec(name="score", type="float", description="Confidence score"),
+            ],
+        ),
+        inference_prompt="Return category and score fields.",
+    )
+
+
+def test_infer_schema_retries_when_output_parsed_is_none():
+    parse = Mock(
+        side_effect=[
+            SimpleNamespace(output_parsed=None),
+            SimpleNamespace(output_parsed=_minimal_schema_output()),
+        ]
+    )
+    client = SimpleNamespace(responses=SimpleNamespace(parse=parse))
+    inferer = SchemaInferer(client=client, model_name="gpt-4.1-mini")  # type: ignore[arg-type]
+
+    result = inferer.infer_schema(
+        SchemaInferenceInput(examples=["invoice overdue", "payment received"], instructions="Extract payment state"),
+        max_retries=2,
+    )
+
+    assert isinstance(result, SchemaInferenceOutput)
+    assert result.object_spec.name == "InferenceRoot"
+    assert parse.call_count == 2
+
+
+def test_infer_schema_raises_after_all_none_output_parsed_retries():
+    parse = Mock(return_value=SimpleNamespace(output_parsed=None))
+    client = SimpleNamespace(responses=SimpleNamespace(parse=parse))
+    inferer = SchemaInferer(client=client, model_name="gpt-4.1-mini")  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="returned no parsed output"):
+        inferer.infer_schema(
+            SchemaInferenceInput(examples=["a"], instructions="b"),
+            max_retries=2,
+        )
+    assert parse.call_count == 2
+
+
+def test_schema_inference_output_save_load_roundtrip(tmp_path):
+    schema = _minimal_schema_output()
+    out_path = tmp_path / "schema.json"
+
+    schema.save(str(out_path))
+    loaded = SchemaInferenceOutput.load(str(out_path))
+
+    assert loaded.model_dump() == schema.model_dump()
+
+
+def test_schema_inference_output_task_uses_prompt_and_model():
+    schema = _minimal_schema_output()
+
+    task = schema.task
+
+    assert task.instructions == schema.inference_prompt
+    assert issubclass(task.response_format, BaseModel)
+    assert set(task.response_format.model_fields) == {"category", "score"}

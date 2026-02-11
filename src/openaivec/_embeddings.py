@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from logging import Logger, getLogger
+from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
@@ -32,7 +33,7 @@ class BatchEmbeddings:
     client: OpenAI
     model_name: str
     cache: BatchingMapProxy[str, NDArray[np.float32]] = field(default_factory=lambda: BatchingMapProxy(batch_size=None))
-    api_kwargs: dict[str, int | float | str | bool] = field(default_factory=dict)
+    api_kwargs: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def of(cls, client: OpenAI, model_name: str, batch_size: int | None = None, **api_kwargs) -> "BatchEmbeddings":
@@ -138,7 +139,7 @@ class AsyncBatchEmbeddings:
     cache: AsyncBatchingMapProxy[str, NDArray[np.float32]] = field(
         default_factory=lambda: AsyncBatchingMapProxy(batch_size=None, max_concurrency=8)
     )
-    api_kwargs: dict[str, int | float | str | bool] = field(default_factory=dict)
+    api_kwargs: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def of(

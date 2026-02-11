@@ -132,7 +132,7 @@ import logging
 import os
 from collections.abc import Iterator
 from enum import Enum
-from typing import Union, get_args, get_origin
+from typing import Union, cast, get_args, get_origin
 
 import numpy as np
 import pandas as pd
@@ -691,19 +691,25 @@ def parse_udf(
     if not response_format and not (example_field_name and example_table_name):
         raise ValueError("Either response_format or example_table_name and example_field_name must be provided.")
 
-    schema: SchemaInferenceOutput | None = None
-
-    if not response_format:
+    if response_format is None:
+        # Guard above guarantees both are present when inferring.
+        if example_table_name is None or example_field_name is None:
+            raise ValueError("Either response_format or example_table_name and example_field_name must be provided.")
         schema = infer_schema(
             instructions=instructions,
             example_table_name=example_table_name,
             example_field_name=example_field_name,
             max_examples=max_examples,
         )
+        resolved_instructions = schema.inference_prompt
+        resolved_response_format = cast(type[ResponseFormat], schema.model)
+    else:
+        resolved_instructions = instructions
+        resolved_response_format = response_format
 
     return responses_udf(
-        instructions=schema.inference_prompt if schema else instructions,
-        response_format=schema.model if schema else response_format,
+        instructions=resolved_instructions,
+        response_format=resolved_response_format,
         model_name=model_name,
         batch_size=batch_size,
         max_concurrency=max_concurrency,

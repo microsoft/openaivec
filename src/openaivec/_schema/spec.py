@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field, create_model
 
@@ -101,7 +101,7 @@ class ObjectSpec(BaseModel):
     )
 
 
-def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
+def _build_model(model_spec: ObjectSpec) -> type[BaseModel]:
     lower_sname_pattern = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
     upper_camel_pattern = re.compile(r"^[A-Z][A-Za-z0-9]*$")
     type_map: dict[str, type] = {
@@ -114,15 +114,15 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
         "float_array": list[float],
         "boolean_array": list[bool],
     }
-    output_fields: dict[str, tuple[type, object]] = {}
+    output_fields: dict[str, tuple[Any, object]] = {}
 
-    field_names: list[str] = [field.name for field in object_spec.fields]
+    field_names: list[str] = [field.name for field in model_spec.fields]
 
     # Assert that names of fields are not duplicated
     if len(field_names) != len(set(field_names)):
         raise ValueError("Field names must be unique within the object spec.")
 
-    for field in object_spec.fields:
+    for field in model_spec.fields:
         # Assert that field names are lower_snake_case
         if not lower_sname_pattern.match(field.name):
             raise ValueError(f"Field name '{field.name}' must be in lower_snake_case format (e.g., 'my_field_name').")
@@ -151,8 +151,8 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
                 and 0 < len(enum_spec.values) <= _MAX_ENUM_VALUES
                 and upper_camel_pattern.match(enum_spec.name)
             ):
-                member_names = list({v.upper() for v in enum_spec.values})
-                enum_type = Enum(enum_spec.name, member_names)
+                member_names = sorted({v.upper() for v in enum_spec.values})
+                enum_type = cast(type[Enum], Enum(enum_spec.name, member_names))
                 output_fields[name] = (enum_type, Field(description=description))
 
             case FieldSpec(
@@ -162,20 +162,20 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
                 and 0 < len(enum_spec.values) <= _MAX_ENUM_VALUES
                 and upper_camel_pattern.match(enum_spec.name)
             ):
-                member_names = list({v.upper() for v in enum_spec.values})
-                enum_type = Enum(enum_spec.name, member_names)
+                member_names = sorted({v.upper() for v in enum_spec.values})
+                enum_type = cast(type[Enum], Enum(enum_spec.name, member_names))
                 output_fields[name] = (list[enum_type], Field(description=description))
 
             case FieldSpec(
-                name=name, type="object", description=description, enum_spec=None, object_spec=object_spec
-            ) if object_spec and upper_camel_pattern.match(object_spec.name):
-                nested_model = _build_model(object_spec)
+                name=name, type="object", description=description, enum_spec=None, object_spec=nested_object_spec
+            ) if nested_object_spec and upper_camel_pattern.match(nested_object_spec.name):
+                nested_model = _build_model(nested_object_spec)
                 output_fields[name] = (nested_model, Field(description=description))
 
             case FieldSpec(
-                name=name, type="object_array", description=description, enum_spec=None, object_spec=object_spec
-            ) if object_spec and upper_camel_pattern.match(object_spec.name):
-                nested_model = _build_model(object_spec)
+                name=name, type="object_array", description=description, enum_spec=None, object_spec=nested_object_spec
+            ) if nested_object_spec and upper_camel_pattern.match(nested_object_spec.name):
+                nested_model = _build_model(nested_object_spec)
                 output_fields[name] = (list[nested_model], Field(description=description))
 
             # ---- Error cases (explicit reasons) ----
@@ -215,10 +215,10 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
                 name=name,
                 type="enum",
                 enum_spec=enum_spec,
-                object_spec=object_spec,
-            ) if object_spec is not None:
+                object_spec=field_object_spec,
+            ) if field_object_spec is not None:
                 raise ValueError(
-                    f"Field '{name}': enum type must not provide object_spec (got object_spec={object_spec!r})."
+                    f"Field '{name}': enum type must not provide object_spec (got object_spec={field_object_spec!r})."
                 )
             # Enum array type without enum_spec
             case FieldSpec(
@@ -256,10 +256,13 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
                 name=name,
                 type="enum_array",
                 enum_spec=enum_spec,
-                object_spec=object_spec,
-            ) if object_spec is not None:
+                object_spec=field_object_spec,
+            ) if field_object_spec is not None:
                 raise ValueError(
-                    f"Field '{name}': enum_array type must not provide object_spec (got object_spec={object_spec!r})."
+                    (
+                        f"Field '{name}': enum_array type must not provide object_spec "
+                        f"(got object_spec={field_object_spec!r})."
+                    )
                 )
             # Object type missing object_spec
             case FieldSpec(
@@ -282,11 +285,11 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
                 name=name,
                 type="object" | "object_array",
                 enum_spec=enum_spec,
-                object_spec=object_spec,
-            ) if object_spec is not None and not upper_camel_pattern.match(object_spec.name):
+                object_spec=field_object_spec,
+            ) if field_object_spec is not None and not upper_camel_pattern.match(field_object_spec.name):
                 raise ValueError(
                     (
-                        f"Field '{name}': object_spec.name '{object_spec.name}' must be UpperCamelCase "
+                        f"Field '{name}': object_spec.name '{field_object_spec.name}' must be UpperCamelCase "
                         "(regex ^[A-Z][A-Za-z0-9]*$) and contain only letters and digits."
                     )
                 )
@@ -295,7 +298,7 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
                 name=name,
                 type="object" | "object_array",
                 enum_spec=enum_spec,
-                object_spec=object_spec,
+                object_spec=field_object_spec,
             ) if enum_spec is not None:
                 raise ValueError(
                     f"Field '{name}': {field.type} must not define enum_spec (got enum_spec={enum_spec!r})."
@@ -312,7 +315,7 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
                 | "float_array"
                 | "boolean_array",
                 enum_spec=enum_spec,
-                object_spec=object_spec,
+                object_spec=field_object_spec,
             ) if enum_spec is not None:
                 raise ValueError(
                     (f"Field '{name}': type '{field.type}' must not define enum_spec (got enum_spec={enum_spec!r}).")
@@ -329,12 +332,12 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
                 | "float_array"
                 | "boolean_array",
                 enum_spec=None,
-                object_spec=object_spec,
-            ) if object_spec is not None:
+                object_spec=field_object_spec,
+            ) if field_object_spec is not None:
                 raise ValueError(
                     (
                         f"Field '{name}': type '{field.type}' must not define object_spec "
-                        f"(got object_spec={object_spec!r})."
+                        f"(got object_spec={field_object_spec!r})."
                     )
                 )
             # Any other unmatched combination
@@ -347,4 +350,4 @@ def _build_model(object_spec: ObjectSpec) -> type[BaseModel]:
                     )
                 )
 
-    return create_model(object_spec.name, **output_fields)
+    return create_model(model_spec.name, **cast(Any, output_fields))

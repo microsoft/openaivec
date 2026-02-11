@@ -14,7 +14,9 @@ from openaivec.spark import (
     parse_udf,
     responses_udf,
     setup,
+    setup_azure,
     similarity_udf,
+    split_to_chunks_udf,
     task_udf,
 )
 from openaivec.task import nlp
@@ -30,9 +32,11 @@ class TestSparkUDFs:
         """Setup Spark session with openaivec configuration."""
         self.spark = spark_session
         set_default_registrations()
+        api_key = os.environ.get("OPENAI_API_KEY")
+        assert api_key is not None
         setup(
             spark=self.spark,
-            api_key=os.environ.get("OPENAI_API_KEY"),
+            api_key=api_key,
             responses_model_name=responses_model_name,
             embeddings_model_name=embeddings_model_name,
         )
@@ -421,3 +425,68 @@ class TestSchemaMapping:
         schema = _pydantic_to_spark_schema(FloatModel)
         assert len(schema.fields) == 1
         assert schema.fields[0].dataType == FloatType()
+
+
+class TestSparkConfigAndValidation:
+    def test_parse_udf_requires_response_format_or_example_source(self):
+        with pytest.raises(ValueError, match="Either response_format or example_table_name"):
+            parse_udf(instructions="Extract fields")
+
+    @pytest.mark.parametrize(
+        "example_table_name,example_field_name",
+        [
+            ("events", None),
+            (None, "body"),
+        ],
+    )
+    def test_parse_udf_requires_both_example_inputs(self, example_table_name, example_field_name):
+        with pytest.raises(ValueError, match="Either response_format or example_table_name"):
+            parse_udf(
+                instructions="Extract fields",
+                response_format=None,
+                example_table_name=example_table_name,
+                example_field_name=example_field_name,
+            )
+
+    def test_responses_udf_rejects_unsupported_response_format(self):
+        with pytest.raises(ValueError, match="Unsupported response_format"):
+            responses_udf(instructions="echo", response_format=dict)  # type: ignore[arg-type]
+
+
+@pytest.mark.spark
+class TestSparkNonApiUdfs:
+    def test_setup_azure_sets_spark_and_local_environment(self, spark_session, reset_environment):
+        set_default_registrations()
+
+        setup_azure(
+            spark=spark_session,
+            api_key="azure-key",
+            base_url="https://example.services.ai.azure.com/openai/v1/",
+            api_version="v1",
+            responses_model_name="responses-deployment",
+            embeddings_model_name="embeddings-deployment",
+        )
+
+        sc_env = spark_session.sparkContext.environment
+        assert sc_env["AZURE_OPENAI_API_KEY"] == "azure-key"
+        assert sc_env["AZURE_OPENAI_BASE_URL"] == "https://example.services.ai.azure.com/openai/v1/"
+        assert sc_env["AZURE_OPENAI_API_VERSION"] == "v1"
+
+        assert os.environ["AZURE_OPENAI_API_KEY"] == "azure-key"
+        assert os.environ["AZURE_OPENAI_BASE_URL"] == "https://example.services.ai.azure.com/openai/v1/"
+        assert os.environ["AZURE_OPENAI_API_VERSION"] == "v1"
+
+    def test_split_to_chunks_udf(self, spark_session):
+        spark_session.udf.register("split_chunks", split_to_chunks_udf(max_tokens=8, sep=[".", " "]))
+
+        sample = spark_session.createDataFrame(
+            [("alpha beta gamma. delta epsilon zeta",), (None,)],
+            ["body"],
+        )
+        sample.createOrReplaceTempView("chunk_input")
+
+        out = spark_session.sql("SELECT split_chunks(body) AS chunks FROM chunk_input").toPandas()
+
+        assert isinstance(out.iloc[0]["chunks"], list)
+        assert len(out.iloc[0]["chunks"]) >= 1
+        assert out.iloc[1]["chunks"] == []

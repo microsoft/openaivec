@@ -215,7 +215,7 @@ class BatchResponses(Generic[ResponseFormat]):
     system_message: str
     response_format: type[ResponseFormat] = str  # type: ignore[assignment]
     cache: BatchingMapProxy[str, ResponseFormat] = field(default_factory=lambda: BatchingMapProxy(batch_size=None))
-    api_kwargs: dict[str, int | float | str | bool] = field(default_factory=dict)
+    api_kwargs: dict[str, Any] = field(default_factory=dict)
     max_validation_retries: int = 3
     _vectorized_system_message: str = field(init=False)
     _model_json_schema: dict = field(init=False)
@@ -436,7 +436,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
     cache: AsyncBatchingMapProxy[str, ResponseFormat] = field(
         default_factory=lambda: AsyncBatchingMapProxy(batch_size=None, max_concurrency=8)
     )
-    api_kwargs: dict[str, int | float | str | bool] = field(default_factory=dict)
+    api_kwargs: dict[str, Any] = field(default_factory=dict)
     max_validation_retries: int = 3
     _vectorized_system_message: str = field(init=False)
     _model_json_schema: dict = field(init=False)

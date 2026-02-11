@@ -44,11 +44,12 @@ This module provides `.ai` and `.aio` accessors for pandas Series and DataFrames
 to easily interact with OpenAI APIs for tasks like generating responses or embeddings.
 """
 
+import asyncio
 import inspect
 import json
 import logging
 from collections.abc import Awaitable, Callable
-from typing import TypeVar
+from typing import TypeVar, cast
 
 import numpy as np
 import pandas as pd
@@ -512,11 +513,14 @@ class OpenAIVecSeriesAccessor:
         schema: SchemaInferenceOutput | None = None
         if response_format is None:
             schema = self.infer_schema(instructions=instructions, max_examples=max_examples, **api_kwargs)
+            resolved_response_format = cast(type[ResponseFormat], schema.model)
+        else:
+            resolved_response_format = response_format
 
         return self.responses_with_cache(
             instructions=schema.inference_prompt if schema else instructions,
             cache=cache,
-            response_format=response_format or schema.model,
+            response_format=resolved_response_format,
             **api_kwargs,
         )
 
@@ -1140,10 +1144,10 @@ class OpenAIVecDataFrameAccessor:
             is returned unchanged.
         """
 
-        task: PreparedTask = fillna(self._obj, target_column_name, max_examples)
         missing_rows = self._obj[self._obj[target_column_name].isna()]
         if missing_rows.empty:
             return self._obj
+        task: PreparedTask = fillna(self._obj, target_column_name, max_examples)
 
         filled_values: list[FillNaResponse] = missing_rows.ai.task(
             task=task, batch_size=batch_size, show_progress=show_progress
@@ -1188,10 +1192,26 @@ class OpenAIVecDataFrameAccessor:
                 corresponding vectors in col1 and col2, with values ranging
                 from -1 to 1, where 1 indicates identical direction.
         """
-        return self._obj.apply(
-            lambda row: np.dot(row[col1], row[col2]) / (np.linalg.norm(row[col1]) * np.linalg.norm(row[col2])),
-            axis=1,
-        ).rename("similarity")  # type: ignore[arg-type]
+        try:
+            left_values = self._obj[col1].tolist()
+            right_values = self._obj[col2].tolist()
+            left = np.vstack(left_values)
+            right = np.vstack(right_values)
+        except Exception as exc:
+            raise TypeError("Both columns must contain numeric vectors with consistent dimensions.") from exc
+
+        numerator = np.einsum("ij,ij->i", left, right)
+        denominator = np.linalg.norm(left, axis=1) * np.linalg.norm(right, axis=1)
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            similarity = np.divide(
+                numerator,
+                denominator,
+                out=np.full(numerator.shape, np.nan, dtype=float),
+                where=denominator != 0,
+            )
+
+        return pd.Series(similarity, index=self._obj.index, name="similarity")
 
 
 @pd.api.extensions.register_series_accessor("aio")
@@ -1574,13 +1594,21 @@ class AsyncOpenAIVecSeriesAccessor:
         """
         schema: SchemaInferenceOutput | None = None
         if response_format is None:
-            # Use synchronous schema inference
-            schema = self._obj.ai.infer_schema(instructions=instructions, max_examples=max_examples)
+            inferred_schema = await asyncio.to_thread(
+                self._obj.ai.infer_schema,
+                instructions=instructions,
+                max_examples=max_examples,
+                **api_kwargs,
+            )
+            schema = inferred_schema
+            resolved_response_format = cast(type[ResponseFormat], inferred_schema.model)
+        else:
+            resolved_response_format = response_format
 
         return await self.responses_with_cache(
             instructions=schema.inference_prompt if schema else instructions,
             cache=cache,
-            response_format=response_format or schema.model,
+            response_format=resolved_response_format,
             **api_kwargs,
         )
 
@@ -2110,10 +2138,10 @@ class AsyncOpenAIVecDataFrameAccessor:
             is returned unchanged.
         """
 
-        task: PreparedTask = fillna(self._obj, target_column_name, max_examples)
         missing_rows = self._obj[self._obj[target_column_name].isna()]
         if missing_rows.empty:
             return self._obj
+        task: PreparedTask = fillna(self._obj, target_column_name, max_examples)
 
         filled_values: list[FillNaResponse] = await missing_rows.aio.task(
             task=task,

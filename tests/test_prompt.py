@@ -6,7 +6,7 @@ import pytest
 from openai import OpenAI
 from pydantic import BaseModel
 
-from openaivec._prompt import FewShotPromptBuilder
+from openaivec._prompt import FewShotPrompt, FewShotPromptBuilder
 
 logging.basicConfig(level=logging.INFO, force=True)
 
@@ -138,3 +138,27 @@ class TestAtomicPromptBuilder:
         # Builder should still be usable
         prompt = builder.build()
         assert prompt is not None
+
+    def test_builder_of_roundtrip_and_build_json(self):
+        prompt_obj = FewShotPrompt.model_validate(
+            {
+                "purpose": "Classify text",
+                "cautions": ["Avoid hallucinations"],
+                "examples": [{"input": "I love this", "output": "positive"}],
+            }
+        )
+
+        builder = FewShotPromptBuilder.of(prompt_obj)
+
+        assert builder.get_object().model_dump() == prompt_obj.model_dump()
+        prompt_json = builder.build_json()
+        prompt_xml = builder.build_xml()
+
+        assert '"purpose":"Classify text"' in prompt_json
+        assert "<Purpose>Classify text</Purpose>" in prompt_xml
+
+    def test_builder_of_empty_requires_purpose_and_examples(self):
+        builder = FewShotPromptBuilder.of_empty()
+
+        with pytest.raises(ValueError, match="Purpose is required"):
+            builder.build()

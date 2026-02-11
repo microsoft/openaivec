@@ -323,6 +323,14 @@ class SchemaInferer:
                 **kwargs,
             )
             parsed = response.output_parsed
+            if parsed is None:
+                last_err = ValueError("Schema inference returned no parsed output.")
+                previous_errors.append(str(last_err))
+                if attempt == max_retries - 1:
+                    raise ValueError(
+                        f"Schema validation failed after {max_retries} attempts. Last error: {last_err}"
+                    ) from last_err
+                continue
             try:
                 # Validate the field list structure
                 parsed.build_model()
