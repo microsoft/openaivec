@@ -18,17 +18,12 @@ from openaivec import pandas_ext
 os.environ["OPENAI_API_KEY"] = "your-api-key"
 pandas_ext.set_responses_model("gpt-5.1")  # Optional override (use deployment name for Azure)
 
-reviews = pd.Series([
-    "Great coffee and friendly staff.",
-    "Delivery was late and the package was damaged.",
-])
+fruit_names: pd.Series = pd.Series(["apple", "banana", "cherry"])
 
-sentiment = reviews.ai.responses(
-    "Summarize sentiment in one short sentence.",
-    reasoning={"effort": "none"},  # Mirrors OpenAI SDK for reasoning models
-)
-print(sentiment.tolist())
-# Output: ['Positive sentiment', 'Negative sentiment']
+# Translate fruit names to French with simple prompt
+french_names: pd.Series = fruit_names.ai.responses("Translate this fruit name to French.")
+french_names  # Expected output: ['pomme', 'banane', 'cerise']
+
 ```
 
 For Azure OpenAI and custom client setup, see [pandas authentication options](#pandas-authentication-options).
