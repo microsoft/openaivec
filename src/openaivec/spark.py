@@ -132,7 +132,7 @@ import logging
 import os
 from collections.abc import Iterator
 from enum import Enum
-from typing import Union, cast, get_args, get_origin
+from typing import Annotated, Union, cast, get_args, get_origin
 
 import numpy as np
 import pandas as pd
@@ -297,6 +297,11 @@ def setup_azure(
 
 def _python_type_to_spark(python_type):
     origin = get_origin(python_type)
+
+    # Unwrap Annotated[T, ...] and map the underlying type T.
+    if origin is Annotated:
+        annotated_type = get_args(python_type)[0]
+        return _python_type_to_spark(annotated_type)
 
     # For list types (e.g., list[int])
     if origin is list:
