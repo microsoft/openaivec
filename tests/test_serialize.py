@@ -151,9 +151,10 @@ class TestDeserialize:
 
         # Test successful creation with valid values
         instance = deserialized_class(status="pending", priority="high", category="development")
-        assert instance.status == "pending"
-        assert instance.priority == "high"
-        assert instance.category == "development"
+        instance_data = instance.model_dump()
+        assert instance_data["status"] == "pending"
+        assert instance_data["priority"] == "high"
+        assert instance_data["category"] == "development"
 
         # Test validation with invalid values
         with pytest.raises(ValueError):
@@ -183,19 +184,21 @@ class TestDeserialize:
 
         # Test with valid values
         instance = deserialized_class(text_status="active", numeric_level=3, mixed_values="default")
+        instance_data = instance.model_dump()
         # String-only literals are stored as Literal values
-        assert instance.text_status == "active"
+        assert instance_data["text_status"] == "active"
         # Numeric and mixed types use Literal, so values are stored directly
-        assert instance.numeric_level == 3
-        assert instance.mixed_values == "default"
-        assert instance.optional_literal == "no"  # default value
+        assert instance_data["numeric_level"] == 3
+        assert instance_data["mixed_values"] == "default"
+        assert instance_data["optional_literal"] == "no"  # default value
 
         # Test with mixed value types
         instance2 = deserialized_class(text_status="inactive", numeric_level=5, mixed_values=42, optional_literal="yes")
-        assert instance2.text_status == "inactive"
-        assert instance2.numeric_level == 5
-        assert instance2.mixed_values == 42
-        assert instance2.optional_literal == "yes"
+        instance2_data = instance2.model_dump()
+        assert instance2_data["text_status"] == "inactive"
+        assert instance2_data["numeric_level"] == 5
+        assert instance2_data["mixed_values"] == 42
+        assert instance2_data["optional_literal"] == "yes"
 
     def test_nested_literal_models(self):
         """Test serialization/deserialization of nested models containing Literal types."""
@@ -218,13 +221,14 @@ class TestDeserialize:
             settings=["debug", "info"],
             metadata={"version": "1.0"},
         )
+        instance_data = instance.model_dump()
 
-        assert instance.config.status == "completed"
-        assert instance.config.priority == "medium"
-        assert instance.config.category == "testing"
+        assert instance_data["config"]["status"] == "completed"
+        assert instance_data["config"]["priority"] == "medium"
+        assert instance_data["config"]["category"] == "testing"
         # For list of literals, they are stored directly as values
-        assert instance.settings == ["debug", "info"]
-        assert instance.metadata == {"version": "1.0"}
+        assert instance_data["settings"] == ["debug", "info"]
+        assert instance_data["metadata"] == {"version": "1.0"}
 
     @pytest.mark.parametrize(
         "model_class,valid_data,invalid_field,invalid_value,test_case",

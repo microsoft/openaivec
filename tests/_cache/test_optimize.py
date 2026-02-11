@@ -352,4 +352,5 @@ class TestBatchSizeSuggester:
         # Samples should only include recent metrics (after batch size change)
         samples = suggester.samples
         assert len(samples) == 2  # Only metrics after batch size change
+        assert suggester._batch_size_changed_at is not None
         assert all(m.executed_at >= suggester._batch_size_changed_at for m in samples)

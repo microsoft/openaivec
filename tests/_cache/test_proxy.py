@@ -132,6 +132,20 @@ def test_batching_map_proxy_map_func_length_mismatch_raises_and_releases():
     assert out == [1, 2, 3]
 
 
+def test_batching_map_proxy_map_exception_releases_all_owned_inflight():
+    p = BatchingMapProxy[int, int](batch_size=2)
+
+    def bad(xs: list[int]) -> list[int]:
+        if xs == [1, 2]:
+            raise RuntimeError("boom")
+        return xs
+
+    with pytest.raises(RuntimeError, match="boom"):
+        p.map([1, 2, 3, 4], bad)
+
+    assert p._inflight == {}
+
+
 # -------------------- Internal methods tests --------------------
 def test_internal_unique_in_order():
     from openaivec._cache import BatchingMapProxy
@@ -401,6 +415,29 @@ def test_async_localproxy_map_func_length_mismatch_raises_and_releases(event_loo
         assert out == [10, 20]
 
     asyncio.run(run_ok())
+
+
+def test_async_localproxy_map_exception_releases_all_owned_inflight(event_loop=None):
+    proxy = AsyncBatchingMapProxy[int, int](batch_size=2, max_concurrency=1)
+
+    async def bad(xs: list[int]) -> list[int]:
+        if xs == [1, 2]:
+            raise RuntimeError("boom")
+        return xs
+
+    async def run_bad():
+        with pytest.raises(RuntimeError, match="boom"):
+            await proxy.map([1, 2, 3, 4], bad)
+
+    asyncio.run(run_bad())
+    assert proxy._inflight == {}
+
+
+def test_async_localproxy_invalid_max_concurrency_raises():
+    with pytest.raises(ValueError, match="max_concurrency must be >= 1"):
+        AsyncBatchingMapProxy[int, int](max_concurrency=0)
+    with pytest.raises(ValueError, match="max_concurrency must be >= 1"):
+        AsyncBatchingMapProxy[int, int](max_concurrency=-1)
 
 
 def test_sync_clear_releases_memory_and_recomputes():

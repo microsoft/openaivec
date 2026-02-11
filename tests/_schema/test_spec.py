@@ -4,10 +4,17 @@ from enum import Enum
 from typing import get_args, get_origin
 
 import pytest
+from pydantic import BaseModel
 
 from openaivec._schema.spec import _MAX_ENUM_VALUES, EnumSpec, FieldSpec, ObjectSpec, _build_model
 
 # ----------------------------- Success Cases -----------------------------
+
+
+def _as_enum(annotation: object) -> type[Enum]:
+    assert isinstance(annotation, type)
+    assert issubclass(annotation, Enum)
+    return annotation
 
 
 def test_build_model_primitives_and_arrays():
@@ -99,7 +106,7 @@ def test_build_model_enum_custom_name():
     )
     Model = _build_model(spec)
     mf = Model.model_fields
-    enum_type = mf["status_code"].annotation
+    enum_type = _as_enum(mf["status_code"].annotation)
     assert enum_type.__name__ == "StatusCodeEnum"
 
 
@@ -116,7 +123,7 @@ def test_build_model_enum_case_insensitive_dedup():
         ],
     )
     Model = _build_model(spec)
-    enum_type = Model.model_fields["mixed"].annotation
+    enum_type = _as_enum(Model.model_fields["mixed"].annotation)
     members = {m.name for m in enum_type}
     assert members == {"OK"}
 
@@ -135,7 +142,7 @@ def test_build_model_enum_size_boundary():
         ],
     )
     Model = _build_model(spec)
-    enum_type = Model.model_fields["codes"].annotation
+    enum_type = _as_enum(Model.model_fields["codes"].annotation)
     assert len(list(enum_type)) == _MAX_ENUM_VALUES
 
 
@@ -179,6 +186,8 @@ def test_build_model_nested_object_and_object_array():
     mf = Model.model_fields
 
     nested_model_type = mf["address"].annotation
+    assert isinstance(nested_model_type, type)
+    assert issubclass(nested_model_type, BaseModel)
     assert nested_model_type.__name__ == "Address"
     assert {"line1", "zip_code"}.issubset(nested_model_type.model_fields.keys())
 
@@ -391,12 +400,13 @@ def test_enum_size_boundaries(field_type, field_name, object_name, num_values, s
         assert expected_error in str(ei.value)
     else:
         Model = _build_model(spec)
-        enum_type = Model.model_fields[field_name].annotation
         if field_type == "enum":
+            enum_type = _as_enum(Model.model_fields[field_name].annotation)
             assert len(list(enum_type)) == _MAX_ENUM_VALUES
         else:  # enum_array
             from typing import get_args, get_origin
 
+            enum_type = Model.model_fields[field_name].annotation
             assert get_origin(enum_type) is list
             inner_enum = get_args(enum_type)[0]
             assert len(list(inner_enum)) == _MAX_ENUM_VALUES
@@ -475,7 +485,7 @@ def test_enum_case_insensitive_dedup():
         ],
     )
     Model = _build_model(spec)
-    enum_type = Model.model_fields["code"].annotation
+    enum_type = _as_enum(Model.model_fields["code"].annotation)
     # After upper + set, only one member expected
     assert len(list(enum_type)) == 1
     assert list(enum_type)[0].name == "OK"

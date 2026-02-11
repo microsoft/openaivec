@@ -24,8 +24,9 @@ class TestSerializationPydanticV2:
 
         # Test that the reconstructed class works
         instance = reconstructed(name="test", value=3.14)
-        assert instance.name == "test"
-        assert instance.value == 3.14
+        instance_data = instance.model_dump()
+        assert instance_data["name"] == "test"
+        assert instance_data["value"] == 3.14
 
         # Test that field descriptions are preserved
         reconstructed_schema = reconstructed.model_json_schema()
@@ -46,9 +47,10 @@ class TestSerializationPydanticV2:
 
         # Test required fields work
         instance = reconstructed(required_field="test")
-        assert instance.required_field == "test"
-        assert instance.optional_field == "default_value"
-        assert instance.field_with_description == 42
+        instance_data = instance.model_dump()
+        assert instance_data["required_field"] == "test"
+        assert instance_data["optional_field"] == "default_value"
+        assert instance_data["field_with_description"] == 42
 
         # Test the field with description
         reconstructed_schema = reconstructed.model_json_schema()
@@ -103,11 +105,12 @@ class TestSerializationPydanticV2:
         person_data = {"name": "John Doe", "age": 30, "address": address_data}
 
         instance = reconstructed(**person_data)
-        assert instance.name == "John Doe"
-        assert instance.age == 30
-        assert instance.address.street == "123 Main St"
-        assert instance.address.city == "Anytown"
-        assert instance.address.zipcode == "12345"
+        instance_data = instance.model_dump()
+        assert instance_data["name"] == "John Doe"
+        assert instance_data["age"] == 30
+        assert instance_data["address"]["street"] == "123 Main St"
+        assert instance_data["address"]["city"] == "Anytown"
+        assert instance_data["address"]["zipcode"] == "12345"
 
         # Test that descriptions are preserved
         reconstructed_schema = reconstructed.model_json_schema()

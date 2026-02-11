@@ -310,7 +310,7 @@ def response_formats(request) -> type:
 def create_test_series():
     """Factory for creating test series with various configurations."""
 
-    def _create(data: list[Any], name: str = None, dtype=None) -> pd.Series:
+    def _create(data: list[Any], name: str | None = None, dtype=None) -> pd.Series:
         return pd.Series(data, name=name, dtype=dtype)
 
     return _create

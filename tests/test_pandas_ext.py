@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -555,10 +556,10 @@ class TestPandasExt:
         assert len(result2) == 3
 
         # Check cache sharing works
-        dog_idx1 = series1[series1 == "dog"].index[0]
-        dog_idx2 = series2[series2 == "dog"].index[0]
-        elephant_idx1 = series1[series1 == "elephant"].index[0]
-        elephant_idx2 = series2[series2 == "elephant"].index[0]
+        dog_idx1 = series1.loc[series1 == "dog"].index[0]
+        dog_idx2 = series2.loc[series2 == "dog"].index[0]
+        elephant_idx1 = series1.loc[series1 == "elephant"].index[0]
+        elephant_idx2 = series2.loc[series2 == "elephant"].index[0]
 
         assert result1[dog_idx1] == result2[dog_idx2]
         assert result1[elephant_idx1] == result2[elephant_idx2]
@@ -580,10 +581,10 @@ class TestPandasExt:
         assert len(embeddings2) == 3
 
         # Check cache sharing
-        banana_idx1 = series1[series1 == "banana"].index[0]
-        banana_idx2 = series2[series2 == "banana"].index[0]
-        cherry_idx1 = series1[series1 == "cherry"].index[0]
-        cherry_idx2 = series2[series2 == "cherry"].index[0]
+        banana_idx1 = series1.loc[series1 == "banana"].index[0]
+        banana_idx2 = series2.loc[series2 == "banana"].index[0]
+        cherry_idx1 = series1.loc[series1 == "cherry"].index[0]
+        cherry_idx2 = series2.loc[series2 == "cherry"].index[0]
 
         np.testing.assert_array_equal(embeddings1[banana_idx1], embeddings2[banana_idx2])
         np.testing.assert_array_equal(embeddings1[cherry_idx1], embeddings2[cherry_idx2])
@@ -610,10 +611,10 @@ class TestPandasExt:
         assert len(result2) == 3
 
         # Check cache sharing
-        dog_idx1 = series1[series1 == "dog"].index[0]
-        dog_idx2 = series2[series2 == "dog"].index[0]
-        elephant_idx1 = series1[series1 == "elephant"].index[0]
-        elephant_idx2 = series2[series2 == "elephant"].index[0]
+        dog_idx1 = series1.loc[series1 == "dog"].index[0]
+        dog_idx2 = series2.loc[series2 == "dog"].index[0]
+        elephant_idx1 = series1.loc[series1 == "elephant"].index[0]
+        elephant_idx2 = series2.loc[series2 == "elephant"].index[0]
 
         assert result1[dog_idx1] == result2[dog_idx2]
         assert result1[elephant_idx1] == result2[elephant_idx2]
@@ -638,7 +639,7 @@ class TestPandasExt:
         assert isinstance(task.instructions, str)
         assert task.response_format.__name__ == "FillNaResponse"
         with pytest.raises(AttributeError):
-            _ = task.api_kwargs
+            _ = getattr(task, "api_kwargs")
 
     def test_fillna_task_validation(self):
         """Test fillna validation with various edge cases."""
@@ -713,23 +714,18 @@ class TestPandasExt:
         """Test structured output using Pydantic models."""
         series = pd.Series(["I love this product!", "This is terrible"])
 
-        try:
-            results = series.ai.responses(
-                instructions="Analyze sentiment and provide confidence score",
-                response_format=sentiment_model,
-                batch_size=2,
-                show_progress=False,
-            )
+        results = series.ai.responses(
+            instructions="Analyze sentiment and provide confidence score",
+            response_format=sentiment_model,
+            batch_size=2,
+            show_progress=False,
+        )
 
-            assert len(results) == 2
-            for result in results:
-                assert isinstance(result, sentiment_model)
-                assert result.sentiment.lower() in ["positive", "negative", "neutral"]
-                assert isinstance(result.confidence, float)
-
-        except Exception:
-            # Some API calls might fail in test environment
-            pass
+        assert len(results) == 2
+        for result in results:
+            assert isinstance(result, sentiment_model)
+            assert result.sentiment.lower() in ["positive", "negative", "neutral"]
+            assert isinstance(result.confidence, float)
 
     def test_parse_with_cache_methods(self):
         """Test parse_with_cache methods for both Series and DataFrame."""
@@ -785,15 +781,11 @@ class TestPandasExt:
     @pytest.mark.parametrize("batch_size", [1, 2, 4])
     def test_batch_size_consistency(self, sample_series, batch_size):
         """Test that different batch sizes produce consistent results."""
-        try:
-            result1 = sample_series.ai.responses("translate to French", batch_size=batch_size, show_progress=False)
-            result2 = sample_series.ai.responses("translate to French", batch_size=batch_size, show_progress=False)
+        result1 = sample_series.ai.responses("translate to French", batch_size=batch_size, show_progress=False)
+        result2 = sample_series.ai.responses("translate to French", batch_size=batch_size, show_progress=False)
 
-            assert len(result1) == len(result2) == len(sample_series)
-            assert result1.index.equals(result2.index)
-        except Exception:
-            # API failures are acceptable in test environment
-            pass
+        assert len(result1) == len(result2) == len(sample_series)
+        assert result1.index.equals(result2.index)
 
     def test_show_progress_parameter_consistency(self):
         """Test that show_progress parameter is consistently available across methods."""
@@ -862,3 +854,154 @@ class TestPandasExt:
         async_filtered = [p for p in aio_responses_params if p in common_params or p == "max_concurrency"]
         expected_async = common_params[:-1] + ["max_concurrency"] + [common_params[-1]]
         assert async_filtered == expected_async
+
+
+def test_dataframe_similarity_zero_norm_returns_nan():
+    df = pd.DataFrame(
+        {
+            "left": [np.array([0.0, 0.0]), np.array([1.0, 0.0])],
+            "right": [np.array([1.0, 0.0]), np.array([0.0, 1.0])],
+        }
+    )
+
+    result = df.ai.similarity("left", "right")
+
+    assert np.isnan(result.iloc[0])
+    assert result.iloc[1] == pytest.approx(0.0)
+
+
+@pytest.mark.asyncio
+async def test_series_aio_parse_with_cache_forwards_api_kwargs_to_schema_inference(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_infer_schema(self, instructions: str, max_examples: int = 100, **api_kwargs):
+        captured["infer_kwargs"] = dict(api_kwargs)
+        return SimpleNamespace(inference_prompt="inferred prompt", model=str)
+
+    async def fake_responses_with_cache(self, instructions: str, cache, response_format=str, **api_kwargs):
+        captured["responses_kwargs"] = dict(api_kwargs)
+        captured["instructions"] = instructions
+        captured["response_format"] = response_format
+        return pd.Series(["ok"] * len(self._obj), index=self._obj.index, name=self._obj.name)
+
+    monkeypatch.setattr(pandas_ext.OpenAIVecSeriesAccessor, "infer_schema", fake_infer_schema)
+    monkeypatch.setattr(pandas_ext.AsyncOpenAIVecSeriesAccessor, "responses_with_cache", fake_responses_with_cache)
+
+    series = pd.Series(["a", "b"])
+    cache = pandas_ext.AsyncBatchingMapProxy[str, str](batch_size=2, max_concurrency=1, show_progress=False)
+
+    out = await series.aio.parse_with_cache(
+        instructions="extract something",
+        cache=cache,
+        response_format=None,
+        temperature=0.4,
+        top_p=0.2,
+    )
+
+    assert out.tolist() == ["ok", "ok"]
+    assert captured["infer_kwargs"] == {"temperature": 0.4, "top_p": 0.2}
+    assert captured["responses_kwargs"] == {"temperature": 0.4, "top_p": 0.2}
+    assert captured["instructions"] == "inferred prompt"
+    assert captured["response_format"] is str
+
+
+def test_dataframe_fillna_no_missing_skips_task_construction(monkeypatch):
+    def fail_fillna(*args, **kwargs):
+        raise AssertionError("fillna task builder must not be called when there are no missing rows")
+
+    monkeypatch.setattr(pandas_ext, "fillna", fail_fillna)
+
+    df = pd.DataFrame({"name": ["Alice", "Bob"], "age": [20, 30]})
+    result = df.ai.fillna("name")
+
+    pd.testing.assert_frame_equal(result, df)
+
+
+def test_dataframe_fillna_fills_only_missing_rows_in_index_order(monkeypatch):
+    from openaivec._model import PreparedTask
+    from openaivec.task.table import FillNaResponse
+
+    def fake_fillna(df: pd.DataFrame, target_column_name: str, max_examples: int = 500) -> PreparedTask:
+        assert target_column_name == "name"
+        assert max_examples == 500
+        return PreparedTask(instructions="stub fillna", response_format=FillNaResponse)
+
+    def fake_task(self, task, batch_size=None, show_progress=True, **api_kwargs):
+        assert task.instructions == "stub fillna"
+        # Missing rows should be in stable DataFrame index order.
+        assert self._obj.index.tolist() == [10, 40]
+        return [
+            FillNaResponse(index=999, output="Carol"),
+            FillNaResponse(index=888, output=None),
+        ]
+
+    monkeypatch.setattr(pandas_ext, "fillna", fake_fillna)
+    monkeypatch.setattr(pandas_ext.OpenAIVecDataFrameAccessor, "task", fake_task)
+
+    df = pd.DataFrame(
+        {"name": [None, "Bob", "Alice", None], "age": [18, 25, 31, 44]},
+        index=[10, 20, 30, 40],
+    )
+
+    result = df.ai.fillna("name")
+
+    # Original input remains unchanged.
+    assert pd.isna(df.loc[10, "name"])
+    assert pd.isna(df.loc[40, "name"])
+    # Filled output uses missing-row order, not FillNaResponse.index.
+    assert result.loc[10, "name"] == "Carol"
+    assert pd.isna(result.loc[40, "name"])
+    assert result.loc[20, "name"] == "Bob"
+    assert result.loc[30, "name"] == "Alice"
+
+
+@pytest.mark.asyncio
+async def test_dataframe_aio_fillna_fills_only_missing_rows_in_index_order(monkeypatch):
+    from openaivec._model import PreparedTask
+    from openaivec.task.table import FillNaResponse
+
+    def fake_fillna(df: pd.DataFrame, target_column_name: str, max_examples: int = 500) -> PreparedTask:
+        assert target_column_name == "name"
+        return PreparedTask(instructions="stub fillna", response_format=FillNaResponse)
+
+    async def fake_task(self, task, batch_size=None, max_concurrency=8, show_progress=True, **api_kwargs):
+        assert task.instructions == "stub fillna"
+        assert self._obj.index.tolist() == [1, 3]
+        return [
+            FillNaResponse(index=100, output="Charlie"),
+            FillNaResponse(index=200, output="Dana"),
+        ]
+
+    monkeypatch.setattr(pandas_ext, "fillna", fake_fillna)
+    monkeypatch.setattr(pandas_ext.AsyncOpenAIVecDataFrameAccessor, "task", fake_task)
+
+    df = pd.DataFrame(
+        {"name": [None, "Bob", None], "age": [21, 32, 45]},
+        index=[1, 2, 3],
+    )
+
+    result = await df.aio.fillna("name")
+
+    assert result.loc[1, "name"] == "Charlie"
+    assert result.loc[2, "name"] == "Bob"
+    assert result.loc[3, "name"] == "Dana"
+    # Original frame unchanged.
+    assert pd.isna(df.loc[1, "name"])
+    assert pd.isna(df.loc[3, "name"])
+
+
+@pytest.mark.asyncio
+async def test_dataframe_aio_assign_supports_chained_column_dependencies():
+    df = pd.DataFrame({"base": [1, 2, 3]})
+
+    async def make_double(current: pd.DataFrame):
+        await asyncio.sleep(0)
+        return current["base"] * 2
+
+    def make_plus_one(current: pd.DataFrame):
+        return current["double"] + 1
+
+    out = await df.aio.assign(double=make_double, plus_one=make_plus_one)
+
+    assert out["double"].tolist() == [2, 4, 6]
+    assert out["plus_one"].tolist() == [3, 5, 7]

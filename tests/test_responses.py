@@ -69,6 +69,59 @@ class TestStructuredValidationRetries:
         assert "assistant_messages[0].body.taste" in second_instructions
         assert parsed[0] == Fruit(name="apple", color="red", taste="sweet")
 
+
+class TestResponsesCachingAndErrors:
+    def test_sync_parse_none_result_is_not_cached(self):
+        parse = Mock(
+            side_effect=[
+                SimpleNamespace(output_parsed=None),
+                SimpleNamespace(
+                    output_parsed=SimpleNamespace(
+                        assistant_messages=[SimpleNamespace(id=0, body="recomputed-value")]
+                    )
+                ),
+            ]
+        )
+        client = BatchResponses(
+            client=SimpleNamespace(responses=SimpleNamespace(parse=parse)),  # type: ignore[arg-type]
+            model_name="gpt-4.1-mini",
+            system_message="repeat user input",
+            response_format=str,
+        )
+
+        first = client.parse(["hello"])
+        second = client.parse(["hello"])
+
+        assert first == [None]
+        assert second == ["recomputed-value"]
+        assert parse.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_async_parse_none_result_is_not_cached(self):
+        parse = AsyncMock(
+            side_effect=[
+                SimpleNamespace(output_parsed=None),
+                SimpleNamespace(
+                    output_parsed=SimpleNamespace(
+                        assistant_messages=[SimpleNamespace(id=0, body="recomputed-value")]
+                    )
+                ),
+            ]
+        )
+        client = AsyncBatchResponses(
+            client=SimpleNamespace(responses=SimpleNamespace(parse=parse)),  # type: ignore[arg-type]
+            model_name="gpt-4.1-mini",
+            system_message="repeat user input",
+            response_format=str,
+        )
+
+        first = await client.parse(["hello"])
+        second = await client.parse(["hello"])
+
+        assert first == [None]
+        assert second == ["recomputed-value"]
+        assert parse.call_count == 2
+
     def test_sync_retry_exhaustion_raises(self):
         class Fruit(BaseModel):
             name: str
@@ -143,7 +196,7 @@ class TestVectorizedResponsesOpenAI:
             model_name=self.model_name,
             system_message=system_message,
         )
-        response: list[str] = client._predict_chunk(["hello", "world"])
+        response = client._predict_chunk(["hello", "world"])
 
         assert response == ["hello", "world"]
 
@@ -171,7 +224,7 @@ class TestVectorizedResponsesOpenAI:
             client=self.openai_client, model_name=self.model_name, system_message=system_message, response_format=Fruit
         )
 
-        response: list[Fruit] = client._predict_chunk(["apple", "banana"])
+        response = client._predict_chunk(["apple", "banana"])
 
         assert all(isinstance(item, Fruit) for item in response)
 
@@ -186,7 +239,7 @@ class TestVectorizedResponsesOpenAI:
         )
 
         test_inputs = ["test1", "test2", "test3", "test4"][:batch_size]
-        response: list[str] = client._predict_chunk(test_inputs)
+        response = client._predict_chunk(test_inputs)
 
         assert len(response) == len(test_inputs)
         assert all(isinstance(item, str) for item in response)
@@ -211,7 +264,7 @@ class TestAsyncBatchResponses:
             system_message=system_message,
             batch_size=1,
         )
-        response: list[str] = await client.parse(["apple", "orange", "banana", "pineapple"])
+        response = await client.parse(["apple", "orange", "banana", "pineapple"])
         assert response == ["apple", "orange", "banana", "pineapple"]
 
     @pytest.mark.asyncio
@@ -243,7 +296,7 @@ class TestAsyncBatchResponses:
             response_format=Fruit,
             batch_size=1,
         )
-        response: list[Fruit] = await client.parse(input_fruits)
+        response = await client.parse(input_fruits)
         assert len(response) == len(input_fruits)
         for i, item in enumerate(response):
             assert isinstance(item, Fruit)
@@ -271,7 +324,7 @@ class TestAsyncBatchResponses:
             response_format=Fruit,
             batch_size=1,
         )
-        response: list[Fruit] = await client.parse([])
+        response = await client.parse([])
         assert response == []
 
     @pytest.mark.asyncio
@@ -303,7 +356,7 @@ class TestAsyncBatchResponses:
             response_format=Fruit,
             batch_size=2,
         )
-        response_bs2: list[Fruit] = await client_bs2.parse(input_fruits)
+        response_bs2 = await client_bs2.parse(input_fruits)
         assert len(response_bs2) == len(input_fruits)
         for i, item in enumerate(response_bs2):
             assert isinstance(item, Fruit)
@@ -320,7 +373,7 @@ class TestAsyncBatchResponses:
             response_format=Fruit,
             batch_size=4,
         )
-        response_bs4: list[Fruit] = await client_bs4.parse(input_fruits)
+        response_bs4 = await client_bs4.parse(input_fruits)
         assert len(response_bs4) == len(input_fruits)
         for i, item in enumerate(response_bs4):
             assert isinstance(item, Fruit)

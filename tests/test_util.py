@@ -146,15 +146,18 @@ class TestBackoffAsync:
                             raise TypeError("Second error")
             return "success"
 
+        async def run_test_func() -> str:
+            return await test_func()
+
         if expected_error:
             with pytest.raises(expected_error) as cm:
-                asyncio.run(test_func())
+                asyncio.run(run_test_func())
             if test_case == "max_retries_exceeded":
                 assert str(cm.value) == "Always fails"
             elif test_case == "unhandled_exception":
                 assert str(cm.value) == "Unhandled exception"
         else:
-            result = asyncio.run(test_func())
+            result = asyncio.run(run_test_func())
             assert result == expected_result
 
         assert call_count == expected_calls
@@ -185,7 +188,10 @@ class TestBackoffAsync:
                     raise InternalServerError("Server error", response=mock_response, body=None)
                 return "success"
 
-            result = asyncio.run(simulate_api_errors())
+            async def run_simulation() -> str:
+                return await simulate_api_errors()
+
+            result = asyncio.run(run_simulation())
             assert result == "success"
             assert call_count == 3
         except ImportError:

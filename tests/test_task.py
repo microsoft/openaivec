@@ -25,7 +25,7 @@ class TestPreparedTask:
         assert task.instructions == "Test instruction"
         assert task.response_format == SimpleResponse
         with pytest.raises(AttributeError):
-            _ = task.api_kwargs
+            _ = getattr(task, "api_kwargs")
 
     def test_prepared_task_is_frozen(self):
         """Test that PreparedTask is immutable (frozen)."""
@@ -33,7 +33,7 @@ class TestPreparedTask:
 
         # Attempting to modify any field should raise FrozenInstanceError
         with pytest.raises(FrozenInstanceError):
-            task.instructions = "Modified instruction"
+            setattr(task, "instructions", "Modified instruction")
 
     def test_prepared_task_response_format_type(self):
         """Test that response_format must be a Pydantic BaseModel type."""
@@ -147,7 +147,7 @@ class TestMultilingualTranslationTask:
         """Test that TranslatedString requires all language fields."""
         # Try to create TranslatedString with missing fields - should fail
         with pytest.raises(Exception):  # Pydantic ValidationError
-            TranslatedString(en="Hello", ja="こんにちは")  # Missing many required fields
+            TranslatedString.model_validate({"en": "Hello", "ja": "こんにちは"})  # Missing many required fields
 
     def test_translated_string_field_types(self):
         """Test that TranslatedString fields are string types."""

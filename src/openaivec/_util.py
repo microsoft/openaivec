@@ -4,7 +4,7 @@ import re
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import TypeVar
+from typing import ParamSpec, TypeVar
 
 import numpy as np
 import tiktoken
@@ -13,7 +13,8 @@ __all__ = []
 
 T = TypeVar("T")
 U = TypeVar("U")
-V = TypeVar("V")
+R = TypeVar("R")
+P = ParamSpec("P")
 
 
 def get_exponential_with_cutoff(scale: float) -> float:
@@ -38,9 +39,9 @@ def get_exponential_with_cutoff(scale: float) -> float:
 
 def backoff(
     exceptions: list[type[Exception]],
-    scale: int | None = None,
+    scale: float | None = None,
     max_retries: int | None = None,
-) -> Callable[..., V]:
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Decorator implementing exponential back‑off retry logic.
 
     Args:
@@ -60,9 +61,9 @@ def backoff(
         Exception: Re‑raised when the maximum number of retries is exceeded.
     """
 
-    def decorator(func: Callable[..., V]) -> Callable[..., V]:
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
         @functools.wraps(func)
-        def wrapper(*args, **kwargs) -> V:
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             attempt = 0
             # Initialize the scale for the exponential backoff. This scale will double with each retry.
             # If the input 'scale' is None, default to 1.0. This 'scale' is the mean of the exponential distribution.
@@ -85,14 +86,14 @@ def backoff(
 
         return wrapper
 
-    return decorator  # type: ignore[return-value]
+    return decorator
 
 
 def backoff_async(
     exceptions: list[type[Exception]],
-    scale: int | None = None,
+    scale: float | None = None,
     max_retries: int | None = None,
-) -> Callable[..., Awaitable[V]]:
+) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
     """Asynchronous version of the backoff decorator.
 
     Args:
@@ -112,9 +113,9 @@ def backoff_async(
         Exception: Re‑raised when the maximum number of retries is exceeded.
     """
 
-    def decorator(func: Callable[..., Awaitable[V]]) -> Callable[..., Awaitable[V]]:
+    def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
         @functools.wraps(func)
-        async def wrapper(*args, **kwargs) -> V:
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             attempt = 0
             # Initialize the scale for the exponential backoff. This scale will double with each retry.
             # If the input 'scale' is None, default to 1.0. This 'scale' is the mean of the exponential distribution.
@@ -137,7 +138,7 @@ def backoff_async(
 
         return wrapper
 
-    return decorator  # type: ignore[return-value]
+    return decorator
 
 
 @dataclass(frozen=True)
