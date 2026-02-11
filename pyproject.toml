@@ -4,17 +4,8 @@ dynamic = ["version"]
 description = "Generative mutation for tabular calculation"
 readme = "README.md"
 license = { text = "MIT" }
-authors = [
-    { name = "Hiroki Mizukami", email = "hmizukami@microsoft.com" }
-]
-keywords = [
-    "openai",
-    "openai-api",
-    "openai-python",
-    "llm",
-    "pandas",
-    "pyspark",
-]
+authors = [{ name = "Hiroki Mizukami", email = "hmizukami@microsoft.com" }]
+keywords = ["openai", "openai-api", "openai-python", "llm", "pandas", "pyspark"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -60,9 +51,7 @@ docs = [
 ]
 
 [project.optional-dependencies]
-spark = [
-    "pyspark>=4.0.0",
-]
+spark = ["pyspark>=4.0.0"]
 
 [tool.ruff]
 line-length = 120
@@ -70,13 +59,12 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = [
-    "E",     # pycodestyle errors
-    "W",     # pycodestyle warnings
-    "F",     # pyflakes
-    "I",     # isort
-    "TID",   # flake8-tidy-imports
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "TID", # flake8-tidy-imports
 ]
-# ignore = []  # グローバルではE501を有効化
 
 [tool.ruff.lint.flake8-tidy-imports]
 # Enforce absolute imports - ban relative imports (except in __init__.py files)

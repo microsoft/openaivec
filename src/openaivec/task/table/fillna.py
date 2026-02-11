@@ -67,15 +67,17 @@ Example:
 import json
 
 import pandas as pd
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from openaivec._model import PreparedTask
 from openaivec._prompt import FewShotPromptBuilder
+from openaivec.task._prompt_templates import same_language_policy
+from openaivec.task._registry import TaskSpec
 
 __all__ = ["fillna", "FillNaResponse"]
 
 
-def get_examples(df: pd.DataFrame, target_column_name: str, max_examples: int) -> list[dict]:
+def _get_examples(df: pd.DataFrame, target_column_name: str, max_examples: int) -> list[dict]:
     examples: list[dict] = []
 
     samples: pd.DataFrame = df.sample(frac=1).reset_index(drop=True).drop_duplicates()
@@ -93,13 +95,14 @@ def get_examples(df: pd.DataFrame, target_column_name: str, max_examples: int) -
     return examples
 
 
-def get_instructions(df: pd.DataFrame, target_column_name: str, max_examples: int) -> str:
-    examples = get_examples(df, target_column_name, max_examples)
+def _build_instructions(df: pd.DataFrame, target_column_name: str, max_examples: int) -> str:
+    examples = _get_examples(df, target_column_name, max_examples)
 
     builder = (
         FewShotPromptBuilder()
         .purpose("Fill missing values in the target column based on the context provided by other columns.")
         .caution("Ensure that the filled values are consistent with the data in other columns.")
+        .caution(same_language_policy())
     )
 
     for row in examples:
@@ -117,6 +120,8 @@ class FillNaResponse(BaseModel):
     Contains the row index and the imputed value for a specific missing
     entry in the target column.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     index: int = Field(description="Index of the row in the original DataFrame")
     output: int | float | str | bool | None = Field(
@@ -179,5 +184,14 @@ def fillna(df: pd.DataFrame, target_column_name: str, max_examples: int = 500) -
         raise ValueError(f"Column '{target_column_name}' does not exist in the DataFrame.")
     if df[target_column_name].notna().sum() == 0:
         raise ValueError(f"Column '{target_column_name}' contains no non-null values for training examples.")
-    instructions = get_instructions(df, target_column_name, max_examples)
+    instructions = _build_instructions(df, target_column_name, max_examples)
     return PreparedTask(instructions=instructions, response_format=FillNaResponse)
+
+
+TASK_SPEC = TaskSpec(
+    key="table.fillna",
+    domain="table",
+    summary="Fill missing DataFrame column values using few-shot context rows.",
+    factory=fillna,
+    response_format=FillNaResponse,
+)

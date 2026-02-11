@@ -74,7 +74,7 @@ spark.udf.register(
 from openaivec.task import nlp
 spark.udf.register(
     "sentiment_async",
-    task_udf(nlp.SENTIMENT_ANALYSIS),
+    task_udf(nlp.sentiment_analysis()),
 )
 
 # Register the asynchronous embeddings UDF with performance tuning
@@ -560,7 +560,7 @@ def task_udf(
         ```python
         from openaivec.task import nlp
 
-        sentiment_udf = task_udf(nlp.SENTIMENT_ANALYSIS)
+        sentiment_udf = task_udf(nlp.sentiment_analysis())
 
         spark.udf.register("analyze_sentiment", sentiment_udf)
         ```

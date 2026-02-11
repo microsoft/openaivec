@@ -1,85 +1,19 @@
-"""Multilingual translation task for OpenAI API.
+"""Multilingual translation task definition."""
 
-This module provides a predefined task that translates text into multiple languages
-using OpenAI's language models. The translation covers a comprehensive set of
-languages including Germanic, Romance, Slavic, East Asian, South Asian, Southeast
-Asian, Middle Eastern, African, and other language families.
-
-The task is designed to be used with the OpenAI API for batch processing and
-provides structured output with consistent language code naming.
-
-Example:
-    Basic usage with BatchResponses:
-
-    ```python
-    from openai import OpenAI
-    from openaivec import BatchResponses
-    from openaivec.task import nlp
-
-    client = OpenAI()
-    translator = BatchResponses.of_task(
-        client=client,
-        model_name="gpt-4.1-mini",
-        task=nlp.MULTILINGUAL_TRANSLATION
-    )
-
-    texts = ["Hello", "Good morning", "Thank you"]
-    translations = translator.parse(texts)
-
-    for translation in translations:
-        print(f"English: {translation.en}")
-        print(f"Japanese: {translation.ja}")
-        print(f"Spanish: {translation.es}")
-    ```
-
-    With pandas integration:
-
-    ```python
-    import pandas as pd
-    from openaivec import pandas_ext  # Required for .ai accessor
-    from openaivec.task import nlp
-
-    df = pd.DataFrame({"text": ["Hello", "Goodbye"]})
-    df["translations"] = df["text"].ai.task(nlp.MULTILINGUAL_TRANSLATION)
-
-    # Extract specific languages
-    extracted_df = df.ai.extract("translations")
-    print(extracted_df[["text", "translations_en", "translations_ja", "translations_fr"]])
-    ```
-
-Attributes:
-    MULTILINGUAL_TRANSLATION (PreparedTask): A prepared task instance configured
-        for multilingual translation. Provide ``temperature=0.0`` and ``top_p=1.0``
-        to the calling API wrapper for deterministic output.
-
-Note:
-    The translation covers 58 languages across major language families. All field
-    names use ISO 639-1 language codes where possible, with some exceptions like
-    'zh_tw' for Traditional Chinese and 'is_' for Icelandic (to avoid Python
-    keyword conflicts).
-
-    Languages included:
-    - Germanic: English, German, Dutch, Swedish, Danish, Norwegian, Icelandic
-    - Romance: Spanish, French, Italian, Portuguese, Romanian, Catalan
-    - Slavic: Russian, Polish, Czech, Slovak, Ukrainian, Bulgarian, Croatian, Serbian
-    - East Asian: Japanese, Korean, Chinese (Simplified/Traditional)
-    - South Asian: Hindi, Bengali, Telugu, Tamil, Urdu
-    - Southeast Asian: Thai, Vietnamese, Indonesian, Malay, Filipino
-    - Middle Eastern: Arabic, Hebrew, Persian, Turkish
-    - African: Swahili, Amharic
-    - Other European: Finnish, Hungarian, Estonian, Latvian, Lithuanian, Greek
-    - Celtic: Welsh, Irish
-    - Other: Basque, Maltese
-"""
-
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from openaivec._model import PreparedTask
+from openaivec.task._prompt_templates import join_sections
+from openaivec.task._registry import TaskSpec
 
-__all__ = ["MULTILINGUAL_TRANSLATION"]
+__all__ = ["multilingual_translation"]
 
 
 class TranslatedString(BaseModel):
+    """Translations for a fixed set of language-code fields."""
+
+    model_config = ConfigDict(extra="forbid")
+
     # Germanic languages
     en: str = Field(description="Translated text in English")
     de: str = Field(description="Translated text in German")
@@ -144,7 +78,7 @@ class TranslatedString(BaseModel):
     lt: str = Field(description="Translated text in Lithuanian")
     el: str = Field(description="Translated text in Greek")
 
-    # Nordic languages
+    # Nordic language (name avoids Python keyword conflict)
     is_: str = Field(description="Translated text in Icelandic")
 
     # Other languages
@@ -154,6 +88,27 @@ class TranslatedString(BaseModel):
     mt: str = Field(description="Translated text in Maltese")
 
 
-instructions = "Translate the following text into multiple languages. "
+def _build_instructions() -> str:
+    return join_sections(
+        "Translate the input text into all target languages defined by the response schema.",
+        "Keep meaning, tone, and named entities consistent across languages.",
+        "Return only the structured JSON fields. Do not add explanations.",
+    )
 
-MULTILINGUAL_TRANSLATION = PreparedTask(instructions=instructions, response_format=TranslatedString)
+
+def multilingual_translation() -> PreparedTask[TranslatedString]:
+    """Create a multilingual translation task."""
+    return PreparedTask(
+        instructions=_build_instructions(),
+        response_format=TranslatedString,
+    )
+
+
+TASK_SPEC = TaskSpec(
+    key="nlp.multilingual_translation",
+    domain="nlp",
+    summary="Translate input text into a fixed set of languages.",
+    factory=multilingual_translation,
+    response_format=TranslatedString,
+)
+

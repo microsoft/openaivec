@@ -88,7 +88,7 @@ class TestSparkUDFs:
         """Test task_udf with predefined BaseModel task."""
         self.spark.udf.register(
             "analyze_sentiment",
-            task_udf(task=nlp.SENTIMENT_ANALYSIS),
+            task_udf(task=nlp.sentiment_analysis()),
         )
 
         text_data = [
