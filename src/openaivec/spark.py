@@ -220,25 +220,27 @@ def setup(
 
 def setup_azure(
     spark: SparkSession,
-    api_key: str,
-    base_url: str,
+    api_key: str | None = None,
+    base_url: str | None = None,
     api_version: str = "v1",
     responses_model_name: str | None = None,
     embeddings_model_name: str | None = None,
 ):
-    """Setup Azure OpenAI API-key authentication and default model names in Spark environment.
-    1. Configures Azure OpenAI API key, base URL, and API version in SparkContext environment.
-    2. Configures Azure OpenAI API key, base URL, and API version in local process environment.
-    3. Optionally registers default model names for responses and embeddings in the DI container.
+    """Setup Azure OpenAI authentication and default model names in Spark environment.
+    1. Configures Azure OpenAI base URL and API version in SparkContext environment.
+    2. Optionally configures Azure OpenAI API key in SparkContext environment.
+    3. Configures Azure OpenAI base URL and API version in local process environment.
+    4. Optionally configures Azure OpenAI API key in local process environment.
+    5. Optionally registers default model names for responses and embeddings in the DI container.
 
     Note:
-        This helper configures API-key authentication. For Entra ID authentication,
-        set ``AZURE_OPENAI_BASE_URL`` and ``AZURE_OPENAI_API_VERSION`` in your
-        environment and do not set ``AZURE_OPENAI_API_KEY``.
+        For API-key authentication, provide ``api_key``. For Entra ID authentication,
+        omit ``api_key`` and configure only ``base_url`` and ``api_version``.
     Args:
         spark (SparkSession): The Spark session to configure.
-        api_key (str): Azure OpenAI API key for authentication.
-        base_url (str): Base URL for the Azure OpenAI resource.
+        api_key (str | None): Azure OpenAI API key for authentication. When not
+            provided, ``AZURE_OPENAI_API_KEY`` is cleared and Entra ID can be used.
+        base_url (str | None): Base URL for the Azure OpenAI resource. Required.
         api_version (str): API version to use. Defaults to "v1".
         responses_model_name (str | None): Default model name for response generation.
             If provided, registers `ResponsesModelName` in the DI container.
@@ -260,17 +262,27 @@ def setup_azure(
             embeddings_model_name="embedding-deployment",
         )
         ```
+    Raises:
+        ValueError: If ``base_url`` is not provided.
     """
+    if base_url is None:
+        raise ValueError("base_url is required")
 
     CONTAINER.register(SparkSession, lambda: spark)
     CONTAINER.register(SparkContext, lambda: CONTAINER.resolve(SparkSession).sparkContext)
 
     sc = CONTAINER.resolve(SparkContext)
-    sc.environment["AZURE_OPENAI_API_KEY"] = api_key
+    if api_key:
+        sc.environment["AZURE_OPENAI_API_KEY"] = api_key
+    else:
+        sc.environment.pop("AZURE_OPENAI_API_KEY", None)
     sc.environment["AZURE_OPENAI_BASE_URL"] = base_url
     sc.environment["AZURE_OPENAI_API_VERSION"] = api_version
 
-    os.environ["AZURE_OPENAI_API_KEY"] = api_key
+    if api_key:
+        os.environ["AZURE_OPENAI_API_KEY"] = api_key
+    else:
+        os.environ.pop("AZURE_OPENAI_API_KEY", None)
     os.environ["AZURE_OPENAI_BASE_URL"] = base_url
     os.environ["AZURE_OPENAI_API_VERSION"] = api_version
 

@@ -1,6 +1,6 @@
 # openaivec
 
-Transform pandas and Spark workflows with AI-powered text processing—batching, caching, and guardrails included. Built for OpenAI batch pipelines so you can group prompts, cut API overhead, and keep outputs aligned with your data.
+AI text processing for pandas and Spark. Apply one prompt to many rows with automatic batching and caching.
 
 [Contributor guidelines](AGENTS.md)
 
@@ -10,36 +10,23 @@ Transform pandas and Spark workflows with AI-powered text processing—batching,
 pip install openaivec
 ```
 
+Apply one prompt to many values:
+
 ```python
 import os
 import pandas as pd
 from openaivec import pandas_ext
 
-# Auth: choose OpenAI or Azure OpenAI
 os.environ["OPENAI_API_KEY"] = "your-api-key"
-# Azure alternative:
-# os.environ["AZURE_OPENAI_API_KEY"] = "your-azure-key"
-# os.environ["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
-# os.environ["AZURE_OPENAI_API_VERSION"] = "v1"
-# Azure Entra ID alternative (no API key):
-# os.environ["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
-# os.environ["AZURE_OPENAI_API_VERSION"] = "v1"
-# openaivec will use DefaultAzureCredential when AZURE_OPENAI_API_KEY is not set.
 
-pandas_ext.set_responses_model("gpt-5.1")  # Optional override (use deployment name for Azure)
+fruits = pd.Series(["apple", "banana", "cherry"])
+french_names = fruits.ai.responses("Translate this fruit name to French.")
+print(french_names.tolist())
+# ['pomme', 'banane', 'cerise']
 
-reviews = pd.Series([
-    "Great coffee and friendly staff.",
-    "Delivery was late and the package was damaged.",
-])
-
-sentiment = reviews.ai.responses(
-    "Summarize sentiment in one short sentence.",
-    reasoning={"effort": "none"},  # Mirrors OpenAI SDK for reasoning models
-)
-print(sentiment.tolist())
-# Output: ['Positive sentiment', 'Negative sentiment']
 ```
+
+For Azure OpenAI and custom client setup, see [pandas authentication options](#pandas-authentication-options).
 
 **Pandas tutorial (GitHub Pages):** https://microsoft.github.io/openaivec/examples/pandas/
 
@@ -62,7 +49,9 @@ Batching alone removes most HTTP overhead, and letting batching overlap with con
 - [Why openaivec?](#why-openaivec)
 - [Overview](#overview)
 - [Core Workflows](#core-workflows)
+- [Pandas authentication options](#pandas-authentication-options)
 - [Using with Apache Spark UDFs](#using-with-apache-spark-udfs)
+- [Spark authentication options](#spark-authentication-options)
 - [Building Prompts](#building-prompts)
 - [Using with Microsoft Fabric](#using-with-microsoft-fabric)
 - [Contributing](#contributing)
@@ -110,59 +99,75 @@ print(result)  # Expected output: ['bear family', 'rabbit family', 'koala family
 
 📓 **[Complete tutorial →](https://microsoft.github.io/openaivec/examples/pandas/)**
 
-### pandas integration (recommended)
+### pandas authentication options
 
-The easiest way to get started with your DataFrames:
+Configure authentication once before using `.ai` or `.aio`.
+
+#### OpenAI (API key)
 
 ```python
 import os
+
+os.environ["OPENAI_API_KEY"] = "your-openai-api-key"
+```
+
+#### Azure OpenAI (API key)
+
+```python
+import os
+
+os.environ["AZURE_OPENAI_API_KEY"] = "your-azure-openai-api-key"
+os.environ["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
+os.environ["AZURE_OPENAI_API_VERSION"] = "v1"
+```
+
+#### Azure OpenAI with Entra ID (no API key)
+
+```python
+import os
+
+os.environ["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
+os.environ["AZURE_OPENAI_API_VERSION"] = "v1"
+os.environ.pop("AZURE_OPENAI_API_KEY", None)
+```
+
+`openaivec` uses `DefaultAzureCredential` when `AZURE_OPENAI_API_KEY` is not set.
+
+#### Custom clients (optional)
+
+```python
+from openai import AsyncOpenAI, OpenAI
+from openaivec import pandas_ext
+
+pandas_ext.set_client(OpenAI())
+pandas_ext.set_async_client(AsyncOpenAI())
+```
+
+### pandas integration (recommended)
+
+The easiest way to get started with your DataFrames (after authentication):
+
+```python
 import pandas as pd
 from openaivec import pandas_ext
 
-# Authentication Option 1: Environment variables (automatic detection)
-os.environ["OPENAI_API_KEY"] = "your-api-key-here"
-# Or for Azure OpenAI:
-# os.environ["AZURE_OPENAI_API_KEY"] = "your-azure-key"
-# os.environ["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
-# os.environ["AZURE_OPENAI_API_VERSION"] = "v1"
-# Or for Azure OpenAI with Entra ID (no API key):
-# os.environ["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
-# os.environ["AZURE_OPENAI_API_VERSION"] = "v1"
-# openaivec uses DefaultAzureCredential when AZURE_OPENAI_API_KEY is absent.
-
-# Authentication Option 2: Custom client (optional)
-# from openai import OpenAI, AsyncOpenAI
-# pandas_ext.set_client(OpenAI())
-# pandas_ext.set_async_client(AsyncOpenAI())
-
-# Configure model (optional - defaults to gpt-5.1; use deployment name for Azure)
 pandas_ext.set_responses_model("gpt-5.1")
 
-# Create your data
 df = pd.DataFrame({"name": ["panda", "rabbit", "koala"]})
 
-# Add AI-powered columns
 result = df.assign(
     family=lambda df: df.name.ai.responses(
         "What animal family? Answer with 'X family'",
         reasoning={"effort": "none"},
-    ),
-    habitat=lambda df: df.name.ai.responses(
-        "Primary habitat in one word",
-        reasoning={"effort": "none"},
-    ),
-    fun_fact=lambda df: df.name.ai.responses(
-        "One interesting fact in 10 words or less",
-        reasoning={"effort": "none"},
-    ),
+    )
 )
 ```
 
-| name   | family           | habitat | fun_fact                   |
-| ------ | ---------------- | ------- | -------------------------- |
-| panda  | bear family      | forest  | Eats bamboo 14 hours daily |
-| rabbit | rabbit family    | meadow  | Can see nearly 360 degrees |
-| koala  | marsupial family | tree    | Sleeps 22 hours per day    |
+| name   | family           |
+| ------ | ---------------- |
+| panda  | bear family      |
+| rabbit | rabbit family    |
+| koala  | marsupial family |
 
 📓 **[Interactive pandas examples →](https://microsoft.github.io/openaivec/examples/pandas/)**
 
@@ -251,69 +256,75 @@ Scale to enterprise datasets with distributed processing.
 
 📓 **[Spark tutorial →](https://microsoft.github.io/openaivec/examples/spark/)**
 
-First, obtain a Spark session and configure authentication:
+### Spark authentication options
+
+Choose one setup path before registering UDFs.
+
+#### OpenAI (API key)
 
 ```python
 from pyspark.sql import SparkSession
-from openaivec.spark import setup, setup_azure
+from openaivec.spark import setup
 
 spark = SparkSession.builder.getOrCreate()
-
-# Option 1: Using OpenAI
 setup(
     spark,
     api_key="your-openai-api-key",
-    responses_model_name="gpt-5.1",  # Optional: set default model
-    embeddings_model_name="text-embedding-3-small"  # Optional: set default model
+    responses_model_name="gpt-5.1",
+    embeddings_model_name="text-embedding-3-small",
 )
-
-# Option 2: Using Azure OpenAI
-# setup_azure(
-#     spark,
-#     api_key="your-azure-openai-api-key",
-#     base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
-#     api_version="v1",
-#     responses_model_name="my-gpt4-deployment",  # Optional: set default deployment
-#     embeddings_model_name="my-embedding-deployment"  # Optional: set default deployment
-# )
-
-# Option 3: Using Azure OpenAI with Entra ID (no API key)
-# Set AZURE_OPENAI_BASE_URL and AZURE_OPENAI_API_VERSION in your environment.
-# openaivec uses DefaultAzureCredential when AZURE_OPENAI_API_KEY is not set.
 ```
+
+#### Azure OpenAI (API key)
+
+```python
+from pyspark.sql import SparkSession
+from openaivec.spark import setup_azure
+
+spark = SparkSession.builder.getOrCreate()
+setup_azure(
+    spark,
+    api_key="your-azure-openai-api-key",
+    base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
+    api_version="v1",
+    responses_model_name="my-gpt-deployment",
+    embeddings_model_name="my-embedding-deployment",
+)
+```
+
+#### Azure OpenAI with Entra ID (no API key)
+
+```python
+import os
+
+os.environ["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
+os.environ["AZURE_OPENAI_API_VERSION"] = "v1"
+os.environ.pop("AZURE_OPENAI_API_KEY", None)
+```
+
+`openaivec` uses `DefaultAzureCredential` when `AZURE_OPENAI_API_KEY` is not set.
 
 Create and register UDFs using the provided helpers:
 
 ```python
-from openaivec.spark import responses_udf, task_udf, embeddings_udf, count_tokens_udf, similarity_udf, parse_udf
-from pydantic import BaseModel
+from openaivec.spark import responses_udf
 
 spark.udf.register(
     "extract_brand",
     responses_udf(
         instructions="Extract the brand name from the product. Return only the brand name.",
-        reasoning={"effort": "none"},  # Recommended with gpt-5.1
+        reasoning={"effort": "none"},
     )
 )
 
-class Translation(BaseModel):
-    en: str
-    fr: str
-    ja: str
-
-spark.udf.register(
-    "translate_struct",
-    responses_udf(
-        instructions="Translate the text to English, French, and Japanese.",
-        response_format=Translation,
-        reasoning={"effort": "none"},  # Recommended with gpt-5.1
-    )
+products = spark.createDataFrame(
+    [("Nike Air Max",), ("Apple iPhone 15",)],
+    ["product_name"],
 )
-
-spark.udf.register("embed_text", embeddings_udf())
-spark.udf.register("count_tokens", count_tokens_udf())
-spark.udf.register("compute_similarity", similarity_udf())
+products.selectExpr("product_name", "extract_brand(product_name) AS brand").show()
 ```
+
+Other helper UDFs are available: `task_udf`, `embeddings_udf`, `count_tokens_udf`, `similarity_udf`, and `parse_udf`.
 
 ### Spark performance tips
 
