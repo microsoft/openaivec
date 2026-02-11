@@ -1,6 +1,6 @@
 # openaivec
 
-Transform pandas and Spark workflows with AI-powered text processing—batching, caching, and guardrails included. Built for OpenAI batch pipelines so you can group prompts, cut API overhead, and keep outputs aligned with your data.
+AI text processing for pandas and Spark. Apply one prompt to many rows with automatic batching and caching.
 
 [Contributor guidelines](AGENTS.md)
 
@@ -10,19 +10,19 @@ Transform pandas and Spark workflows with AI-powered text processing—batching,
 pip install openaivec
 ```
 
+Apply one prompt to many values:
+
 ```python
 import os
 import pandas as pd
 from openaivec import pandas_ext
 
 os.environ["OPENAI_API_KEY"] = "your-api-key"
-pandas_ext.set_responses_model("gpt-5.1")  # Optional override (use deployment name for Azure)
 
-fruit_names: pd.Series = pd.Series(["apple", "banana", "cherry"])
-
-# Translate fruit names to French with simple prompt
-french_names: pd.Series = fruit_names.ai.responses("Translate this fruit name to French.")
-french_names  # Expected output: ['pomme', 'banane', 'cerise']
+fruits = pd.Series(["apple", "banana", "cherry"])
+french_names = fruits.ai.responses("Translate this fruit name to French.")
+print(french_names.tolist())
+# ['pomme', 'banane', 'cerise']
 
 ```
 
