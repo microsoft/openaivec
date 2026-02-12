@@ -199,6 +199,7 @@ ipython_config.py
 *.parquet
 *.csv
 *.tsv
+/artifacts/
 
 # Azurite database files
 __*__.json
