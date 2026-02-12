@@ -31,6 +31,7 @@ dev = [
     "httpx[http2]>=0.28.1",
     "ipykernel>=6.29.5",
     "langdetect>=1.0.9",
+    "matplotlib>=3.10.8",
     "pyarrow>=19.0.1",
     "pyright>=1.1.403",
     "pyspark>=4.0.0",

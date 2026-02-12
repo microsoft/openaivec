@@ -58,11 +58,11 @@ nav:
       - Getting Started: examples/pandas.ipynb
       - PreparedTask Guide: examples/prepared_task.ipynb
       - Intelligent Fill: examples/intelligent_fill.ipynb
-      - Customer Analysis: examples/customer_analysis.ipynb
-      - Survey Transformation: examples/survey_transformation.ipynb
       - Spark Processing: examples/spark.ipynb
       - Async Workflows: examples/aio.ipynb
       - Prompt Engineering: examples/prompt.ipynb
+      - Survey Transformation: examples/survey_transformation.ipynb
+      - Customer Analysis: examples/customer_analysis.ipynb
       - FAQ Generation: examples/generate_faq.ipynb
       - Token Count and Processing Time: examples/batch_size.ipynb
       - Request Batching Benchmark: examples/benchmark.ipynb
