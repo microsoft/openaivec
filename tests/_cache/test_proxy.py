@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import builtins
+import sys
 import time
+import types
 
 import pytest
 
@@ -629,6 +632,36 @@ def test_notebook_environment_detection():
     assert isinstance(result, bool)
 
 
+def test_notebook_environment_detection_with_jpy_parent_pid(monkeypatch):
+    """Test notebook detection fallback when IPython import is unavailable."""
+    from openaivec._cache import ProxyBase
+
+    proxy = ProxyBase()
+
+    notebook_vars = [
+        "JPY_PARENT_PID",
+        "JPY_SESSION_NAME",
+        "JUPYTER_CONFIG_DIR",
+        "JUPYTERLAB_DIR",
+        "COLAB_GPU",
+        "VSCODE_PID",
+    ]
+    for var in notebook_vars:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("JPY_PARENT_PID", "12345")
+
+    original_import = builtins.__import__
+
+    def _fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "IPython" or name.startswith("IPython."):
+            raise ImportError("IPython unavailable for this test")
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", _fake_import)
+
+    assert proxy._is_notebook_environment() is True
+
+
 def test_progress_bar_methods():
     """Test progress bar creation and management methods."""
     from openaivec._cache import ProxyBase
@@ -642,6 +675,66 @@ def test_progress_bar_methods():
     # Test update and close methods don't raise exceptions
     proxy._update_progress_bar(progress_bar, 10)
     proxy._close_progress_bar(progress_bar)
+
+
+def test_progress_bar_methods_handle_falsey_progress_object():
+    """Test update/close behavior for progress objects with falsey truth values."""
+    from openaivec._cache import ProxyBase
+
+    class FalseyProgress:
+        def __init__(self):
+            self.updated = 0
+            self.closed = False
+
+        def __bool__(self):
+            return False
+
+        def update(self, increment: int):
+            self.updated += increment
+
+        def close(self):
+            self.closed = True
+
+    proxy = ProxyBase()
+    progress_bar = FalseyProgress()
+
+    proxy._update_progress_bar(progress_bar, 5)
+    proxy._close_progress_bar(progress_bar)
+
+    assert progress_bar.updated == 5
+    assert progress_bar.closed is True
+
+
+def test_create_progress_bar_falls_back_to_tqdm_auto(monkeypatch):
+    """Test progress bar creation fallback from notebook tqdm to auto tqdm."""
+    from openaivec._cache import ProxyBase
+
+    proxy = ProxyBase()
+    proxy.show_progress = True
+    monkeypatch.setattr(proxy, "_is_notebook_environment", lambda: True)
+
+    call_count = {"notebook": 0, "auto": 0}
+
+    class DummyProgress:
+        pass
+
+    def broken_notebook_tqdm(*, total: int, desc: str, unit: str):
+        _ = total, desc, unit
+        call_count["notebook"] += 1
+        raise RuntimeError("Notebook backend unavailable")
+
+    def fallback_auto_tqdm(*, total: int, desc: str, unit: str):
+        _ = total, desc, unit
+        call_count["auto"] += 1
+        return DummyProgress()
+
+    monkeypatch.setitem(sys.modules, "tqdm.notebook", types.SimpleNamespace(tqdm=broken_notebook_tqdm))
+    monkeypatch.setitem(sys.modules, "tqdm.auto", types.SimpleNamespace(tqdm=fallback_auto_tqdm))
+
+    progress_bar = proxy._create_progress_bar(8, "Testing")
+
+    assert isinstance(progress_bar, DummyProgress)
+    assert call_count == {"notebook": 1, "auto": 1}
 
 
 def test_batching_proxy_with_progress_disabled():
