@@ -34,11 +34,23 @@ class ProxyBase(Generic[S, T]):
         Returns:
             bool: True if running in a notebook, False otherwise.
         """
-        try:
-            from IPython.core.getipython import get_ipython
+        import os
+        import sys
 
-            ipython = get_ipython()
+        try:
+            # Resolve via importlib to keep compatibility across IPython versions
+            # without relying on private module paths.
+            import importlib
+
+            ipython_module = importlib.import_module("IPython")
+            get_ipython = getattr(ipython_module, "get_ipython", None)
+            ipython = get_ipython() if callable(get_ipython) else None
             if ipython is not None:
+                # Kernel-backed shells (Jupyter, VS Code notebook, Colab, etc.)
+                # expose a kernel object.
+                if getattr(ipython, "kernel", None) is not None:
+                    return True
+
                 # Check for different notebook environments
                 class_name = ipython.__class__.__name__
                 module_name = ipython.__class__.__module__
@@ -55,19 +67,14 @@ class ProxyBase(Generic[S, T]):
                 if "google.colab" in module_name:
                     return True
 
-                # VS Code notebooks and others
-                if hasattr(ipython, "kernel"):
-                    return True
-
         except ImportError:
             pass
 
         # Check for other notebook indicators
         # Check for common notebook environment variables
-        import os
-        import sys
-
         notebook_vars = [
+            "JPY_PARENT_PID",
+            "JPY_SESSION_NAME",
             "JUPYTER_CONFIG_DIR",
             "JUPYTERLAB_DIR",
             "COLAB_GPU",
@@ -101,13 +108,20 @@ class ProxyBase(Generic[S, T]):
         Returns:
             Any: Progress bar instance or None if not available.
         """
-        try:
-            from tqdm.auto import tqdm as tqdm_progress
+        if not self.show_progress or not self._is_notebook_environment():
+            return None
 
-            if self.show_progress and self._is_notebook_environment():
+        # Prefer notebook-specific rendering first; fall back to auto
+        # when widget backends are unavailable in the current runtime.
+        for module_name in ("tqdm.notebook", "tqdm.auto"):
+            try:
+                if module_name == "tqdm.notebook":
+                    from tqdm.notebook import tqdm as tqdm_progress
+                else:
+                    from tqdm.auto import tqdm as tqdm_progress
                 return tqdm_progress(total=total, desc=desc, unit="item")
-        except ImportError:
-            pass
+            except Exception:
+                continue
         return None
 
     def _update_progress_bar(self, progress_bar: Any, increment: int) -> None:
@@ -117,7 +131,7 @@ class ProxyBase(Generic[S, T]):
             progress_bar (Any): Progress bar instance.
             increment (int): Number of items to increment.
         """
-        if progress_bar:
+        if progress_bar is not None:
             progress_bar.update(increment)
 
     def _close_progress_bar(self, progress_bar: Any) -> None:
@@ -126,7 +140,7 @@ class ProxyBase(Generic[S, T]):
         Args:
             progress_bar (Any): Progress bar instance.
         """
-        if progress_bar:
+        if progress_bar is not None:
             progress_bar.close()
 
     @staticmethod
