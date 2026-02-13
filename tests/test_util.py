@@ -7,6 +7,16 @@ import tiktoken
 from openaivec._util import TextChunker, backoff, backoff_async
 
 
+def test_split_treats_regex_metacharacter_separators_as_literals():
+    class DummyEncoding:
+        def encode(self, text: str) -> list[str]:
+            return list(text)
+
+    chunker = TextChunker(enc=DummyEncoding())
+    chunks = chunker.split("a. b? c!", max_tokens=20, sep=[".", "!", "?"])
+    assert chunks == ["a.b?c!"]
+
+
 class TestTextChunker:
     @pytest.fixture(autouse=True)
     def setup_and_teardown(self):
@@ -43,7 +53,6 @@ Until version 1.18, Kubernetes followed an N-2 support policy, meaning that the 
 
         for chunk in chunks:
             assert len(enc.encode(chunk)) <= 256
-
 
 class TestBackoff:
     @pytest.mark.parametrize(
