@@ -156,13 +156,13 @@ class TextChunker:
         Args:
             original (str): Original text to split.
             max_tokens (int): Maximum number of tokens allowed per chunk.
-            sep (list[str]): List of separator patterns used by
-                :pyfunc:`re.split`.
+            sep (list[str]): List of literal separator strings used for splitting.
 
         Returns:
             list[str]: List of text chunks respecting the ``max_tokens`` limit.
         """
-        sentences = re.split(f"({'|'.join(sep)})", original)
+        pattern = f"({'|'.join(re.escape(s) for s in sep)})"
+        sentences = re.split(pattern, original)
         sentences = [s.strip() for s in sentences if s.strip()]
         sentences = [(s, len(self.enc.encode(s))) for s in sentences]
 
