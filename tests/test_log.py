@@ -5,6 +5,9 @@ import time
 
 from openaivec._log import observe
 
+EXPECTED_MIN_DURATION_NS = 5_000_000
+EXPECTED_MAX_DURATION_NS = 1_000_000_000
+
 
 def _create_logger(name: str) -> tuple[logging.Logger, list[str]]:
     logger = logging.getLogger(name)
@@ -22,6 +25,21 @@ def _create_logger(name: str) -> tuple[logging.Logger, list[str]]:
 
 
 class TestObserve:
+    def test_function_without_args_is_logged(self):
+        logger, messages = _create_logger("test.observe.function")
+
+        @observe(logger)
+        def run() -> int:
+            return 1
+
+        assert run() == 1
+
+        assert len(messages) == 2
+        start = json.loads(messages[0])
+        end = json.loads(messages[1])
+        assert start["class"] == "<function>"
+        assert end["class"] == "<function>"
+
     def test_sync_function_logs_start_and_end(self):
         logger, messages = _create_logger("test.observe.sync")
 
@@ -39,7 +57,9 @@ class TestObserve:
         assert start["type"] == "start"
         assert end["type"] == "end"
         assert start["transaction_id"] == end["transaction_id"]
-        assert end["logged_at"] > start["logged_at"]
+        duration_ns = end["logged_at"] - start["logged_at"]
+        assert duration_ns >= EXPECTED_MIN_DURATION_NS
+        assert duration_ns < EXPECTED_MAX_DURATION_NS
 
     def test_async_function_logs_end_after_await(self):
         logger, messages = _create_logger("test.observe.async")
@@ -58,4 +78,6 @@ class TestObserve:
         assert start["type"] == "start"
         assert end["type"] == "end"
         assert start["transaction_id"] == end["transaction_id"]
-        assert end["logged_at"] - start["logged_at"] >= 10_000_000
+        duration_ns = end["logged_at"] - start["logged_at"]
+        assert duration_ns >= EXPECTED_MIN_DURATION_NS
+        assert duration_ns < EXPECTED_MAX_DURATION_NS
