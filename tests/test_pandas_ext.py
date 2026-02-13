@@ -891,6 +891,13 @@ def test_df_rows_to_json_series_serializes_numpy_scalars():
     assert json.loads(out.iloc[0]) == {"x": 7, "y": pytest.approx(1.5)}
 
 
+def test_df_rows_to_json_series_serializes_string_values():
+    df = pd.DataFrame({"s1": ["hello"], "s2": [np.str_("world")]})
+    out = pandas_ext._df_rows_to_json_series(df)
+
+    assert json.loads(out.iloc[0]) == {"s1": "hello", "s2": "world"}
+
+
 @pytest.mark.asyncio
 async def test_series_aio_parse_with_cache_forwards_api_kwargs_to_schema_inference(monkeypatch):
     captured: dict[str, object] = {}
