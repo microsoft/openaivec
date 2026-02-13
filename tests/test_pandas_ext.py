@@ -1,4 +1,5 @@
 import asyncio
+import json
 from types import SimpleNamespace
 
 import numpy as np
@@ -868,6 +869,22 @@ def test_dataframe_similarity_zero_norm_returns_nan():
 
     assert np.isnan(result.iloc[0])
     assert result.iloc[1] == pytest.approx(0.0)
+
+
+def test_df_rows_to_json_series_serializes_timestamp():
+    df = pd.DataFrame({"ts": [pd.Timestamp("2024-01-01T12:34:56")], "x": [1]})
+    out = pandas_ext._df_rows_to_json_series(df)
+
+    assert out.index.equals(df.index)
+    assert out.name == "record"
+    assert json.loads(out.iloc[0]) == {"ts": "2024-01-01T12:34:56", "x": 1}
+
+
+def test_df_rows_to_json_series_serializes_numpy_scalars():
+    df = pd.DataFrame({"x": [np.int64(7)], "y": [np.float32(1.5)]})
+    out = pandas_ext._df_rows_to_json_series(df)
+
+    assert json.loads(out.iloc[0]) == {"x": 7, "y": pytest.approx(1.5)}
 
 
 @pytest.mark.asyncio

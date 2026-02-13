@@ -89,8 +89,15 @@ def _df_rows_to_json_series(df: pd.DataFrame) -> pd.Series:
     name are preserved so downstream operations retain alignment. This consolidates the
     previously duplicated inline pipeline used by responses*/task* DataFrame helpers.
     """
+    def _to_json_default(value: object) -> object:
+        if isinstance(value, pd.Timestamp):
+            return value.isoformat()
+        if isinstance(value, np.generic):
+            return value.item()
+        return str(value)
+
     return pd.Series(df.to_dict(orient="records"), index=df.index, name="record").map(
-        lambda x: json.dumps(x, ensure_ascii=False)
+        lambda x: json.dumps(x, ensure_ascii=False, default=_to_json_default)
     )
 
 
