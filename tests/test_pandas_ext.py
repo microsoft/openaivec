@@ -872,12 +872,16 @@ def test_dataframe_similarity_zero_norm_returns_nan():
 
 
 def test_df_rows_to_json_series_serializes_timestamp():
-    df = pd.DataFrame({"ts": [pd.Timestamp("2024-01-01T12:34:56")], "x": [1]})
+    df = pd.DataFrame(
+        {"ts": [pd.Timestamp("2024-01-01T12:34:56"), pd.Timestamp("2024-01-02T00:00:00")], "x": [1, 2]},
+        index=["a", "b"],
+    )
     out = pandas_ext._df_rows_to_json_series(df)
 
     assert out.index.equals(df.index)
     assert out.name == "record"
     assert json.loads(out.iloc[0]) == {"ts": "2024-01-01T12:34:56", "x": 1}
+    assert json.loads(out.iloc[1]) == {"ts": "2024-01-02T00:00:00", "x": 2}
 
 
 def test_df_rows_to_json_series_serializes_numpy_scalars():

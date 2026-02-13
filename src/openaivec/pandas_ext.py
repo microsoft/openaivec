@@ -49,6 +49,7 @@ import inspect
 import json
 import logging
 from collections.abc import Awaitable, Callable
+from datetime import date, datetime, time
 from typing import TypeVar, cast
 
 import numpy as np
@@ -90,11 +91,11 @@ def _df_rows_to_json_series(df: pd.DataFrame) -> pd.Series:
     previously duplicated inline pipeline used by responses*/task* DataFrame helpers.
     """
     def _to_json_default(value: object) -> object:
-        if isinstance(value, pd.Timestamp):
+        if isinstance(value, (pd.Timestamp, datetime, date, time)):
             return value.isoformat()
         if isinstance(value, np.generic):
             return value.item()
-        return str(value)
+        raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
     return pd.Series(df.to_dict(orient="records"), index=df.index, name="record").map(
         lambda x: json.dumps(x, ensure_ascii=False, default=_to_json_default)
