@@ -9,12 +9,12 @@ from openaivec._util import TextChunker, backoff, backoff_async
 
 def test_split_treats_regex_metacharacter_separators_as_literals():
     class DummyEncoding:
-        def encode(self, text: str) -> list[str]:
-            return list(text)
+        def encode(self, text: str) -> list[int]:
+            return [ord(c) for c in text]
 
     chunker = TextChunker(enc=DummyEncoding())
-    chunks = chunker.split("a. b? c!", max_tokens=20, sep=[".", "!", "?"])
-    assert chunks == ["a.b?c!"]
+    chunks = chunker.split("a. b? c!", max_tokens=2, sep=[".", "!", "?"])
+    assert chunks == ["a.", "b?", "c!"]
 
 
 class TestTextChunker:
