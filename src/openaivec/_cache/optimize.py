@@ -17,6 +17,13 @@ class PerformanceMetric:
 
 @dataclass
 class BatchSizeSuggester:
+    """Adaptive controller for choosing batch sizes from recent execution data.
+
+    The suggester keeps a bounded history of recent metrics, ignores failed
+    samples when adapting, and targets batch durations between
+    ``min_duration`` and ``max_duration``.
+    """
+
     current_batch_size: int = 10
     min_batch_size: int = 10
     min_duration: float = 30.0
@@ -26,6 +33,7 @@ class BatchSizeSuggester:
     max_step: int | None = None
     min_step: int = 1
     sample_size: int = 4
+    max_history_size: int | None = 128
     _history: list[PerformanceMetric] = field(default_factory=list)
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
     _batch_size_changed_at: datetime | None = field(default=None, init=False)
@@ -37,6 +45,8 @@ class BatchSizeSuggester:
             raise ValueError("current_batch_size must be >= min_batch_size")
         if self.sample_size <= 0:
             raise ValueError("sample_size must be > 0")
+        if self.max_history_size is not None and self.max_history_size < 1:
+            raise ValueError("max_history_size must be > 0")
         if self.step_ratio_up <= 0:
             raise ValueError("step_ratio_up must be > 0")
         if self.step_ratio_down <= 0:
@@ -52,6 +62,7 @@ class BatchSizeSuggester:
 
     @contextmanager
     def record(self, batch_size: int):
+        """Record one batch execution, trimming old history when configured."""
         start_time = time.perf_counter()
         executed_at = datetime.now(timezone.utc)
         caught_exception: BaseException | None = None
@@ -71,6 +82,9 @@ class BatchSizeSuggester:
                         exception=caught_exception,
                     )
                 )
+                if self.max_history_size is not None and len(self._history) > self.max_history_size:
+                    overflow = len(self._history) - self.max_history_size
+                    del self._history[:overflow]
 
     @property
     def samples(self) -> list[PerformanceMetric]:
@@ -86,7 +100,8 @@ class BatchSizeSuggester:
                     break
             return list(reversed(selected))
 
-    def clear_history(self):
+    def clear_history(self) -> None:
+        """Drop all recorded performance metrics."""
         with self._lock:
             self._history.clear()
 

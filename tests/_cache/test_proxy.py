@@ -292,6 +292,31 @@ def test_internal_wait_for_with_inflight_event():
     assert all(k in cache for k in keys)
 
 
+def test_sync_proxy_keeps_valid_none_results_cached():
+    calls = 0
+
+    def mf(xs: list[int]) -> list[int | None]:
+        nonlocal calls
+        calls += 1
+        return [None for _ in xs]
+
+    proxy = BatchingMapProxy[int, int | None](batch_size=4)
+
+    assert proxy.map([1, 1, 2], mf) == [None, None, None]
+    assert proxy.map([2, 1], mf) == [None, None]
+    assert calls == 1
+
+
+def test_sync_proxy_prunes_cache_after_last_active_call():
+    proxy = BatchingMapProxy[int, int](batch_size=4, max_cache_size=2)
+
+    assert proxy.map([1, 2, 3], lambda xs: xs) == [1, 2, 3]
+    assert list(proxy._cache.keys()) == [2, 3]
+
+    assert proxy.map([2, 4], lambda xs: xs) == [2, 4]
+    assert list(proxy._cache.keys()) == [2, 4]
+
+
 # -------------------- AsyncBatchingMapProxy tests --------------------
 
 
@@ -443,6 +468,13 @@ def test_async_localproxy_invalid_max_concurrency_raises():
         AsyncBatchingMapProxy[int, int](max_concurrency=-1)
 
 
+def test_proxy_invalid_max_cache_size_raises():
+    with pytest.raises(ValueError, match="max_cache_size must be >= 1"):
+        BatchingMapProxy[int, int](max_cache_size=0)
+    with pytest.raises(ValueError, match="max_cache_size must be >= 1"):
+        AsyncBatchingMapProxy[int, int](max_cache_size=0)
+
+
 def test_sync_clear_releases_memory_and_recomputes():
     calls: list[list[int]] = []
 
@@ -462,6 +494,40 @@ def test_sync_clear_releases_memory_and_recomputes():
     out2 = p.map([1, 2, 2, 3], f)
     assert out2 == [1, 2, 2, 3]
     assert len(calls) >= 2
+
+
+def test_async_proxy_keeps_valid_none_results_cached(event_loop=None):
+    calls = 0
+
+    async def af(xs: list[int]) -> list[int | None]:
+        nonlocal calls
+        calls += 1
+        await asyncio.sleep(0)
+        return [None for _ in xs]
+
+    proxy = AsyncBatchingMapProxy[int, int | None](batch_size=4, max_concurrency=2)
+
+    async def run():
+        first = await proxy.map([1, 1, 2], af)
+        second = await proxy.map([2, 1], af)
+        assert first == [None, None, None]
+        assert second == [None, None]
+
+    asyncio.run(run())
+    assert calls == 1
+
+
+def test_async_proxy_prunes_cache_after_last_active_call(event_loop=None):
+    proxy = AsyncBatchingMapProxy[int, int](batch_size=4, max_cache_size=2, max_concurrency=2)
+
+    async def run():
+        first = await proxy.map([1, 2, 3], _afunc_echo)
+        second = await proxy.map([2, 4], _afunc_echo)
+        assert first == [1, 2, 3]
+        assert second == [2, 4]
+
+    asyncio.run(run())
+    assert list(proxy._cache.keys()) == [2, 4]
 
 
 def test_batch_size_maximization_with_cache_hits():

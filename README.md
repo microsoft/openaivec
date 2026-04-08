@@ -63,13 +63,13 @@ Batching alone removes most HTTP overhead, and letting batching overlap with con
 - Drop-in `.ai` and `.aio` accessors keep pandas analysts in familiar tooling.
 - OpenAI batch-optimized: `BatchingMapProxy`/`AsyncBatchingMapProxy` coalesce requests, dedupe prompts, preserve order, and release waiters on failure.
 - Reasoning support mirrors the OpenAI SDK; structured outputs accept Pydantic `response_format`.
-- Built-in caches and retries remove boilerplate; helpers reuse caches across pandas, Spark, and async flows.
+- Built-in caches and retries remove boilerplate; pandas and async helpers can share caches explicitly, while Spark UDFs dedupe repeated inputs within each partition.
 - Spark UDFs and Microsoft Fabric guides move notebooks into production-scale ETL.
 - Prompt tooling (`FewShotPromptBuilder`, `improve`) and the task library ship curated prompts with validated outputs.
 
 ## Overview
 
-Vectorized OpenAI batch processing so you handle many inputs per call instead of one-by-one. Batching proxies dedupe inputs, enforce ordered outputs, and unblock waiters even on upstream errors. Cache helpers (`responses_with_cache`, Spark UDF builders) plug into the same layer so expensive prompts are reused across pandas, Spark, and async flows. Reasoning models honor SDK semantics. Requires Python 3.10+.
+Vectorized OpenAI batch processing so you handle many inputs per call instead of one-by-one. Batching proxies dedupe inputs, enforce ordered outputs, and unblock waiters even on upstream errors. Shared-cache helpers reuse expensive prompts across pandas and async flows, while Spark UDF builders dedupe repeated inputs within each partition. Reasoning models honor SDK semantics. Requires Python 3.10+.
 
 ## Core Workflows
 
@@ -120,6 +120,8 @@ os.environ["AZURE_OPENAI_API_KEY"] = "your-azure-openai-api-key"
 os.environ["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
 os.environ["AZURE_OPENAI_API_VERSION"] = "v1"
 ```
+
+Use `AZURE_OPENAI_API_VERSION="v1"` together with the `/openai/v1/` base URL.
 
 #### Azure OpenAI with Entra ID (no API key)
 
@@ -289,6 +291,8 @@ setup_azure(
     embeddings_model_name="my-embedding-deployment",
 )
 ```
+
+Use `api_version="v1"` with a base URL that ends in `/openai/v1/`.
 
 #### Azure OpenAI with Entra ID (no API key)
 

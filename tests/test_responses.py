@@ -6,7 +6,7 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from openaivec import BatchResponses
-from openaivec._responses import AsyncBatchResponses
+from openaivec._responses import AsyncBatchResponses, Request
 
 _h: Handler = StreamHandler()
 
@@ -69,18 +69,53 @@ class TestStructuredValidationRetries:
         assert "assistant_messages[0].body.taste" in second_instructions
         assert parsed[0] == Fruit(name="apple", color="red", taste="sweet")
 
+    def test_sync_retry_serializes_request_once(self, monkeypatch):
+        class Fruit(BaseModel):
+            name: str
+            color: str
+            taste: str
 
-class TestResponsesCachingAndErrors:
-    def test_sync_parse_none_result_is_not_cached(self):
+        validation_error = _build_validation_error()
         parse = Mock(
             side_effect=[
-                SimpleNamespace(output_parsed=None),
+                validation_error,
                 SimpleNamespace(
                     output_parsed=SimpleNamespace(
-                        assistant_messages=[SimpleNamespace(id=0, body="recomputed-value")]
+                        assistant_messages=[
+                            SimpleNamespace(id=0, body=Fruit(name="apple", color="red", taste="sweet"))
+                        ]
                     )
                 ),
             ]
+        )
+        serialized_calls = 0
+        original_model_dump_json = Request.model_dump_json
+
+        def counting_model_dump_json(self, *args, **kwargs):
+            nonlocal serialized_calls
+            serialized_calls += 1
+            return original_model_dump_json(self, *args, **kwargs)
+
+        monkeypatch.setattr(Request, "model_dump_json", counting_model_dump_json)
+
+        client = BatchResponses(
+            client=SimpleNamespace(responses=SimpleNamespace(parse=parse)),  # type: ignore[arg-type]
+            model_name="gpt-4.1-mini",
+            system_message="return fruit attributes",
+            response_format=Fruit,
+        )
+
+        parsed = client._predict_chunk(["apple"])
+
+        assert parsed[0] == Fruit(name="apple", color="red", taste="sweet")
+        assert parse.call_count == 2
+        assert serialized_calls == 1
+
+
+class TestResponsesCachingAndErrors:
+    def test_sync_parse_none_result_is_cached(self):
+        parse = Mock(
+            return_value=SimpleNamespace(output_parsed=None)
         )
         client = BatchResponses(
             client=SimpleNamespace(responses=SimpleNamespace(parse=parse)),  # type: ignore[arg-type]
@@ -93,20 +128,13 @@ class TestResponsesCachingAndErrors:
         second = client.parse(["hello"])
 
         assert first == [None]
-        assert second == ["recomputed-value"]
-        assert parse.call_count == 2
+        assert second == [None]
+        assert parse.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_async_parse_none_result_is_not_cached(self):
+    async def test_async_parse_none_result_is_cached(self):
         parse = AsyncMock(
-            side_effect=[
-                SimpleNamespace(output_parsed=None),
-                SimpleNamespace(
-                    output_parsed=SimpleNamespace(
-                        assistant_messages=[SimpleNamespace(id=0, body="recomputed-value")]
-                    )
-                ),
-            ]
+            return_value=SimpleNamespace(output_parsed=None)
         )
         client = AsyncBatchResponses(
             client=SimpleNamespace(responses=SimpleNamespace(parse=parse)),  # type: ignore[arg-type]
@@ -119,8 +147,8 @@ class TestResponsesCachingAndErrors:
         second = await client.parse(["hello"])
 
         assert first == [None]
-        assert second == ["recomputed-value"]
-        assert parse.call_count == 2
+        assert second == [None]
+        assert parse.call_count == 1
 
     def test_sync_retry_exhaustion_raises(self):
         class Fruit(BaseModel):
@@ -177,6 +205,48 @@ class TestResponsesCachingAndErrors:
         assert "--- PRIOR VALIDATION FEEDBACK ---" in second_instructions
         assert "assistant_messages[0].body.taste" in second_instructions
         assert parsed[0] == Fruit(name="apple", color="red", taste="sweet")
+
+    @pytest.mark.asyncio
+    async def test_async_retry_serializes_request_once(self, monkeypatch):
+        class Fruit(BaseModel):
+            name: str
+            color: str
+            taste: str
+
+        parse = AsyncMock(
+            side_effect=[
+                _build_validation_error(),
+                SimpleNamespace(
+                    output_parsed=SimpleNamespace(
+                        assistant_messages=[
+                            SimpleNamespace(id=0, body=Fruit(name="apple", color="red", taste="sweet"))
+                        ]
+                    )
+                ),
+            ]
+        )
+        serialized_calls = 0
+        original_model_dump_json = Request.model_dump_json
+
+        def counting_model_dump_json(self, *args, **kwargs):
+            nonlocal serialized_calls
+            serialized_calls += 1
+            return original_model_dump_json(self, *args, **kwargs)
+
+        monkeypatch.setattr(Request, "model_dump_json", counting_model_dump_json)
+
+        client = AsyncBatchResponses(
+            client=SimpleNamespace(responses=SimpleNamespace(parse=parse)),  # type: ignore[arg-type]
+            model_name="gpt-4.1-mini",
+            system_message="return fruit attributes",
+            response_format=Fruit,
+        )
+
+        parsed = await client._predict_chunk(["apple"])
+
+        assert parsed[0] == Fruit(name="apple", color="red", taste="sweet")
+        assert parse.call_count == 2
+        assert serialized_calls == 1
 
 
 @pytest.mark.requires_api

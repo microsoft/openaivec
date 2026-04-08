@@ -1,4 +1,5 @@
 import os
+import threading
 import warnings
 
 import tiktoken
@@ -21,6 +22,8 @@ from openaivec._util import TextChunker
 __all__ = []
 
 CONTAINER = di.Container()
+_DEFAULT_REGISTRATIONS_LOCK = threading.RLock()
+_DEFAULT_REGISTRATIONS_READY = False
 
 
 def _build_missing_credentials_error(
@@ -109,6 +112,7 @@ def provide_openai_client() -> OpenAI:
     Raises:
         ValueError: If no valid environment variables are found for either service.
     """
+    ensure_default_registrations()
     openai_api_key = CONTAINER.resolve(OpenAIAPIKey)
     if openai_api_key.value:
         return OpenAI()
@@ -159,6 +163,7 @@ def provide_async_openai_client() -> AsyncOpenAI:
     Raises:
         ValueError: If no valid environment variables are found for either service.
     """
+    ensure_default_registrations()
     openai_api_key = CONTAINER.resolve(OpenAIAPIKey)
     if openai_api_key.value:
         return AsyncOpenAI()
@@ -193,7 +198,8 @@ def provide_async_openai_client() -> AsyncOpenAI:
     )
 
 
-def set_default_registrations():
+def _register_default_providers() -> None:
+    """Install the library's default provider graph into the shared container."""
     CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName("gpt-4.1-mini"))
     CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName("text-embedding-3-small"))
     CONTAINER.register(DefaultAzureCredential, lambda: DefaultAzureCredential())
@@ -223,4 +229,45 @@ def set_default_registrations():
     )
 
 
-set_default_registrations()
+def _defaults_installed() -> bool:
+    """Return whether the minimum default provider graph is currently installed."""
+    required = [
+        ResponsesModelName,
+        EmbeddingsModelName,
+        OpenAIAPIKey,
+        AzureOpenAIBaseURL,
+        AzureOpenAIAPIVersion,
+        OpenAI,
+        AsyncOpenAI,
+        tiktoken.Encoding,
+    ]
+    return all(CONTAINER.is_registered(cls) for cls in required)
+
+
+def ensure_default_registrations() -> None:
+    """Install default registrations lazily and re-install after container clears."""
+    global _DEFAULT_REGISTRATIONS_READY
+    if _DEFAULT_REGISTRATIONS_READY and _defaults_installed():
+        return
+    with _DEFAULT_REGISTRATIONS_LOCK:
+        if _DEFAULT_REGISTRATIONS_READY and _defaults_installed():
+            return
+        _register_default_providers()
+        _DEFAULT_REGISTRATIONS_READY = True
+
+
+def set_default_registrations() -> None:
+    """Reset the shared container to the library's default registrations.
+
+    This is primarily useful in tests or when callers intentionally want to
+    discard custom registrations and rebuild the default provider graph from a
+    clean container.
+    """
+    global _DEFAULT_REGISTRATIONS_READY
+    with _DEFAULT_REGISTRATIONS_LOCK:
+        CONTAINER.clear()
+        _register_default_providers()
+        _DEFAULT_REGISTRATIONS_READY = True
+
+
+ensure_default_registrations()

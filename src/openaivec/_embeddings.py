@@ -7,6 +7,7 @@ from numpy.typing import NDArray
 from openai import AsyncOpenAI, InternalServerError, OpenAI, RateLimitError
 
 from openaivec._cache import AsyncBatchingMapProxy, BatchingMapProxy
+from openaivec._cache.proxy import DEFAULT_MANAGED_CACHE_SIZE
 from openaivec._log import observe
 from openaivec._util import backoff, backoff_async
 
@@ -18,6 +19,19 @@ __all__ = [
 _LOGGER: Logger = getLogger(__name__)
 
 
+def _as_float32_rows(raw_embeddings: list[list[float]]) -> list[NDArray[np.float32]]:
+    """Convert a batch of embedding payloads into float32 row views.
+
+    The returned arrays share one contiguous float32 backing matrix, which
+    avoids one allocation per embedding while keeping the public return type
+    as ``list[np.ndarray]``.
+    """
+    if not raw_embeddings:
+        return []
+    matrix = np.asarray(raw_embeddings, dtype=np.float32)
+    return list(matrix)
+
+
 @dataclass(frozen=True)
 class BatchEmbeddings:
     """Thin wrapper around the OpenAI embeddings endpoint (synchronous).
@@ -26,13 +40,17 @@ class BatchEmbeddings:
         client (OpenAI): Configured OpenAI client.
         model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name
             (e.g., ``"text-embedding-3-small"``).
-        cache (BatchingMapProxy[str, NDArray[np.float32]]): Batching proxy for ordered, cached mapping.
+        cache (BatchingMapProxy[str, NDArray[np.float32]]): Batching proxy for
+            ordered, cached mapping. Library-managed instances use bounded
+            retention by default.
         api_kwargs (dict[str, Any]): Additional OpenAI API parameters stored at initialization.
     """
 
     client: OpenAI
     model_name: str
-    cache: BatchingMapProxy[str, NDArray[np.float32]] = field(default_factory=lambda: BatchingMapProxy(batch_size=None))
+    cache: BatchingMapProxy[str, NDArray[np.float32]] = field(
+        default_factory=lambda: BatchingMapProxy(batch_size=None, max_cache_size=DEFAULT_MANAGED_CACHE_SIZE)
+    )
     api_kwargs: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -52,7 +70,7 @@ class BatchEmbeddings:
         return cls(
             client=client,
             model_name=model_name,
-            cache=BatchingMapProxy(batch_size=batch_size),
+            cache=BatchingMapProxy(batch_size=batch_size, max_cache_size=DEFAULT_MANAGED_CACHE_SIZE),
             api_kwargs=api_kwargs,
         )
 
@@ -72,7 +90,7 @@ class BatchEmbeddings:
             list[NDArray[np.float32]]: Embedding vectors aligned to ``inputs``.
         """
         responses = self.client.embeddings.create(input=inputs, model=self.model_name, **self.api_kwargs)
-        return [np.array(d.embedding, dtype=np.float32) for d in responses.data]
+        return _as_float32_rows([d.embedding for d in responses.data])
 
     @observe(_LOGGER)
     def create(self, inputs: list[str]) -> list[NDArray[np.float32]]:
@@ -130,14 +148,19 @@ class AsyncBatchEmbeddings:
     Attributes:
         client (AsyncOpenAI): Configured OpenAI async client.
         model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
-        cache (AsyncBatchingMapProxy[str, NDArray[np.float32]]): Async batching proxy.
+        cache (AsyncBatchingMapProxy[str, NDArray[np.float32]]): Async batching
+            proxy. Library-managed instances use bounded retention by default.
         api_kwargs (dict): Additional OpenAI API parameters stored at initialization.
     """
 
     client: AsyncOpenAI
     model_name: str
     cache: AsyncBatchingMapProxy[str, NDArray[np.float32]] = field(
-        default_factory=lambda: AsyncBatchingMapProxy(batch_size=None, max_concurrency=8)
+        default_factory=lambda: AsyncBatchingMapProxy(
+            batch_size=None,
+            max_concurrency=8,
+            max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
+        )
     )
     api_kwargs: dict[str, Any] = field(default_factory=dict)
 
@@ -166,7 +189,11 @@ class AsyncBatchEmbeddings:
         return cls(
             client=client,
             model_name=model_name,
-            cache=AsyncBatchingMapProxy(batch_size=batch_size, max_concurrency=max_concurrency),
+            cache=AsyncBatchingMapProxy(
+                batch_size=batch_size,
+                max_concurrency=max_concurrency,
+                max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
+            ),
             api_kwargs=api_kwargs,
         )
 
@@ -189,7 +216,7 @@ class AsyncBatchEmbeddings:
             RateLimitError: Propagated if retries are exhausted.
         """
         responses = await self.client.embeddings.create(input=inputs, model=self.model_name, **self.api_kwargs)
-        return [np.array(d.embedding, dtype=np.float32) for d in responses.data]
+        return _as_float32_rows([d.embedding for d in responses.data])
 
     @observe(_LOGGER)
     async def create(self, inputs: list[str]) -> list[NDArray[np.float32]]:

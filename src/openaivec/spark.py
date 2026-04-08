@@ -124,15 +124,16 @@ When using these UDFs in distributed Spark environments:
 Example for a 5-executor cluster with max_concurrency=8:
 Total concurrent requests = 8 × 5 = 40 simultaneous API calls.
 
-Note: This module provides asynchronous support through the pandas extensions.
+Note: AI-powered UDFs run one reusable asyncio event loop per invocation and
+use partition-local caches to avoid duplicate remote calls inside a partition.
 """
 
 import asyncio
 import logging
 import os
-from collections.abc import Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from enum import Enum
-from typing import Annotated, Union, cast, get_args, get_origin
+from typing import Annotated, TypeVar, Union, cast, get_args, get_origin
 
 import numpy as np
 import pandas as pd
@@ -147,8 +148,11 @@ from typing_extensions import Literal
 
 from openaivec import pandas_ext
 from openaivec._cache import AsyncBatchingMapProxy
+from openaivec._cache.proxy import DEFAULT_MANAGED_CACHE_SIZE
+from openaivec._embeddings import AsyncBatchEmbeddings
 from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
 from openaivec._provider import CONTAINER
+from openaivec._responses import AsyncBatchResponses
 from openaivec._schema import SchemaInferenceInput, SchemaInferenceOutput, SchemaInferer
 from openaivec._serialize import deserialize_base_model, serialize_base_model
 from openaivec._util import TextChunker
@@ -168,6 +172,40 @@ __all__ = [
 
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+PartitionResult = TypeVar("PartitionResult")
+
+
+def _create_partition_loop() -> asyncio.AbstractEventLoop:
+    """Create an event loop dedicated to a single Spark UDF invocation."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    return loop
+
+
+def _close_partition_loop(loop: asyncio.AbstractEventLoop) -> None:
+    """Shut down and close a Spark UDF event loop."""
+    try:
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        if hasattr(loop, "shutdown_default_executor"):
+            loop.run_until_complete(loop.shutdown_default_executor())
+    finally:
+        asyncio.set_event_loop(None)
+        loop.close()
+
+
+def _run_partition_async(
+    parts: Iterator[pd.Series],
+    runner: Callable[[pd.Series], Awaitable[PartitionResult]],
+    cleanup: Callable[[], Awaitable[None]],
+) -> Iterator[PartitionResult]:
+    """Run async partition work on a single reusable event loop."""
+    loop = _create_partition_loop()
+    try:
+        for part in parts:
+            yield loop.run_until_complete(runner(part))
+    finally:
+        loop.run_until_complete(cleanup())
+        _close_partition_loop(loop)
 
 
 def setup(
@@ -385,11 +423,10 @@ def responses_udf(
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF for generating responses.
 
-    Configures and builds UDFs that leverage `pandas_ext.aio.responses_with_cache`
-    to generate text or structured responses from OpenAI models asynchronously.
-    Each partition maintains its own cache to eliminate duplicate API calls within
-    the partition, significantly reducing API usage and costs when processing
-    datasets with overlapping content.
+    Configures and builds UDFs that use ``AsyncBatchResponses`` on a single
+    reusable event loop per UDF invocation. Each partition maintains its own
+    bounded cache to eliminate duplicate API calls within the partition while
+    avoiding repeated event-loop setup per Arrow batch.
 
     Note:
         Authentication must be configured via SparkContext environment variables.
@@ -465,26 +502,30 @@ def responses_udf(
 
         @pandas_udf(returnType=spark_schema)  # type: ignore[call-overload]
         def structure_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
-            pandas_ext.set_responses_model(_model_name)
-            response_format = deserialize_base_model(json_schema_string)
-            cache = AsyncBatchingMapProxy[str, response_format](
+            async_client = pandas_ext.get_async_client()
+            response_model = deserialize_base_model(json_schema_string)
+            cache = AsyncBatchingMapProxy[str, response_model](
                 batch_size=batch_size,
                 max_concurrency=max_concurrency,
+                max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
+            )
+            batch_client = AsyncBatchResponses(
+                client=async_client,
+                model_name=_model_name,
+                system_message=instructions,
+                response_format=response_model,
+                cache=cache,
+                api_kwargs=api_kwargs,
             )
 
-            try:
-                for part in col:
-                    predictions: pd.Series = asyncio.run(
-                        part.aio.responses_with_cache(
-                            instructions=instructions,
-                            response_format=response_format,
-                            cache=cache,
-                            **api_kwargs,
-                        )
-                    )
-                    yield pd.DataFrame(predictions.map(_safe_dump).tolist())
-            finally:
-                asyncio.run(cache.clear())
+            async def run_part(part: pd.Series) -> pd.DataFrame:
+                predictions = await batch_client.parse(part.tolist())
+                return pd.DataFrame(pd.Series(predictions, index=part.index, name=part.name).map(_safe_dump).tolist())
+
+            async def cleanup() -> None:
+                await cache.clear()
+
+            yield from _run_partition_async(col, run_part, cleanup)
 
         return structure_udf  # type: ignore[return-value]
 
@@ -492,25 +533,29 @@ def responses_udf(
 
         @pandas_udf(returnType=StringType())  # type: ignore[call-overload]
         def string_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
-            pandas_ext.set_responses_model(_model_name)
+            async_client = pandas_ext.get_async_client()
             cache = AsyncBatchingMapProxy[str, str](
                 batch_size=batch_size,
                 max_concurrency=max_concurrency,
+                max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
+            )
+            batch_client = AsyncBatchResponses(
+                client=async_client,
+                model_name=_model_name,
+                system_message=instructions,
+                response_format=str,
+                cache=cache,
+                api_kwargs=api_kwargs,
             )
 
-            try:
-                for part in col:
-                    predictions: pd.Series = asyncio.run(
-                        part.aio.responses_with_cache(
-                            instructions=instructions,
-                            response_format=str,
-                            cache=cache,
-                            **api_kwargs,
-                        )
-                    )
-                    yield predictions.map(_safe_cast_str)
-            finally:
-                asyncio.run(cache.clear())
+            async def run_part(part: pd.Series) -> pd.Series:
+                predictions = await batch_client.parse(part.tolist())
+                return pd.Series(predictions, index=part.index, name=part.name).map(_safe_cast_str)
+
+            async def cleanup() -> None:
+                await cache.clear()
+
+            yield from _run_partition_async(col, run_part, cleanup)
 
         return string_udf  # type: ignore[return-value]
 
@@ -742,11 +787,10 @@ def embeddings_udf(
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF for generating embeddings.
 
-    Configures and builds UDFs that leverage `pandas_ext.aio.embeddings_with_cache`
-    to generate vector embeddings from OpenAI models asynchronously.
-    Each partition maintains its own cache to eliminate duplicate API calls within
-    the partition, significantly reducing API usage and costs when processing
-    datasets with overlapping content.
+    Configures and builds UDFs that use ``AsyncBatchEmbeddings`` on a single
+    reusable event loop per UDF invocation. Each partition maintains its own
+    bounded cache to eliminate duplicate API calls within the partition while
+    avoiding repeated event-loop setup per Arrow batch.
 
     Note:
         Authentication must be configured via SparkContext environment variables.
@@ -797,21 +841,29 @@ def embeddings_udf(
     """
 
     _model_name = model_name or CONTAINER.resolve(EmbeddingsModelName).value
-
     @pandas_udf(returnType=ArrayType(FloatType()))  # type: ignore[call-overload,misc]
     def _embeddings_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
-        pandas_ext.set_embeddings_model(_model_name)
+        async_client = pandas_ext.get_async_client()
         cache = AsyncBatchingMapProxy[str, np.ndarray](
             batch_size=batch_size,
             max_concurrency=max_concurrency,
+            max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
+        )
+        batch_client = AsyncBatchEmbeddings(
+            client=async_client,
+            model_name=_model_name,
+            cache=cache,
+            api_kwargs=api_kwargs,
         )
 
-        try:
-            for part in col:
-                embeddings: pd.Series = asyncio.run(part.aio.embeddings_with_cache(cache=cache, **api_kwargs))
-                yield embeddings.map(lambda x: x.tolist())
-        finally:
-            asyncio.run(cache.clear())
+        async def run_part(part: pd.Series) -> pd.Series:
+            embeddings = await batch_client.create(part.tolist())
+            return pd.Series(embeddings, index=part.index, name=part.name).map(lambda x: x.tolist())
+
+        async def cleanup() -> None:
+            await cache.clear()
+
+        yield from _run_partition_async(col, run_part, cleanup)
 
     return _embeddings_udf  # type: ignore[return-value]
 

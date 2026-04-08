@@ -5,6 +5,7 @@ import pytest
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
 
 from openaivec._provider import (
+    CONTAINER,
     _build_missing_credentials_error,
     provide_async_openai_client,
     provide_openai_client,
@@ -134,6 +135,15 @@ class TestProvideOpenAIClient:
         client = provide_openai_client()
         assert isinstance(client, AzureOpenAI)
 
+    def test_provide_openai_client_reinstalls_defaults_after_container_clear(self):
+        """Test lazy default reinstallation after the shared container is cleared."""
+        self.set_env_and_reset(OPENAI_API_KEY="test-key")
+        CONTAINER.clear()
+
+        client = provide_openai_client()
+
+        assert isinstance(client, OpenAI)
+
 
 class TestProvideAsyncOpenAIClient:
     @pytest.fixture(autouse=True)
@@ -258,6 +268,15 @@ class TestProvideAsyncOpenAIClient:
 
         client = provide_async_openai_client()
         assert isinstance(client, AsyncAzureOpenAI)
+
+    def test_provide_async_openai_client_reinstalls_defaults_after_container_clear(self):
+        """Test lazy async default reinstallation after the shared container is cleared."""
+        self.set_env_and_reset(OPENAI_API_KEY="test-key")
+        CONTAINER.clear()
+
+        client = provide_async_openai_client()
+
+        assert isinstance(client, AsyncOpenAI)
 
 
 @pytest.mark.integration

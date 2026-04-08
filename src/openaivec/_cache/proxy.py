@@ -1,5 +1,6 @@
 import asyncio
 import threading
+from collections import OrderedDict
 from collections.abc import Awaitable, Callable, Hashable
 from dataclasses import dataclass, field
 from typing import Any, Generic, TypeVar
@@ -10,6 +11,7 @@ __all__ = []
 
 S = TypeVar("S", bound=Hashable)
 T = TypeVar("T")
+DEFAULT_MANAGED_CACHE_SIZE = 4096
 
 
 class ProxyBase(Generic[S, T]):
@@ -22,11 +24,30 @@ class ProxyBase(Generic[S, T]):
         batch_size: Optional mini-batch size hint used by implementations to
             split work into chunks. When unset or non-positive, implementations
             should process the entire input in a single call.
+        max_cache_size: Optional retention target applied after active calls
+            drain. When set, implementations evict oldest cached items once
+            no callers are still reading results.
     """
 
     batch_size: int | None  # subclasses may override via dataclass
+    max_cache_size: int | None
     show_progress: bool  # Enable progress bar display
     suggester: BatchSizeSuggester  # Batch size optimization, initialized by subclasses
+
+    @staticmethod
+    def _touch_keys_unlocked(cache: OrderedDict[S, T], keys: list[S]) -> None:
+        """Mark keys as recently used in an ordered cache."""
+        for key in ProxyBase._unique_in_order(keys):
+            if key in cache:
+                cache.move_to_end(key)
+
+    @staticmethod
+    def _prune_cache_unlocked(cache: OrderedDict[S, T], max_cache_size: int | None) -> None:
+        """Evict oldest cached items until the cache fits the configured limit."""
+        if max_cache_size is None:
+            return
+        while len(cache) > max_cache_size:
+            cache.popitem(last=False)
 
     def _is_notebook_environment(self) -> bool:
         """Check if running in a Jupyter notebook environment.
@@ -194,10 +215,13 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     deduplicates inputs while preserving order, and ensures that concurrent calls do
     not duplicate work via an in-flight registry. All public behavior is preserved
     while minimizing redundant requests and maintaining input order in the output.
+    Valid ``None`` results are cached like any other value.
 
     When ``batch_size=None``, automatic batch size optimization is enabled,
     dynamically adjusting batch sizes based on execution time to maintain optimal
-    performance (targeting 30-60 seconds per batch).
+    performance (targeting 30-60 seconds per batch). When ``max_cache_size`` is
+    configured, pruning happens only after the last overlapping ``map()`` call
+    exits so in-flight readers cannot lose freshly computed values.
 
     Example:
         ```python
@@ -217,13 +241,20 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     # - If positive integer: Fixed batch size
     # - If <= 0: Process all items at once
     batch_size: int | None = None
+    max_cache_size: int | None = None
     show_progress: bool = True
     suggester: BatchSizeSuggester = field(default_factory=BatchSizeSuggester, repr=False)
 
     # internals
-    _cache: dict[S, T] = field(default_factory=dict)
+    _cache: OrderedDict[S, T] = field(default_factory=OrderedDict)
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
     _inflight: dict[S, threading.Event] = field(default_factory=dict, repr=False)
+    _active_calls: int = field(default=0, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        """Validate optional cache-retention settings."""
+        if self.max_cache_size is not None and self.max_cache_size < 1:
+            raise ValueError("max_cache_size must be >= 1")
 
     def __all_cached(self, items: list[S]) -> bool:
         """Check whether all items are present in the cache.
@@ -252,7 +283,9 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             order.
         """
         with self._lock:
-            return [self._cache[x] for x in items]
+            values = [self._cache[x] for x in items]
+            self._touch_keys_unlocked(self._cache, items)
+            return values
 
     def __acquire_ownership(self, items: list[S]) -> tuple[list[S], list[S]]:
         """Acquire ownership for missing items and identify keys to wait for.
@@ -298,6 +331,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         with self._lock:
             for x, y in zip(to_call, results):
                 self._cache[x] = y
+                self._cache.move_to_end(x)
                 ev = self._inflight.pop(x, None)
                 if ev:
                     ev.set()
@@ -328,6 +362,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                 ev.set()
             self._inflight.clear()
             self._cache.clear()
+            self._active_calls = 0
 
     def close(self) -> None:
         """Alias for clear()."""
@@ -361,8 +396,8 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         try:
             i = 0
             while i < len(owned):
-                # Get dynamic batch size for each iteration
-                current_batch_size = self._normalized_batch_size(len(owned))
+                remaining = len(owned) - i
+                current_batch_size = self._normalized_batch_size(remaining)
                 batch = owned[i : i + current_batch_size]
                 # Double-check cache right before processing
                 with self._lock:
@@ -427,17 +462,18 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         rescued: list[S] = []  # keys we claim to batch-process
         for x in keys:
             while True:
+                waiter: threading.Event | None = None
                 with self._lock:
                     if x in self._cache:
                         break
-                    ev = self._inflight.get(x)
-                    if ev is None:
+                    waiter = self._inflight.get(x)
+                    if waiter is None:
                         # Not cached and no one computing; claim ownership to batch later.
                         self._inflight[x] = threading.Event()
                         rescued.append(x)
                         break
                 # Someone else is computing; wait for completion.
-                ev.wait()
+                waiter.wait()
         # Batch-process rescued keys, if any
         if rescued:
             try:
@@ -446,6 +482,18 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                 # Ensure events are released on failure to avoid deadlock
                 self.__finalize_failure(rescued)
                 raise
+
+    def __enter_map(self) -> None:
+        """Track active map calls so cache pruning happens only after quiescence."""
+        with self._lock:
+            self._active_calls += 1
+
+    def __exit_map(self) -> None:
+        """Drop active-call count and prune cache once no callers remain."""
+        with self._lock:
+            self._active_calls -= 1
+            if self._active_calls == 0:
+                self._prune_cache_unlocked(self._cache, self.max_cache_size)
 
     # ---- public API ------------------------------------------------------
     def map(self, items: list[S], map_func: Callable[[list[S]], list[T]]) -> list[T]:
@@ -483,34 +531,24 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             # [[1, 2], [3]]
             ```
         """
-        if self.__all_cached(items):
-            return self.__values(items)
-
-        unique_items = self._unique_in_order(items)
-        owned, wait_for = self.__acquire_ownership(unique_items)
-
+        self.__enter_map()
         try:
-            self.__process_owned(owned, map_func)
-        except Exception:
-            # Ensure unresolved owned keys never remain in-flight after failures.
-            self.__finalize_failure(owned)
-            raise
-        self.__wait_for(wait_for, map_func)
+            if self.__all_cached(items):
+                return self.__values(items)
 
-        # Fetch results before purging None entries
-        results = self.__values(items)
+            unique_items = self._unique_in_order(items)
+            owned, wait_for = self.__acquire_ownership(unique_items)
 
-        # Remove None values from cache so they are recomputed on future calls
-        with self._lock:
-            if self._cache:  # micro-optimization
-                for k in set(items):
-                    try:
-                        if self._cache.get(k, object()) is None:
-                            del self._cache[k]
-                    except KeyError:
-                        pass
-
-        return results
+            try:
+                self.__process_owned(owned, map_func)
+            except Exception:
+                # Ensure unresolved owned keys never remain in-flight after failures.
+                self.__finalize_failure(owned)
+                raise
+            self.__wait_for(wait_for, map_func)
+            return self.__values(items)
+        finally:
+            self.__exit_map()
 
 
 @dataclass
@@ -518,14 +556,16 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     """Asynchronous version of BatchingMapProxy for use with async functions.
 
     The ``map()`` method accepts an async ``map_func`` that may perform I/O and
-    awaits it
-    in mini-batches. It deduplicates inputs, maintains cache consistency, and
-    coordinates concurrent coroutines to avoid duplicate work via an in-flight
-    registry of asyncio events.
+    awaits it in mini-batches. It deduplicates inputs, maintains cache
+    consistency, and coordinates concurrent coroutines to avoid duplicate work
+    via an in-flight registry of asyncio events. Valid ``None`` results are
+    cached like any other value.
 
     When ``batch_size=None``, automatic batch size optimization is enabled,
     dynamically adjusting batch sizes based on execution time to maintain optimal
-    performance (targeting 30-60 seconds per batch).
+    performance (targeting 30-60 seconds per batch). When ``max_cache_size`` is
+    configured, pruning happens only after the last overlapping ``map()`` call
+    exits so in-flight readers cannot lose freshly computed values.
 
     Example:
         ```python
@@ -551,14 +591,16 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     # - If positive integer: Fixed batch size
     # - If <= 0: Process all items at once
     batch_size: int | None = None
+    max_cache_size: int | None = None
     max_concurrency: int = 8
     show_progress: bool = True
     suggester: BatchSizeSuggester = field(default_factory=BatchSizeSuggester, repr=False)
 
     # internals
-    _cache: dict[S, T] = field(default_factory=dict, repr=False)
+    _cache: OrderedDict[S, T] = field(default_factory=OrderedDict, repr=False)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
     _inflight: dict[S, asyncio.Event] = field(default_factory=dict, repr=False)
+    _active_calls: int = field(default=0, init=False, repr=False)
     __sema: asyncio.Semaphore = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -573,6 +615,8 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         """
         if self.max_concurrency < 1:
             raise ValueError("max_concurrency must be >= 1")
+        if self.max_cache_size is not None and self.max_cache_size < 1:
+            raise ValueError("max_cache_size must be >= 1")
         self.__sema = asyncio.Semaphore(self.max_concurrency)
 
     async def __all_cached(self, items: list[S]) -> bool:
@@ -603,7 +647,9 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             list[T]: Cached values corresponding to ``items`` in the same order.
         """
         async with self._lock:
-            return [self._cache[x] for x in items]
+            values = [self._cache[x] for x in items]
+            self._touch_keys_unlocked(self._cache, items)
+            return values
 
     async def __acquire_ownership(self, items: list[S]) -> tuple[list[S], list[S]]:
         """Acquire ownership for missing keys and identify keys to wait for.
@@ -643,6 +689,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         async with self._lock:
             for x, y in zip(to_call, results):
                 self._cache[x] = y
+                self._cache.move_to_end(x)
                 ev = self._inflight.pop(x, None)
                 if ev:
                     ev.set()
@@ -673,6 +720,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                 ev.set()
             self._inflight.clear()
             self._cache.clear()
+            self._active_calls = 0
 
     async def aclose(self) -> None:
         """Alias for clear()."""
@@ -695,14 +743,16 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
 
         async def producer():
             index = 0
-            while index < len(owned):
-                batch_size = self._normalized_batch_size(len(owned) - index)
-                batch = owned[index : index + batch_size]
-                await batch_queue.put(batch)
-                index += batch_size
-            # Send completion signals
-            for _ in range(self.max_concurrency):
-                await batch_queue.put(None)
+            try:
+                while index < len(owned):
+                    remaining = len(owned) - index
+                    batch_size = self._normalized_batch_size(remaining)
+                    batch = owned[index : index + batch_size]
+                    await batch_queue.put(batch)
+                    index += batch_size
+            finally:
+                for _ in range(self.max_concurrency):
+                    await batch_queue.put(None)
 
         async def consumer():
             while True:
@@ -756,17 +806,18 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         rescued: list[S] = []  # keys we claim to batch-process
         for x in keys:
             while True:
+                waiter: asyncio.Event | None = None
                 async with self._lock:
                     if x in self._cache:
                         break
-                    ev = self._inflight.get(x)
-                    if ev is None:
+                    waiter = self._inflight.get(x)
+                    if waiter is None:
                         # Not cached and no one computing; claim ownership to batch later.
                         self._inflight[x] = asyncio.Event()
                         rescued.append(x)
                         break
                 # Someone else is computing; wait for completion.
-                await ev.wait()
+                await waiter.wait()
         # Batch-process rescued keys, if any
         if rescued:
             try:
@@ -774,6 +825,18 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             except Exception:
                 await self.__finalize_failure(rescued)
                 raise
+
+    async def __enter_map(self) -> None:
+        """Track active map calls so cache pruning happens only after quiescence."""
+        async with self._lock:
+            self._active_calls += 1
+
+    async def __exit_map(self) -> None:
+        """Drop active-call count and prune cache once no callers remain."""
+        async with self._lock:
+            self._active_calls -= 1
+            if self._active_calls == 0:
+                self._prune_cache_unlocked(self._cache, self.max_cache_size)
 
     # ---- public API ------------------------------------------------------
     async def map(self, items: list[S], map_func: Callable[[list[S]], Awaitable[list[T]]]) -> list[T]:
@@ -800,27 +863,21 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             # ['v:1', 'v:1', 'v:2']
             ```
         """
-        if await self.__all_cached(items):
-            return await self.__values(items)
-
-        unique_items = self._unique_in_order(items)
-        owned, wait_for = await self.__acquire_ownership(unique_items)
-
+        await self.__enter_map()
         try:
-            await self.__process_owned(owned, map_func)
-        except Exception:
-            # Ensure unresolved owned keys never remain in-flight after failures.
-            await self.__finalize_failure(owned)
-            raise
-        await self.__wait_for(wait_for, map_func)
+            if await self.__all_cached(items):
+                return await self.__values(items)
 
-        results = await self.__values(items)
+            unique_items = self._unique_in_order(items)
+            owned, wait_for = await self.__acquire_ownership(unique_items)
 
-        # Remove None values from cache after retrieval to avoid persisting incomplete results
-        async with self._lock:
-            if self._cache:
-                for k in set(items):
-                    if self._cache.get(k, object()) is None:
-                        self._cache.pop(k, None)
-
-        return results
+            try:
+                await self.__process_owned(owned, map_func)
+            except Exception:
+                # Ensure unresolved owned keys never remain in-flight after failures.
+                await self.__finalize_failure(owned)
+                raise
+            await self.__wait_for(wait_for, map_func)
+            return await self.__values(items)
+        finally:
+            await self.__exit_map()
