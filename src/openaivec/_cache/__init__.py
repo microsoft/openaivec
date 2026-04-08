@@ -1,12 +1,16 @@
 """Caching utilities used across OpenAIVec."""
 
+from ._backend import CacheBackend, DuckDBCacheBackend, InMemoryCacheBackend
 from .optimize import BatchSizeSuggester, PerformanceMetric
-from .proxy import AsyncBatchingMapProxy, BatchingMapProxy, ProxyBase
+from .proxy import AsyncBatchCache, BatchCache, BatchCacheBase
 
 __all__ = [
-    "AsyncBatchingMapProxy",
+    "AsyncBatchCache",
     "BatchSizeSuggester",
-    "BatchingMapProxy",
+    "BatchCache",
+    "CacheBackend",
+    "DuckDBCacheBackend",
+    "InMemoryCacheBackend",
     "PerformanceMetric",
-    "ProxyBase",
+    "BatchCacheBase",
 ]

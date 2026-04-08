@@ -6,7 +6,7 @@ import numpy as np
 from numpy.typing import NDArray
 from openai import AsyncOpenAI, InternalServerError, OpenAI, RateLimitError
 
-from openaivec._cache import AsyncBatchingMapProxy, BatchingMapProxy
+from openaivec._cache import AsyncBatchCache, BatchCache
 from openaivec._cache.proxy import DEFAULT_MANAGED_CACHE_SIZE
 from openaivec._log import observe
 from openaivec._util import backoff, backoff_async
@@ -40,7 +40,7 @@ class BatchEmbeddings:
         client (OpenAI): Configured OpenAI client.
         model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name
             (e.g., ``"text-embedding-3-small"``).
-        cache (BatchingMapProxy[str, NDArray[np.float32]]): Batching proxy for
+        cache (BatchCache[str, NDArray[np.float32]]): Batching proxy for
             ordered, cached mapping. Library-managed instances use bounded
             retention by default.
         api_kwargs (dict[str, Any]): Additional OpenAI API parameters stored at initialization.
@@ -48,8 +48,8 @@ class BatchEmbeddings:
 
     client: OpenAI
     model_name: str
-    cache: BatchingMapProxy[str, NDArray[np.float32]] = field(
-        default_factory=lambda: BatchingMapProxy(batch_size=None, max_cache_size=DEFAULT_MANAGED_CACHE_SIZE)
+    cache: BatchCache[str, NDArray[np.float32]] = field(
+        default_factory=lambda: BatchCache(batch_size=None, max_cache_size=DEFAULT_MANAGED_CACHE_SIZE)
     )
     api_kwargs: dict[str, Any] = field(default_factory=dict)
 
@@ -70,7 +70,7 @@ class BatchEmbeddings:
         return cls(
             client=client,
             model_name=model_name,
-            cache=BatchingMapProxy(batch_size=batch_size, max_cache_size=DEFAULT_MANAGED_CACHE_SIZE),
+            cache=BatchCache(batch_size=batch_size, max_cache_size=DEFAULT_MANAGED_CACHE_SIZE),
             api_kwargs=api_kwargs,
         )
 
@@ -148,15 +148,15 @@ class AsyncBatchEmbeddings:
     Attributes:
         client (AsyncOpenAI): Configured OpenAI async client.
         model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
-        cache (AsyncBatchingMapProxy[str, NDArray[np.float32]]): Async batching
+        cache (AsyncBatchCache[str, NDArray[np.float32]]): Async batching
             proxy. Library-managed instances use bounded retention by default.
         api_kwargs (dict): Additional OpenAI API parameters stored at initialization.
     """
 
     client: AsyncOpenAI
     model_name: str
-    cache: AsyncBatchingMapProxy[str, NDArray[np.float32]] = field(
-        default_factory=lambda: AsyncBatchingMapProxy(
+    cache: AsyncBatchCache[str, NDArray[np.float32]] = field(
+        default_factory=lambda: AsyncBatchCache(
             batch_size=None,
             max_concurrency=8,
             max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
@@ -189,7 +189,7 @@ class AsyncBatchEmbeddings:
         return cls(
             client=client,
             model_name=model_name,
-            cache=AsyncBatchingMapProxy(
+            cache=AsyncBatchCache(
                 batch_size=batch_size,
                 max_concurrency=max_concurrency,
                 max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,

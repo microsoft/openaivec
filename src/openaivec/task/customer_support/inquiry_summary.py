@@ -69,4 +69,3 @@ TASK_SPEC = TaskSpec(
     factory=inquiry_summary,
     response_format=InquirySummary,
 )
-

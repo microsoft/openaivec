@@ -45,4 +45,3 @@ TASK_SPEC = TaskSpec(
     factory=morphological_analysis,
     response_format=MorphologicalAnalysis,
 )
-

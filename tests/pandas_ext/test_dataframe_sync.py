@@ -132,7 +132,7 @@ class TestDataFrameSync:
         assert list(sample_df.columns) == expected_columns
 
     def test_parse_with_cache_methods(self):
-        from openaivec._cache import BatchingMapProxy
+        from openaivec._cache import BatchCache
 
         df = pd.DataFrame(
             [
@@ -140,7 +140,7 @@ class TestDataFrameSync:
                 {"review": "Poor quality", "rating": 1},
             ]
         )
-        cache = BatchingMapProxy(batch_size=2)
+        cache = BatchCache(batch_size=2)
         df_results = df.ai.parse_with_cache(instructions="Analyze sentiment", cache=cache)
         assert len(df_results) == 2
         assert all(isinstance(result, (dict, BaseModel)) for result in df_results)
@@ -221,8 +221,8 @@ def test_df_rows_to_json_series_serializes_timestamp():
     out = _df_rows_to_json_series(df)
     assert out.index.equals(df.index)
     assert out.name == "record"
-    assert json.loads(out.iloc[0]) == {"ts": "2024-01-01T12:34:56", "x": 1}
-    assert json.loads(out.iloc[1]) == {"ts": "2024-01-02T00:00:00", "x": 2}
+    assert json.loads(out.iloc[0]) == {"ts": "2024-01-01 12:34:56", "x": 1}
+    assert json.loads(out.iloc[1]) == {"ts": "2024-01-02 00:00:00", "x": 2}
 
 
 def test_df_rows_to_json_series_serializes_numpy_scalars():

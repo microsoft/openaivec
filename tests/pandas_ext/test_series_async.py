@@ -3,7 +3,6 @@
 import asyncio
 from types import SimpleNamespace
 
-import numpy as np
 import pandas as pd
 import pytest
 from pydantic import BaseModel
@@ -16,8 +15,8 @@ class TestSeriesAsync:
     @pytest.mark.asyncio
     async def test_series_aio_embeddings(self, sample_dataframe):
         embeddings = await sample_dataframe["name"].aio.embeddings()
-        assert all(isinstance(embedding, np.ndarray) for embedding in embeddings)
-        assert embeddings.shape == (3,)
+        assert len(embeddings) == 3
+        assert all(len(emb) > 0 for emb in embeddings)
         assert embeddings.index.equals(sample_dataframe.index)
 
     @pytest.mark.asyncio
@@ -61,10 +60,10 @@ class TestSeriesAsync:
         assert all(isinstance(result, str) for result in results)
 
     def test_shared_cache_async(self):
-        from openaivec._cache import AsyncBatchingMapProxy
+        from openaivec._cache import AsyncBatchCache
 
         async def run_test():
-            shared_cache = AsyncBatchingMapProxy(batch_size=32, max_concurrency=4)
+            shared_cache = AsyncBatchCache(batch_size=32, max_concurrency=4)
             series1 = pd.Series(["cat", "dog", "elephant"])
             series2 = pd.Series(["dog", "elephant", "lion"])
             result1 = await series1.aio.responses_with_cache(instructions="translate to French", cache=shared_cache)
@@ -102,7 +101,7 @@ async def test_series_aio_parse_with_cache_forwards_api_kwargs_to_schema_inferen
     monkeypatch.setattr(pandas_ext.AsyncOpenAIVecSeriesAccessor, "responses_with_cache", fake_responses_with_cache)
 
     series = pd.Series(["a", "b"])
-    cache = pandas_ext.AsyncBatchingMapProxy[str, str](batch_size=2, max_concurrency=1, show_progress=False)
+    cache = pandas_ext.AsyncBatchCache[str, str](batch_size=2, max_concurrency=1, show_progress=False)
 
     out = await series.aio.parse_with_cache(
         instructions="extract something",

@@ -58,6 +58,7 @@ nav:
       - Getting Started: examples/pandas.ipynb
       - PreparedTask Guide: examples/prepared_task.ipynb
       - Intelligent Fill: examples/intelligent_fill.ipynb
+      - DuckDB Processing: examples/duckdb.ipynb
       - Spark Processing: examples/spark.ipynb
       - Async Workflows: examples/aio.ipynb
       - Prompt Engineering: examples/prompt.ipynb
@@ -69,6 +70,7 @@ nav:
   - API Reference:
       - Main Package: api/main.md
       - pandas_ext: api/pandas_ext.md
+      - duckdb_ext: api/duckdb_ext.md
       - spark: api/spark.md
       - task: api/task.md
   - Task Domains:

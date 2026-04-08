@@ -5,7 +5,7 @@ from collections.abc import Awaitable, Callable
 
 import pandas as pd
 
-from openaivec._cache import AsyncBatchingMapProxy
+from openaivec._cache import AsyncBatchCache
 from openaivec._cache.proxy import DEFAULT_MANAGED_CACHE_SIZE
 from openaivec._model import PreparedTask, ResponseFormat
 from openaivec.pandas_ext._common import T, _df_rows_to_json_series
@@ -22,23 +22,23 @@ class AsyncOpenAIVecDataFrameAccessor:
     async def responses_with_cache(
         self,
         instructions: str,
-        cache: AsyncBatchingMapProxy[str, ResponseFormat],
+        cache: AsyncBatchCache[str, ResponseFormat],
         response_format: type[ResponseFormat] = str,
         **api_kwargs,
     ) -> pd.Series:
         """Call an LLM once for every DataFrame row using a provided cache (asynchronously).
 
         This method allows external control over caching behavior by accepting
-        a pre-configured AsyncBatchingMapProxy instance, enabling cache sharing
+        a pre-configured AsyncBatchCache instance, enabling cache sharing
         across multiple operations or custom batch size management. The concurrency
         is controlled by the cache instance itself.
 
         Example:
             ```python
-            from openaivec._cache import AsyncBatchingMapProxy
+            from openaivec._cache import AsyncBatchCache
 
             # Create a shared cache with custom batch size and concurrency
-            shared_cache = AsyncBatchingMapProxy(batch_size=64, max_concurrency=4)
+            shared_cache = AsyncBatchCache(batch_size=64, max_concurrency=4)
 
             df = pd.DataFrame([
                 {"name": "cat", "legs": 4},
@@ -54,7 +54,7 @@ class AsyncOpenAIVecDataFrameAccessor:
 
         Args:
             instructions (str): System prompt prepended to every user message.
-            cache (AsyncBatchingMapProxy[str, ResponseFormat]): Pre-configured cache
+            cache (AsyncBatchCache[str, ResponseFormat]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
             response_format (type[ResponseFormat], optional): Pydantic model or built‑in
@@ -130,7 +130,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         """
         return await self.responses_with_cache(
             instructions=instructions,
-            cache=AsyncBatchingMapProxy(
+            cache=AsyncBatchCache(
                 batch_size=batch_size,
                 max_concurrency=max_concurrency,
                 max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
@@ -143,7 +143,7 @@ class AsyncOpenAIVecDataFrameAccessor:
     async def task_with_cache(
         self,
         task: PreparedTask[ResponseFormat],
-        cache: AsyncBatchingMapProxy[str, ResponseFormat],
+        cache: AsyncBatchCache[str, ResponseFormat],
         **api_kwargs,
     ) -> pd.Series:
         """Execute a prepared task on every DataFrame row using a provided cache (asynchronously).
@@ -151,9 +151,9 @@ class AsyncOpenAIVecDataFrameAccessor:
         Example:
             ```python
             from openaivec._model import PreparedTask
-            from openaivec._cache import AsyncBatchingMapProxy
+            from openaivec._cache import AsyncBatchCache
 
-            shared_cache = AsyncBatchingMapProxy(batch_size=64, max_concurrency=4)
+            shared_cache = AsyncBatchCache(batch_size=64, max_concurrency=4)
             analysis_task = PreparedTask(...)
             df = pd.DataFrame([
                 {"name": "cat", "legs": 4},
@@ -166,7 +166,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         Args:
             task (PreparedTask): A pre-configured task containing instructions,
                 response format for processing the inputs.
-            cache (AsyncBatchingMapProxy[str, ResponseFormat]): Pre-configured cache
+            cache (AsyncBatchCache[str, ResponseFormat]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
@@ -253,7 +253,7 @@ class AsyncOpenAIVecDataFrameAccessor:
     async def parse_with_cache(
         self,
         instructions: str,
-        cache: AsyncBatchingMapProxy[str, ResponseFormat],
+        cache: AsyncBatchCache[str, ResponseFormat],
         response_format: type[ResponseFormat] | None = None,
         max_examples: int = 100,
         **api_kwargs,
@@ -265,9 +265,9 @@ class AsyncOpenAIVecDataFrameAccessor:
 
         Example:
             ```python
-            from openaivec._cache import AsyncBatchingMapProxy
+            from openaivec._cache import AsyncBatchCache
 
-            shared = AsyncBatchingMapProxy(batch_size=64, max_concurrency=4)
+            shared = AsyncBatchCache(batch_size=64, max_concurrency=4)
             result = await df.aio.parse_with_cache(
                 "Extract invoice details",
                 cache=shared,
@@ -278,7 +278,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         Args:
             instructions (str): Plain language extraction goals (e.g., "Extract
                 invoice details including items, quantities, and totals").
-            cache (AsyncBatchingMapProxy[str, ResponseFormat]): Pre-configured
+            cache (AsyncBatchCache[str, ResponseFormat]): Pre-configured
                 async cache for concurrent API call management.
             response_format (type[ResponseFormat] | None, optional): Target
                 structure. None triggers automatic schema inference. Defaults to None.
@@ -356,7 +356,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         """
         return await self.parse_with_cache(
             instructions=instructions,
-            cache=AsyncBatchingMapProxy(
+            cache=AsyncBatchCache(
                 batch_size=batch_size,
                 max_concurrency=max_concurrency,
                 max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,

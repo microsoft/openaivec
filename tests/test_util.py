@@ -65,6 +65,7 @@ Until version 1.18, Kubernetes followed an N-2 support policy, meaning that the 
         for chunk in chunks:
             assert len(enc.encode(chunk)) <= 256
 
+
 class TestBackoff:
     @pytest.mark.parametrize(
         "test_case,exceptions,scale,max_retries,fail_pattern,expected_calls,expected_result,expected_error",

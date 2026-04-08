@@ -45,9 +45,7 @@ class TestStructuredValidationRetries:
                 _build_validation_error(),
                 SimpleNamespace(
                     output_parsed=SimpleNamespace(
-                        assistant_messages=[
-                            SimpleNamespace(id=0, body=Fruit(name="apple", color="red", taste="sweet"))
-                        ]
+                        assistant_messages=[SimpleNamespace(id=0, body=Fruit(name="apple", color="red", taste="sweet"))]
                     )
                 ),
             ]
@@ -81,9 +79,7 @@ class TestStructuredValidationRetries:
                 validation_error,
                 SimpleNamespace(
                     output_parsed=SimpleNamespace(
-                        assistant_messages=[
-                            SimpleNamespace(id=0, body=Fruit(name="apple", color="red", taste="sweet"))
-                        ]
+                        assistant_messages=[SimpleNamespace(id=0, body=Fruit(name="apple", color="red", taste="sweet"))]
                     )
                 ),
             ]
@@ -114,9 +110,7 @@ class TestStructuredValidationRetries:
 
 class TestResponsesCachingAndErrors:
     def test_sync_parse_none_result_is_cached(self):
-        parse = Mock(
-            return_value=SimpleNamespace(output_parsed=None)
-        )
+        parse = Mock(return_value=SimpleNamespace(output_parsed=None))
         client = BatchResponses(
             client=SimpleNamespace(responses=SimpleNamespace(parse=parse)),  # type: ignore[arg-type]
             model_name="gpt-4.1-mini",
@@ -133,9 +127,7 @@ class TestResponsesCachingAndErrors:
 
     @pytest.mark.asyncio
     async def test_async_parse_none_result_is_cached(self):
-        parse = AsyncMock(
-            return_value=SimpleNamespace(output_parsed=None)
-        )
+        parse = AsyncMock(return_value=SimpleNamespace(output_parsed=None))
         client = AsyncBatchResponses(
             client=SimpleNamespace(responses=SimpleNamespace(parse=parse)),  # type: ignore[arg-type]
             model_name="gpt-4.1-mini",
@@ -182,9 +174,7 @@ class TestResponsesCachingAndErrors:
                 _build_validation_error(),
                 SimpleNamespace(
                     output_parsed=SimpleNamespace(
-                        assistant_messages=[
-                            SimpleNamespace(id=0, body=Fruit(name="apple", color="red", taste="sweet"))
-                        ]
+                        assistant_messages=[SimpleNamespace(id=0, body=Fruit(name="apple", color="red", taste="sweet"))]
                     )
                 ),
             ]
@@ -218,9 +208,7 @@ class TestResponsesCachingAndErrors:
                 _build_validation_error(),
                 SimpleNamespace(
                     output_parsed=SimpleNamespace(
-                        assistant_messages=[
-                            SimpleNamespace(id=0, body=Fruit(name="apple", color="red", taste="sweet"))
-                        ]
+                        assistant_messages=[SimpleNamespace(id=0, body=Fruit(name="apple", color="red", taste="sweet"))]
                     )
                 ),
             ]

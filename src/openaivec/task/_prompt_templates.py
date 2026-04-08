@@ -43,4 +43,3 @@ def grouped_mapping_section(title: str, mapping: Mapping[str, Sequence[str]]) ->
         joined_values = ", ".join(values)
         lines.append(f"- {key}: {joined_values}")
     return "\n".join(lines)
-

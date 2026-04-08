@@ -12,8 +12,8 @@ from openaivec import pandas_ext  # noqa: F401 – registers accessors
 class TestSeriesSync:
     def test_series_embeddings(self, sample_dataframe):
         embeddings = sample_dataframe["name"].ai.embeddings()
-        assert all(isinstance(embedding, np.ndarray) for embedding in embeddings)
-        assert embeddings.shape == (3,)
+        assert len(embeddings) == 3
+        assert all(len(emb) > 0 for emb in embeddings)
         assert embeddings.index.equals(sample_dataframe.index)
 
     def test_series_responses(self, sample_dataframe):
@@ -148,9 +148,9 @@ class TestSeriesSync:
             assert isinstance(result.confidence, float)
 
     def test_shared_cache_responses_sync(self):
-        from openaivec._cache import BatchingMapProxy
+        from openaivec._cache import BatchCache
 
-        shared_cache = BatchingMapProxy(batch_size=32)
+        shared_cache = BatchCache(batch_size=32)
         series1 = pd.Series(["cat", "dog", "elephant"])
         series2 = pd.Series(["dog", "elephant", "lion"])
 
@@ -169,31 +169,37 @@ class TestSeriesSync:
         assert result1[elephant_idx1] == result2[elephant_idx2]
 
     def test_shared_cache_embeddings_sync(self):
-        from openaivec._cache import BatchingMapProxy
+        from openaivec._cache import BatchCache
 
-        shared_cache = BatchingMapProxy(batch_size=32)
+        shared_cache = BatchCache(batch_size=32)
         series1 = pd.Series(["apple", "banana", "cherry"])
         series2 = pd.Series(["banana", "cherry", "date"])
 
         embeddings1 = series1.ai.embeddings_with_cache(cache=shared_cache)
         embeddings2 = series2.ai.embeddings_with_cache(cache=shared_cache)
 
-        assert all(isinstance(emb, np.ndarray) for emb in embeddings1)
-        assert all(isinstance(emb, np.ndarray) for emb in embeddings2)
+        assert all(len(emb) > 0 for emb in embeddings1)
+        assert all(len(emb) > 0 for emb in embeddings2)
         assert len(embeddings1) == 3
         assert len(embeddings2) == 3
         banana_idx1 = series1.loc[series1 == "banana"].index[0]
         banana_idx2 = series2.loc[series2 == "banana"].index[0]
         cherry_idx1 = series1.loc[series1 == "cherry"].index[0]
         cherry_idx2 = series2.loc[series2 == "cherry"].index[0]
-        np.testing.assert_array_equal(embeddings1[banana_idx1], embeddings2[banana_idx2])
-        np.testing.assert_array_equal(embeddings1[cherry_idx1], embeddings2[cherry_idx2])
+        np.testing.assert_array_equal(
+            np.asarray(embeddings1[banana_idx1], dtype=np.float32),
+            np.asarray(embeddings2[banana_idx2], dtype=np.float32),
+        )
+        np.testing.assert_array_equal(
+            np.asarray(embeddings1[cherry_idx1], dtype=np.float32),
+            np.asarray(embeddings2[cherry_idx2], dtype=np.float32),
+        )
 
     def test_parse_with_cache_methods(self):
-        from openaivec._cache import BatchingMapProxy
+        from openaivec._cache import BatchCache
 
         series = pd.Series(["Good product", "Bad experience"])
-        cache = BatchingMapProxy(batch_size=2)
+        cache = BatchCache(batch_size=2)
         results = series.ai.parse_with_cache(instructions="Extract sentiment", cache=cache)
         assert len(results) == 2
         assert all(isinstance(result, (dict, BaseModel)) for result in results)

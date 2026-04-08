@@ -203,12 +203,15 @@ def _register_default_providers() -> None:
     CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName("gpt-4.1-mini"))
     CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName("text-embedding-3-small"))
     CONTAINER.register(DefaultAzureCredential, lambda: DefaultAzureCredential())
-    CONTAINER.register(BearerTokenProvider, lambda: BearerTokenProvider(
-        value=get_bearer_token_provider(
-            CONTAINER.resolve(DefaultAzureCredential),
-            "https://cognitiveservices.azure.com/.default",
-        )
-    ))
+    CONTAINER.register(
+        BearerTokenProvider,
+        lambda: BearerTokenProvider(
+            value=get_bearer_token_provider(
+                CONTAINER.resolve(DefaultAzureCredential),
+                "https://cognitiveservices.azure.com/.default",
+            )
+        ),
+    )
     CONTAINER.register(OpenAIAPIKey, lambda: OpenAIAPIKey(os.getenv("OPENAI_API_KEY")))
     CONTAINER.register(AzureOpenAIAPIKey, lambda: AzureOpenAIAPIKey(os.getenv("AZURE_OPENAI_API_KEY")))
     CONTAINER.register(AzureOpenAIBaseURL, lambda: AzureOpenAIBaseURL(os.getenv("AZURE_OPENAI_BASE_URL")))
@@ -271,3 +274,86 @@ def set_default_registrations() -> None:
 
 
 ensure_default_registrations()
+
+
+# ---------------------------------------------------------------------------
+# Public configuration helpers
+# ---------------------------------------------------------------------------
+
+
+def set_client(client: OpenAI) -> None:
+    """Register a custom OpenAI-compatible client.
+
+    Args:
+        client (OpenAI): A pre-configured ``openai.OpenAI`` or
+            ``openai.AzureOpenAI`` instance.
+    """
+    if client.__class__.__name__ == "AzureOpenAI" and hasattr(client, "base_url"):
+        _check_azure_v1_api_url(str(client.base_url))
+    CONTAINER.register(OpenAI, lambda: client)
+
+
+def get_client() -> OpenAI:
+    """Get the currently registered OpenAI-compatible client.
+
+    Returns:
+        OpenAI: The registered client instance.
+    """
+    return CONTAINER.resolve(OpenAI)
+
+
+def set_async_client(client: AsyncOpenAI) -> None:
+    """Register a custom asynchronous OpenAI-compatible client.
+
+    Args:
+        client (AsyncOpenAI): A pre-configured ``openai.AsyncOpenAI`` or
+            ``openai.AsyncAzureOpenAI`` instance.
+    """
+    if client.__class__.__name__ == "AsyncAzureOpenAI" and hasattr(client, "base_url"):
+        _check_azure_v1_api_url(str(client.base_url))
+    CONTAINER.register(AsyncOpenAI, lambda: client)
+
+
+def get_async_client() -> AsyncOpenAI:
+    """Get the currently registered asynchronous OpenAI-compatible client.
+
+    Returns:
+        AsyncOpenAI: The registered async client instance.
+    """
+    return CONTAINER.resolve(AsyncOpenAI)
+
+
+def set_responses_model(name: str) -> None:
+    """Override the model used for text responses.
+
+    Args:
+        name (str): Model or deployment name (e.g. ``"gpt-4.1-mini"``).
+    """
+    CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName(name))
+
+
+def get_responses_model() -> str:
+    """Get the currently registered model name for text responses.
+
+    Returns:
+        str: The model name.
+    """
+    return CONTAINER.resolve(ResponsesModelName).value
+
+
+def set_embeddings_model(name: str) -> None:
+    """Override the model used for text embeddings.
+
+    Args:
+        name (str): Model or deployment name (e.g. ``"text-embedding-3-small"``).
+    """
+    CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName(name))
+
+
+def get_embeddings_model() -> str:
+    """Get the currently registered model name for text embeddings.
+
+    Returns:
+        str: The model name.
+    """
+    return CONTAINER.resolve(EmbeddingsModelName).value

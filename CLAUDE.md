@@ -131,6 +131,7 @@ src/openaivec/
     - `collections.abc.Iterator` instead of `typing.Iterator`
   - Apply comprehensive type annotations to function signatures and variables
 - **Comments**: Avoid adding comments unless explicitly requested
+- **Classes**: Use `@dataclass` for all classes — including wrappers, backends, and caches. Every field must have an explicit type annotation. Use Pydantic only at validation boundaries (API responses, task models). Never create collaborators inside `__init__` / `__post_init__`; accept them as typed dataclass fields (dependency injection) so they can be swapped or mocked. Provide a `@classmethod of(...)` factory for convenient construction with sensible defaults.
 - **Imports**: 
   - **MUST use absolute imports** - All imports within the project must use absolute paths (e.g., `from openaivec.responses import BatchResponses`)
   - Never use relative imports (e.g., `from .responses import ...` or `from ..task import ...`)
