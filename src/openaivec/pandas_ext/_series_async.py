@@ -54,11 +54,9 @@ class AsyncOpenAIVecSeriesAccessor:
                 Set cache.batch_size=None to enable automatic batch size optimization.
             response_format (type[ResponseFormat], optional): Pydantic model or built‑in
                 type the assistant should return. Defaults to ``str``.
-            **api_kwargs: Additional keyword arguments forwarded verbatim to
-                ``AsyncOpenAI.responses.parse`` (e.g. ``temperature``, ``top_p``,
-                ``max_output_tokens``, penalties, future parameters). Core batching keys
-                (model, instructions, input, text_format) are protected and silently
-                ignored if provided.
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             pandas.Series: Series whose values are instances of ``response_format``.
@@ -115,11 +113,9 @@ class AsyncOpenAIVecSeriesAccessor:
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to ``8``.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
-            **api_kwargs: Additional keyword arguments forwarded verbatim to
-                ``AsyncOpenAI.responses.parse`` (e.g. ``temperature``, ``top_p``,
-                ``max_output_tokens``, penalties, future parameters). Core batching keys
-                (model, instructions, input, text_format) are protected and silently
-                ignored if provided.
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             pandas.Series: Series whose values are instances of ``response_format``.
@@ -170,7 +166,9 @@ class AsyncOpenAIVecSeriesAccessor:
             cache (AsyncBatchingMapProxy[str, np.ndarray]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
-            **api_kwargs: Additional OpenAI API parameters (e.g., dimensions for text-embedding-3 models).
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             pandas.Series: Series whose values are ``np.ndarray`` objects
@@ -222,7 +220,9 @@ class AsyncOpenAIVecSeriesAccessor:
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to ``8``.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
-            **api_kwargs: Additional OpenAI API parameters (e.g., dimensions for text-embedding-3 models).
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             pandas.Series: Series whose values are ``np.ndarray`` objects
@@ -254,35 +254,26 @@ class AsyncOpenAIVecSeriesAccessor:
         across multiple operations or custom batch size management. The concurrency
         is controlled by the cache instance itself.
 
+        Example:
+            ```python
+            from openaivec._model import PreparedTask
+            from openaivec._cache import AsyncBatchingMapProxy
+
+            shared_cache = AsyncBatchingMapProxy(batch_size=64, max_concurrency=4)
+            sentiment_task = PreparedTask(...)
+            reviews = pd.Series(["Great product!", "Not satisfied", "Amazing quality"])
+            results = await reviews.aio.task_with_cache(sentiment_task, cache=shared_cache)
+            ```
+
         Args:
             task (PreparedTask): A pre-configured task containing instructions,
                 response format for processing the inputs.
             cache (AsyncBatchingMapProxy[str, ResponseFormat]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
-            **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
-
-        Example:
-            ```python
-            from openaivec._model import PreparedTask
-            from openaivec._cache import AsyncBatchingMapProxy
-
-            # Create a shared cache with custom batch size and concurrency
-            shared_cache = AsyncBatchingMapProxy(batch_size=64, max_concurrency=4)
-
-            # Assume you have a prepared task for sentiment analysis
-            sentiment_task = PreparedTask(...)
-
-            reviews = pd.Series(["Great product!", "Not satisfied", "Amazing quality"])
-            # Must be awaited
-            results = await reviews.aio.task_with_cache(sentiment_task, cache=shared_cache)
-            ```
-
-        Additional Keyword Args:
-            Arbitrary OpenAI Responses API parameters (e.g. ``frequency_penalty``, ``presence_penalty``,
-            ``seed``, etc.) are forwarded verbatim to the underlying client. Core batching / routing
-            keys (``model``, ``instructions`` / system message, user ``input``) are managed by the
-            library and cannot be overridden.
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             pandas.Series: Series whose values are instances of the task's
@@ -343,11 +334,9 @@ class AsyncOpenAIVecSeriesAccessor:
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to 8.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
-            **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
-
-        Note:
-            Core batching / routing keys (``model``, ``instructions`` / system message, user ``input``)
-            are managed by the library and cannot be overridden.
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             pandas.Series: Series whose values are instances of the task's
@@ -381,6 +370,18 @@ class AsyncOpenAIVecSeriesAccessor:
         content into structured data. Automatic schema inference is performed
         when no response format is specified.
 
+        Example:
+            ```python
+            from openaivec._cache import AsyncBatchingMapProxy
+
+            shared = AsyncBatchingMapProxy(batch_size=64, max_concurrency=4)
+            result = await series.aio.parse_with_cache(
+                "Extract dates and amounts",
+                cache=shared,
+                response_format=None,
+            )
+            ```
+
         Args:
             instructions (str): Plain language description of what to extract
                 (e.g., "Extract dates, amounts, and descriptions from receipts").
@@ -393,7 +394,9 @@ class AsyncOpenAIVecSeriesAccessor:
                 type, or None for automatic inference. Defaults to None.
             max_examples (int, optional): Maximum values to analyze for schema
                 inference (when response_format is None). Defaults to 100.
-            **api_kwargs: Additional OpenAI API parameters.
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             pandas.Series: Series containing parsed structured data aligned
@@ -449,7 +452,9 @@ class AsyncOpenAIVecSeriesAccessor:
             max_concurrency (int, optional): Maximum concurrent API requests.
                 Defaults to 8.
             show_progress (bool, optional): Show progress bar. Defaults to True.
-            **api_kwargs: Additional OpenAI API parameters.
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             pandas.Series: Parsed structured data indexed like the original Series.

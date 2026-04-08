@@ -25,7 +25,7 @@ class OpenAIVecDataFrameAccessor:
         response_format: type[ResponseFormat] = str,
         **api_kwargs,
     ) -> pd.Series:
-        """Generate a response for each row after serializing it to JSON using a provided cache.
+        """Call an LLM once for every DataFrame row using a provided cache.
 
         This method allows external control over caching behavior by accepting
         a pre-configured BatchingMapProxy instance, enabling cache sharing
@@ -50,13 +50,15 @@ class OpenAIVecDataFrameAccessor:
             ```
 
         Args:
-            instructions (str): System prompt for the assistant.
+            instructions (str): System prompt prepended to every user message.
             cache (BatchingMapProxy[str, ResponseFormat]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
-            response_format (type[ResponseFormat], optional): Desired Python type of the
-                responses. Defaults to ``str``.
-            **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
+            response_format (type[ResponseFormat], optional): Pydantic model or built‑in
+                type the assistant should return. Defaults to ``str``.
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             pandas.Series: Responses aligned with the DataFrame's original index.
@@ -76,7 +78,7 @@ class OpenAIVecDataFrameAccessor:
         show_progress: bool = True,
         **api_kwargs,
     ) -> pd.Series:
-        """Generate a response for each row after serializing it to JSON.
+        """Call an LLM once for every DataFrame row.
 
         Example:
             ```python
@@ -98,14 +100,16 @@ class OpenAIVecDataFrameAccessor:
             ```
 
         Args:
-            instructions (str): System prompt for the assistant.
-            response_format (type[ResponseFormat], optional): Desired Python type of the
-                responses. Defaults to ``str``.
-            batch_size (int | None, optional): Number of requests sent in one batch.
-                Defaults to ``None`` (automatic batch size optimization
+            instructions (str): System prompt prepended to every user message.
+            response_format (type[ResponseFormat], optional): Pydantic model or built‑in
+                type the assistant should return. Defaults to ``str``.
+            batch_size (int | None, optional): Number of prompts grouped into a single
+                request. Defaults to ``None`` (automatic batch size optimization
                 based on execution time). Set to a positive integer for fixed batch size.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
-            **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             pandas.Series: Responses aligned with the DataFrame's original index.
@@ -127,18 +131,39 @@ class OpenAIVecDataFrameAccessor:
         cache: BatchingMapProxy[str, ResponseFormat],
         **api_kwargs,
     ) -> pd.Series:
-        """Execute a prepared task on each DataFrame row after serializing it to JSON using a provided cache.
+        """Execute a prepared task on every DataFrame row using a provided cache.
+
+        Example:
+            ```python
+            from openaivec._model import PreparedTask
+            from openaivec._cache import BatchingMapProxy
+
+            shared_cache = BatchingMapProxy(batch_size=64)
+            analysis_task = PreparedTask(...)
+            df = pd.DataFrame([
+                {"name": "cat", "legs": 4},
+                {"name": "dog", "legs": 4},
+                {"name": "elephant", "legs": 4},
+            ])
+            results = df.ai.task_with_cache(analysis_task, cache=shared_cache)
+            ```
 
         Args:
-            task (PreparedTask): Prepared task (instructions + response_format).
-            cache (BatchingMapProxy[str, ResponseFormat]): Pre‑configured cache instance.
-            **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
+            task (PreparedTask): A pre-configured task containing instructions,
+                response format for processing the inputs.
+            cache (BatchingMapProxy[str, ResponseFormat]): Pre-configured cache
+                instance for managing API call batching and deduplication.
+                Set cache.batch_size=None to enable automatic batch size optimization.
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
+
+        Returns:
+            pandas.Series: Series whose values are instances of the task's
+                response format, aligned with the DataFrame's original index.
 
         Note:
             Core routing keys are managed internally.
-
-        Returns:
-            pandas.Series: Task results aligned with the DataFrame's original index.
         """
         return _df_rows_to_json_series(self._obj).ai.task_with_cache(
             task=task,
@@ -153,7 +178,7 @@ class OpenAIVecDataFrameAccessor:
         show_progress: bool = True,
         **api_kwargs,
     ) -> pd.Series:
-        """Execute a prepared task on each DataFrame row after serializing it to JSON.
+        """Execute a prepared task on every DataFrame row.
 
         Example:
             ```python
@@ -186,15 +211,17 @@ class OpenAIVecDataFrameAccessor:
                 to optimize API usage. Defaults to ``None`` (automatic batch size
                 optimization based on execution time). Set to a positive integer for fixed batch size.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
-            **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
-
-        Note:
-            Core batching / routing keys (``model``, ``instructions`` / system message, user ``input``)
-            are managed by the library and cannot be overridden.
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             pandas.Series: Series whose values are instances of the task's
                 response format, aligned with the DataFrame's original index.
+
+        Note:
+            Core batching / routing keys (``model``, ``instructions`` / system message, user ``input``)
+            are managed by the library and cannot be overridden.
         """
         return _df_rows_to_json_series(self._obj).ai.task(
             task=task,
@@ -217,20 +244,33 @@ class OpenAIVecDataFrameAccessor:
         structured information using an LLM. External cache control enables
         deduplication across operations and custom batch management.
 
+        Example:
+            ```python
+            from openaivec._cache import BatchingMapProxy
+
+            shared = BatchingMapProxy(batch_size=64)
+            result = df.ai.parse_with_cache(
+                "Extract shipping details",
+                cache=shared,
+                response_format=None,
+            )
+            ```
+
         Args:
             instructions (str): Plain language description of what information
                 to extract from each row (e.g., "Extract shipping details and
                 order status"). Guides both extraction and schema inference.
             cache (BatchingMapProxy[str, ResponseFormat]): Pre-configured cache
                 instance for managing API call batching and deduplication.
-                Set cache.batch_size=None for automatic optimization.
+                Set cache.batch_size=None to enable automatic batch size optimization.
             response_format (type[ResponseFormat] | None, optional): Target
                 structure for parsed data. Can be a Pydantic model, built-in
                 type, or None for automatic schema inference. Defaults to None.
             max_examples (int, optional): Maximum rows to analyze when inferring
                 schema (only used when response_format is None). Defaults to 100.
-            **api_kwargs: Additional OpenAI API parameters (temperature, top_p,
-                frequency_penalty, presence_penalty, seed, etc.).
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             pandas.Series: Series containing parsed structured data as instances
@@ -273,7 +313,9 @@ class OpenAIVecDataFrameAccessor:
                 enables automatic optimization. Defaults to None.
             show_progress (bool, optional): Show progress bar in Jupyter
                 notebooks. Defaults to True.
-            **api_kwargs: Additional OpenAI API parameters.
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             pandas.Series: Parsed structured data indexed like the original
@@ -322,6 +364,9 @@ class OpenAIVecDataFrameAccessor:
             max_examples (int): Maximum number of rows to analyze from the
                 DataFrame. The method will sample randomly up to this limit.
                 Defaults to 100.
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             InferredSchema: An object containing:
@@ -364,7 +409,10 @@ class OpenAIVecDataFrameAccessor:
         )
 
     def extract(self, column: str) -> pd.DataFrame:
-        """Flatten one column of Pydantic models/dicts into top‑level columns.
+        """Flatten one column of Pydantic models or dicts into top-level columns.
+
+        The target column should contain Pydantic models or dicts. The source
+        column is dropped from the result.
 
         Example:
             ```python

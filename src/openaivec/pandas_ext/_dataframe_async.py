@@ -26,7 +26,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         response_format: type[ResponseFormat] = str,
         **api_kwargs,
     ) -> pd.Series:
-        """Generate a response for each row after serializing it to JSON using a provided cache (asynchronously).
+        """Call an LLM once for every DataFrame row using a provided cache (asynchronously).
 
         This method allows external control over caching behavior by accepting
         a pre-configured AsyncBatchingMapProxy instance, enabling cache sharing
@@ -53,13 +53,15 @@ class AsyncOpenAIVecDataFrameAccessor:
             ```
 
         Args:
-            instructions (str): System prompt for the assistant.
+            instructions (str): System prompt prepended to every user message.
             cache (AsyncBatchingMapProxy[str, ResponseFormat]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
-            response_format (type[ResponseFormat], optional): Desired Python type of the
-                responses. Defaults to ``str``.
-            **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
+            response_format (type[ResponseFormat], optional): Pydantic model or built‑in
+                type the assistant should return. Defaults to ``str``.
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             pandas.Series: Responses aligned with the DataFrame's original index.
@@ -84,7 +86,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         show_progress: bool = True,
         **api_kwargs,
     ) -> pd.Series:
-        """Generate a response for each row after serializing it to JSON (asynchronously).
+        """Call an LLM once for every DataFrame row (asynchronously).
 
         Example:
             ```python
@@ -107,16 +109,18 @@ class AsyncOpenAIVecDataFrameAccessor:
             ```
 
         Args:
-            instructions (str): System prompt for the assistant.
-            response_format (type[ResponseFormat], optional): Desired Python type of the
-                responses. Defaults to ``str``.
-            batch_size (int | None, optional): Number of requests sent in one batch.
-                Defaults to ``None`` (automatic batch size optimization
+            instructions (str): System prompt prepended to every user message.
+            response_format (type[ResponseFormat], optional): Pydantic model or built‑in
+                type the assistant should return. Defaults to ``str``.
+            batch_size (int | None, optional): Number of prompts grouped into a single
+                request. Defaults to ``None`` (automatic batch size optimization
                 based on execution time). Set to a positive integer for fixed batch size.
-            **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to ``8``.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             pandas.Series: Responses aligned with the DataFrame's original index.
@@ -142,20 +146,36 @@ class AsyncOpenAIVecDataFrameAccessor:
         cache: AsyncBatchingMapProxy[str, ResponseFormat],
         **api_kwargs,
     ) -> pd.Series:
-        """Execute a prepared task on each DataFrame row using a provided cache (asynchronously).
+        """Execute a prepared task on every DataFrame row using a provided cache (asynchronously).
 
-        After serializing each row to JSON, this method executes the prepared task.
+        Example:
+            ```python
+            from openaivec._model import PreparedTask
+            from openaivec._cache import AsyncBatchingMapProxy
+
+            shared_cache = AsyncBatchingMapProxy(batch_size=64, max_concurrency=4)
+            analysis_task = PreparedTask(...)
+            df = pd.DataFrame([
+                {"name": "cat", "legs": 4},
+                {"name": "dog", "legs": 4},
+                {"name": "elephant", "legs": 4},
+            ])
+            results = await df.aio.task_with_cache(analysis_task, cache=shared_cache)
+            ```
 
         Args:
-            task (PreparedTask): Prepared task (instructions + response_format).
-            cache (AsyncBatchingMapProxy[str, ResponseFormat]): Pre‑configured async cache instance.
-            **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
-
-        Note:
-            Core routing keys are managed internally.
+            task (PreparedTask): A pre-configured task containing instructions,
+                response format for processing the inputs.
+            cache (AsyncBatchingMapProxy[str, ResponseFormat]): Pre-configured cache
+                instance for managing API call batching and deduplication.
+                Set cache.batch_size=None to enable automatic batch size optimization.
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
-            pandas.Series: Task results aligned with the DataFrame's original index.
+            pandas.Series: Series whose values are instances of the task's
+                response format, aligned with the DataFrame's original index.
 
         Note:
             This is an asynchronous method and must be awaited.
@@ -174,7 +194,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         show_progress: bool = True,
         **api_kwargs,
     ) -> pd.Series:
-        """Execute a prepared task on each DataFrame row after serializing it to JSON (asynchronously).
+        """Execute a prepared task on every DataFrame row (asynchronously).
 
         Example:
             ```python
@@ -210,11 +230,9 @@ class AsyncOpenAIVecDataFrameAccessor:
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to 8.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
-            **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
-
-        Note:
-            Core batching / routing keys (``model``, ``instructions`` / system message, user ``input``)
-            are managed by the library and cannot be overridden.
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             pandas.Series: Series whose values are instances of the task's
@@ -240,10 +258,22 @@ class AsyncOpenAIVecDataFrameAccessor:
         max_examples: int = 100,
         **api_kwargs,
     ) -> pd.Series:
-        """Parse DataFrame rows into structured data using an LLM with cache (asynchronously).
+        """Parse DataFrame rows into structured data using an LLM with a provided cache (asynchronously).
 
         Async method for parsing DataFrame rows (as JSON) with external cache
         control, enabling deduplication across operations and concurrent processing.
+
+        Example:
+            ```python
+            from openaivec._cache import AsyncBatchingMapProxy
+
+            shared = AsyncBatchingMapProxy(batch_size=64, max_concurrency=4)
+            result = await df.aio.parse_with_cache(
+                "Extract invoice details",
+                cache=shared,
+                response_format=None,
+            )
+            ```
 
         Args:
             instructions (str): Plain language extraction goals (e.g., "Extract
@@ -254,7 +284,9 @@ class AsyncOpenAIVecDataFrameAccessor:
                 structure. None triggers automatic schema inference. Defaults to None.
             max_examples (int, optional): Maximum rows for schema inference.
                 Defaults to 100.
-            **api_kwargs: Additional OpenAI API parameters.
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             pandas.Series: Parsed structured data indexed like the original DataFrame.
@@ -297,7 +329,9 @@ class AsyncOpenAIVecDataFrameAccessor:
             max_concurrency (int, optional): Maximum concurrent requests.
                 Defaults to 8.
             show_progress (bool, optional): Show progress bar. Defaults to True.
-            **api_kwargs: Additional OpenAI API parameters.
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             pandas.Series: Parsed structured data indexed like the original DataFrame.

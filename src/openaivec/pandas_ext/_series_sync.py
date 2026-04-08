@@ -36,15 +36,24 @@ class OpenAIVecSeriesAccessor:
         This is a lower-level method that allows explicit cache management for advanced
         use cases. Most users should use the standard ``responses`` method instead.
 
+        Example:
+            ```python
+            from openaivec._cache import BatchingMapProxy
+
+            shared = BatchingMapProxy(batch_size=64)
+            result = series.ai.responses_with_cache("classify", cache=shared)
+            ```
+
         Args:
             instructions (str): System prompt prepended to every user message.
-            cache (BatchingMapProxy[str, ResponseFormat]): Explicit cache instance for
-                batching and deduplication control.
-            response_format (type[ResponseFormat], optional): Pydantic model or built-in
+            cache (BatchingMapProxy[str, ResponseFormat]): Pre-configured cache
+                instance for managing API call batching and deduplication.
+                Set cache.batch_size=None to enable automatic batch size optimization.
+            response_format (type[ResponseFormat], optional): Pydantic model or built‑in
                 type the assistant should return. Defaults to ``str``.
-            **api_kwargs: Arbitrary OpenAI Responses API parameters (e.g. ``temperature``,
-                ``top_p``, ``frequency_penalty``, ``presence_penalty``, ``seed``, etc.) are
-                forwarded verbatim to the underlying client.
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             pandas.Series: Series whose values are instances of ``response_format``.
@@ -100,7 +109,9 @@ class OpenAIVecSeriesAccessor:
                 request. Defaults to ``None`` (automatic batch size optimization
                 based on execution time). Set to a positive integer for fixed batch size.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
-            **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             pandas.Series: Series whose values are instances of ``response_format``.
@@ -143,7 +154,9 @@ class OpenAIVecSeriesAccessor:
             cache (BatchingMapProxy[str, np.ndarray]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
-            **api_kwargs: Additional keyword arguments to pass to the OpenAI API.
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             pandas.Series: Series whose values are ``np.ndarray`` objects
@@ -184,7 +197,9 @@ class OpenAIVecSeriesAccessor:
                 single request. Defaults to ``None`` (automatic batch size optimization
                 based on execution time). Set to a positive integer for fixed batch size.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
-            **api_kwargs: Additional OpenAI API parameters (e.g., dimensions for text-embedding-3 models).
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             pandas.Series: Series whose values are ``np.ndarray`` objects
@@ -213,22 +228,32 @@ class OpenAIVecSeriesAccessor:
 
         Example:
             ```python
+            from openaivec._model import PreparedTask
             from openaivec._cache import BatchingMapProxy
+
             shared_cache = BatchingMapProxy(batch_size=64)
-            reviews.ai.task_with_cache(sentiment_task, cache=shared_cache)
+            sentiment_task = PreparedTask(...)
+            reviews = pd.Series(["Great product!", "Not satisfied", "Amazing quality"])
+            results = reviews.ai.task_with_cache(sentiment_task, cache=shared_cache)
             ```
 
         Args:
-            task (PreparedTask): Prepared task (instructions + response_format).
-            cache (BatchingMapProxy[str, ResponseFormat]): Pre‑configured cache instance.
-            **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
+            task (PreparedTask): A pre-configured task containing instructions,
+                response format for processing the inputs.
+            cache (BatchingMapProxy[str, ResponseFormat]): Pre-configured cache
+                instance for managing API call batching and deduplication.
+                Set cache.batch_size=None to enable automatic batch size optimization.
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
+
+        Returns:
+            pandas.Series: Series whose values are instances of the task's
+                response format, aligned with the original Series index.
 
         Note:
             Core routing keys (``model``, system instructions, user input) are managed
             internally and cannot be overridden.
-
-        Returns:
-            pandas.Series: Task results aligned with the original Series index.
         """
         client: BatchResponses = BatchResponses(
             client=CONTAINER.resolve(OpenAI),
@@ -276,14 +301,17 @@ class OpenAIVecSeriesAccessor:
                 request to optimize API usage. Defaults to ``None`` (automatic batch size
                 optimization based on execution time). Set to a positive integer for fixed batch size.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
-            **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
+
+        Returns:
+            pandas.Series: Series whose values are instances of the task's
+                response format, aligned with the original Series index.
 
         Note:
             Core batching / routing keys (``model``, ``instructions`` / system message,
             user ``input``) are managed by the library and cannot be overridden.
-
-        Returns:
-            pandas.Series: Series whose values are instances of the task's response format.
         """
         return self.task_with_cache(
             task=task,
@@ -303,12 +331,24 @@ class OpenAIVecSeriesAccessor:
         max_examples: int = 100,
         **api_kwargs,
     ) -> pd.Series:
-        """Parse Series values using an LLM with a provided cache.
+        """Parse Series values into structured data using an LLM with a provided cache.
 
         This method allows external control over caching behavior while parsing
         Series content into structured data. If no response format is provided,
         the method automatically infers an appropriate schema by analyzing the
         data patterns.
+
+        Example:
+            ```python
+            from openaivec._cache import BatchingMapProxy
+
+            shared = BatchingMapProxy(batch_size=64)
+            result = series.ai.parse_with_cache(
+                "Extract dates and amounts",
+                cache=shared,
+                response_format=None,
+            )
+            ```
 
         Args:
             instructions (str): Plain language description of what information
@@ -326,9 +366,9 @@ class OpenAIVecSeriesAccessor:
             max_examples (int, optional): Maximum number of Series values to
                 analyze when inferring the schema. Only used when response_format
                 is None. Defaults to 100.
-            **api_kwargs: Additional OpenAI API parameters (temperature, top_p,
-                frequency_penalty, presence_penalty, seed, etc.) forwarded to
-                the underlying API calls.
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             pandas.Series: Series containing parsed structured data. Each value
@@ -381,8 +421,9 @@ class OpenAIVecSeriesAccessor:
                 per batch. None enables automatic optimization. Defaults to None.
             show_progress (bool, optional): Display progress bar in Jupyter
                 notebooks. Defaults to True.
-            **api_kwargs: Additional OpenAI API parameters (temperature, top_p,
-                frequency_penalty, presence_penalty, seed, etc.).
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             pandas.Series: Series containing parsed structured data as instances
@@ -445,8 +486,9 @@ class OpenAIVecSeriesAccessor:
                 analyze for pattern detection. The method samples randomly up
                 to this limit. Higher values may improve schema quality but
                 increase inference time. Defaults to 100.
-            **api_kwargs: Additional OpenAI API parameters for fine-tuning
-                the inference process.
+            **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
+                ``top_p``, ``max_output_tokens``) forwarded verbatim to the
+                underlying client.
 
         Returns:
             InferredSchema: A comprehensive schema object containing:
@@ -502,15 +544,13 @@ class OpenAIVecSeriesAccessor:
         return inferer.infer_schema(input)
 
     def count_tokens(self) -> pd.Series:
-        """Count `tiktoken` tokens per row.
+        """Count ``tiktoken`` tokens per element.
 
         Example:
             ```python
             animals = pd.Series(["cat", "dog", "elephant"])
             animals.ai.count_tokens()
             ```
-            This method uses the `tiktoken` library to count tokens based on the
-            model name configured via `set_responses_model`.
 
         Returns:
             pandas.Series: Token counts for each element.
@@ -519,7 +559,10 @@ class OpenAIVecSeriesAccessor:
         return self._obj.map(encoding.encode).map(len).rename("num_tokens")
 
     def extract(self) -> pd.DataFrame:
-        """Expand a Series of Pydantic models/dicts into columns.
+        """Expand a Series of Pydantic models or dicts into DataFrame columns.
+
+        Each element should be a Pydantic model or dict. If the Series has a
+        name, extracted columns are prefixed with it.
 
         Example:
             ```python
@@ -530,9 +573,6 @@ class OpenAIVecSeriesAccessor:
             ])
             animals.ai.extract()
             ```
-            This method returns a DataFrame with the same index as the Series,
-            where each column corresponds to a key in the dictionaries.
-            If the Series has a name, extracted columns are prefixed with it.
 
         Returns:
             pandas.DataFrame: Expanded representation.
