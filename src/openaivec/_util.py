@@ -160,6 +160,9 @@ class TextChunker:
 
         Returns:
             list[str]: List of text chunks respecting the ``max_tokens`` limit.
+
+        Raises:
+            ValueError: If any individual split segment exceeds ``max_tokens``.
         """
         pattern = f"({'|'.join(re.escape(s) for s in sep)})"
         sentences = re.split(pattern, original)
@@ -170,6 +173,8 @@ class TextChunker:
         sentence = ""
         token_count = 0
         for s, n in sentences:
+            if n > max_tokens:
+                raise ValueError(f"Segment exceeds max_tokens ({n} > {max_tokens}): {s!r}")
             if token_count + n > max_tokens:
                 if sentence:
                     chunks.append(sentence)

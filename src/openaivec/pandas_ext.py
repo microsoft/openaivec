@@ -59,6 +59,7 @@ from openai import AsyncOpenAI, OpenAI
 from pydantic import BaseModel
 
 from openaivec._cache import AsyncBatchingMapProxy, BatchingMapProxy
+from openaivec._cache.proxy import DEFAULT_MANAGED_CACHE_SIZE
 from openaivec._embeddings import AsyncBatchEmbeddings, BatchEmbeddings
 from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
 from openaivec._provider import CONTAINER, _check_azure_v1_api_url
@@ -301,7 +302,11 @@ class OpenAIVecSeriesAccessor:
         """
         return self.responses_with_cache(
             instructions=instructions,
-            cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
+            cache=BatchingMapProxy(
+                batch_size=batch_size,
+                max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
+                show_progress=show_progress,
+            ),
             response_format=response_format,
             **api_kwargs,
         )
@@ -381,7 +386,11 @@ class OpenAIVecSeriesAccessor:
                 (dtype ``float32``).
         """
         return self.embeddings_with_cache(
-            cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
+            cache=BatchingMapProxy(
+                batch_size=batch_size,
+                max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
+                show_progress=show_progress,
+            ),
             **api_kwargs,
         )
 
@@ -473,7 +482,11 @@ class OpenAIVecSeriesAccessor:
         """
         return self.task_with_cache(
             task=task,
-            cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
+            cache=BatchingMapProxy(
+                batch_size=batch_size,
+                max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
+                show_progress=show_progress,
+            ),
             **api_kwargs,
         )
 
@@ -600,7 +613,11 @@ class OpenAIVecSeriesAccessor:
         """
         return self.parse_with_cache(
             instructions=instructions,
-            cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
+            cache=BatchingMapProxy(
+                batch_size=batch_size,
+                max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
+                show_progress=show_progress,
+            ),
             response_format=response_format,
             max_examples=max_examples,
             **api_kwargs,
@@ -827,7 +844,11 @@ class OpenAIVecDataFrameAccessor:
         """
         return self.responses_with_cache(
             instructions=instructions,
-            cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
+            cache=BatchingMapProxy(
+                batch_size=batch_size,
+                max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
+                show_progress=show_progress,
+            ),
             response_format=response_format,
             **api_kwargs,
         )
@@ -1007,7 +1028,11 @@ class OpenAIVecDataFrameAccessor:
         """
         return self.parse_with_cache(
             instructions=instructions,
-            cache=BatchingMapProxy(batch_size=batch_size, show_progress=show_progress),
+            cache=BatchingMapProxy(
+                batch_size=batch_size,
+                max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
+                show_progress=show_progress,
+            ),
             response_format=response_format,
             max_examples=max_examples,
             **api_kwargs,
@@ -1336,7 +1361,10 @@ class AsyncOpenAIVecSeriesAccessor:
         return await self.responses_with_cache(
             instructions=instructions,
             cache=AsyncBatchingMapProxy(
-                batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
+                batch_size=batch_size,
+                max_concurrency=max_concurrency,
+                max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
+                show_progress=show_progress,
             ),
             response_format=response_format,
             **api_kwargs,
@@ -1436,7 +1464,10 @@ class AsyncOpenAIVecSeriesAccessor:
         """
         return await self.embeddings_with_cache(
             cache=AsyncBatchingMapProxy(
-                batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
+                batch_size=batch_size,
+                max_concurrency=max_concurrency,
+                max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
+                show_progress=show_progress,
             ),
             **api_kwargs,
         )
@@ -1559,7 +1590,10 @@ class AsyncOpenAIVecSeriesAccessor:
         return await self.task_with_cache(
             task=task,
             cache=AsyncBatchingMapProxy(
-                batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
+                batch_size=batch_size,
+                max_concurrency=max_concurrency,
+                max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
+                show_progress=show_progress,
             ),
             **api_kwargs,
         )
@@ -1670,7 +1704,10 @@ class AsyncOpenAIVecSeriesAccessor:
         return await self.parse_with_cache(
             instructions=instructions,
             cache=AsyncBatchingMapProxy(
-                batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
+                batch_size=batch_size,
+                max_concurrency=max_concurrency,
+                max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
+                show_progress=show_progress,
             ),
             response_format=response_format,
             max_examples=max_examples,
@@ -1793,7 +1830,10 @@ class AsyncOpenAIVecDataFrameAccessor:
         return await self.responses_with_cache(
             instructions=instructions,
             cache=AsyncBatchingMapProxy(
-                batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
+                batch_size=batch_size,
+                max_concurrency=max_concurrency,
+                max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
+                show_progress=show_progress,
             ),
             response_format=response_format,
             **api_kwargs,
@@ -1986,7 +2026,10 @@ class AsyncOpenAIVecDataFrameAccessor:
         return await self.parse_with_cache(
             instructions=instructions,
             cache=AsyncBatchingMapProxy(
-                batch_size=batch_size, max_concurrency=max_concurrency, show_progress=show_progress
+                batch_size=batch_size,
+                max_concurrency=max_concurrency,
+                max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
+                show_progress=show_progress,
             ),
             response_format=response_format,
             max_examples=max_examples,

@@ -1,5 +1,7 @@
+import asyncio
 import os
 
+import pandas as pd
 import pytest
 from pydantic import BaseModel
 from pyspark.sql.types import ArrayType, FloatType, IntegerType, StringType, StructField, StructType
@@ -8,6 +10,7 @@ from openaivec._model import PreparedTask
 from openaivec._provider import set_default_registrations
 from openaivec.spark import (
     _pydantic_to_spark_schema,
+    _run_partition_async,
     count_tokens_udf,
     embeddings_udf,
     infer_schema,
@@ -455,6 +458,44 @@ class TestSparkConfigAndValidation:
 
 @pytest.mark.spark
 class TestSparkNonApiUdfs:
+    def test_run_partition_async_reuses_single_event_loop(self):
+        loop_ids: list[int] = []
+        cleanup_loop_ids: list[int] = []
+
+        async def runner(part: pd.Series) -> pd.Series:
+            loop_ids.append(id(asyncio.get_running_loop()))
+            return part.map(str)
+
+        async def cleanup() -> None:
+            cleanup_loop_ids.append(id(asyncio.get_running_loop()))
+
+        outputs = list(
+            _run_partition_async(
+                iter([pd.Series(["a", "b"]), pd.Series(["c"])]),
+                runner,
+                cleanup,
+            )
+        )
+
+        assert [output.tolist() for output in outputs] == [["a", "b"], ["c"]]
+        assert len(set(loop_ids)) == 1
+        assert cleanup_loop_ids == [loop_ids[0]]
+
+    def test_run_partition_async_runs_cleanup_on_error(self):
+        cleanup_calls = 0
+
+        async def runner(part: pd.Series) -> pd.Series:
+            raise RuntimeError(f"boom: {part.iloc[0]}")
+
+        async def cleanup() -> None:
+            nonlocal cleanup_calls
+            cleanup_calls += 1
+
+        with pytest.raises(RuntimeError, match="boom: x"):
+            list(_run_partition_async(iter([pd.Series(["x"])]), runner, cleanup))
+
+        assert cleanup_calls == 1
+
     def test_setup_azure_sets_spark_and_local_environment(self, spark_session, reset_environment):
         set_default_registrations()
 

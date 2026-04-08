@@ -38,6 +38,7 @@ class TestBatchSizeSuggester:
         assert suggester.max_step is None
         assert suggester.min_step == 1
         assert suggester.sample_size == 4
+        assert suggester.max_history_size == 128
         assert len(suggester._history) == 0
         assert suggester._batch_size_changed_at is None
 
@@ -52,6 +53,7 @@ class TestBatchSizeSuggester:
             min_step=2,
             max_step=5,
             sample_size=5,
+            max_history_size=20,
         )
 
         assert suggester.current_batch_size == 20
@@ -63,6 +65,7 @@ class TestBatchSizeSuggester:
         assert suggester.min_step == 2
         assert suggester.max_step == 5
         assert suggester.sample_size == 5
+        assert suggester.max_history_size == 20
 
     @pytest.mark.parametrize(
         "kwargs,expected_match",
@@ -70,6 +73,7 @@ class TestBatchSizeSuggester:
             ({"min_batch_size": 0}, "min_batch_size must be > 0"),
             ({"current_batch_size": 5, "min_batch_size": 10}, "current_batch_size must be >= min_batch_size"),
             ({"sample_size": 0}, "sample_size must be > 0"),
+            ({"max_history_size": 0}, "max_history_size must be > 0"),
             ({"step_ratio_up": 0}, "step_ratio_up must be > 0"),
             ({"step_ratio_down": 0}, "step_ratio_down must be > 0"),
             ({"min_step": 0}, "min_step must be > 0"),
@@ -118,6 +122,15 @@ class TestBatchSizeSuggester:
         assert len(suggester._history) == 1
         suggester.clear_history()
         assert len(suggester._history) == 0
+
+    def test_record_trims_history_to_max_history_size(self):
+        suggester = BatchSizeSuggester(sample_size=2, max_history_size=3)
+
+        for _ in range(5):
+            with suggester.record(batch_size=10):
+                time.sleep(0.001)
+
+        assert len(suggester._history) == 3
 
     def test_samples_empty_history(self):
         suggester = BatchSizeSuggester()

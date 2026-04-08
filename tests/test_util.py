@@ -17,6 +17,17 @@ def test_split_treats_regex_metacharacter_separators_as_literals():
     assert chunks == ["a.", "b?", "c!"]
 
 
+def test_split_raises_when_single_segment_exceeds_max_tokens():
+    class DummyEncoding:
+        def encode(self, text: str) -> list[int]:
+            return list(range(len(text)))
+
+    chunker = TextChunker(enc=DummyEncoding())
+
+    with pytest.raises(ValueError, match="Segment exceeds max_tokens"):
+        chunker.split("alphabet", max_tokens=3, sep=[" "])
+
+
 class TestTextChunker:
     @pytest.fixture(autouse=True)
     def setup_and_teardown(self):

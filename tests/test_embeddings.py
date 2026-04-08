@@ -1,7 +1,41 @@
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
-from openaivec._embeddings import AsyncBatchEmbeddings, BatchEmbeddings
+from openaivec._embeddings import AsyncBatchEmbeddings, BatchEmbeddings, _as_float32_rows
+
+
+def test_as_float32_rows_returns_float32_row_views():
+    rows = _as_float32_rows([[1.0, 2.0], [3.0, 4.0]])
+
+    assert len(rows) == 2
+    assert all(isinstance(row, np.ndarray) for row in rows)
+    assert all(row.dtype == np.float32 for row in rows)
+    assert np.allclose(rows[0], np.array([1.0, 2.0], dtype=np.float32))
+    assert rows[0].base is rows[1].base
+
+
+def test_batch_embeddings_embed_chunk_uses_shared_float32_conversion():
+    client = BatchEmbeddings(
+        client=SimpleNamespace(
+            embeddings=SimpleNamespace(
+                create=lambda **_: SimpleNamespace(
+                    data=[
+                        SimpleNamespace(embedding=[1.0, 2.0]),
+                        SimpleNamespace(embedding=[3.0, 4.0]),
+                    ]
+                )
+            )
+        ),  # type: ignore[arg-type]
+        model_name="text-embedding-3-small",
+    )
+
+    rows = client._embed_chunk(["a", "b"])
+
+    assert len(rows) == 2
+    assert all(row.dtype == np.float32 for row in rows)
+    assert rows[0].base is rows[1].base
 
 
 @pytest.mark.requires_api
