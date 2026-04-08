@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Layout
-- `src/openaivec/`: core batched wrappers (`_responses.py`, `_embeddings.py`), batching/caching internals (`_cache/proxy.py`, `_cache/optimize.py`), provider/DI setup (`_provider.py`, `_di.py`), schema inference (`_schema/`), and integrations (`pandas_ext.py`, `spark.py`).
+- `src/openaivec/`: core batched wrappers (`_responses.py`, `_embeddings.py`), batching/caching internals (`_cache/proxy.py`, `_cache/optimize.py`), provider/DI setup (`_provider.py`, `_di.py`), schema inference (`_schema/`), and integrations (`pandas_ext/`, `spark.py`).
 - `src/openaivec/task/`: function-style task factories by domain (`nlp/`, `customer_support/`, `table/`) plus registry plumbing in `_registry.py`.
 - `tests/`: mirrors the source layout, including focused suites in `tests/_cache/` and `tests/_schema/`.
 - `docs/` holds MkDocs sources, `site/` generated pages, and `artifacts/` scratch assets kept out of releases.

@@ -50,7 +50,7 @@ User input (list / Series / Spark column)
 
 ### Internal vs public boundary
 
-Underscore-prefixed modules (`_responses.py`, `_cache/`, `_schema/`, `_di.py`, etc.) are internal — set `__all__ = []`. Public modules: `pandas_ext.py`, `spark.py`, `task/`, and `__init__.py`.
+Underscore-prefixed modules (`_responses.py`, `_cache/`, `_schema/`, `_di.py`, etc.) are internal — set `__all__ = []`. Public modules: `pandas_ext/`, `spark.py`, `task/`, and `__init__.py`.
 
 ---
 
