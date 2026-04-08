@@ -78,4 +78,3 @@ TASK_SPEC = TaskSpec(
     factory=intent_analysis,
     response_format=IntentAnalysis,
 )
-

@@ -45,7 +45,7 @@ Perfect for **data scientists**, **analysts**, and **ML engineers** who want to 
 
 - **🚀 Vectorized Processing**: Handle thousands of records in minutes, not hours
 - **⚡ Asynchronous Interface**: `.aio` accessor with `batch_size` and `max_concurrency` control
-- **📦 OpenAI Batch Friendly**: `BatchingMapProxy` groups prompts, dedupes inputs, and keeps outputs aligned for pandas and Spark
+- **📦 OpenAI Batch Friendly**: `BatchCache` groups prompts, dedupes inputs, and keeps outputs aligned for pandas and Spark
 - **💰 Cost Efficient**: Automatic deduplication significantly reduces API costs
 - **🔗 Seamless Integration**: Works within existing pandas/Spark workflows
 - **📈 Enterprise Scale**: From 100s to millions of records
@@ -83,6 +83,7 @@ Detailed documentation for all components:
 Here is a simple example of how to use `openaivec` with `pandas`:
 
 ```python
+import openaivec
 import pandas as pd
 from openai import OpenAI
 from openaivec import pandas_ext
@@ -90,11 +91,11 @@ from openaivec import pandas_ext
 from typing import List
 
 # Set OpenAI/Azure client (optional; auto-detected from environment variables)
-pandas_ext.set_client(OpenAI())
+openaivec.set_client(OpenAI())
 
 # Set models for responses and embeddings (optional; defaults shown)
-pandas_ext.set_responses_model("gpt-4.1-mini")
-pandas_ext.set_embeddings_model("text-embedding-3-small")
+openaivec.set_responses_model("gpt-4.1-mini")
+openaivec.set_embeddings_model("text-embedding-3-small")
 
 
 fruits: List[str] = ["apple", "banana", "orange", "grape", "kiwi", "mango", "peach", "pear", "pineapple", "strawberry"]
@@ -228,7 +229,7 @@ results = asyncio.run(analyze_feedback())
 ### Performance Tuning Parameters
 
 **`batch_size`** (default: adaptive auto-tuning):
-- Leave unset (`None`) to let `BatchingMapProxy` pick an efficient size (targets 30–60 seconds per batch)
+- Leave unset (`None`) to let `BatchCache` pick an efficient size (targets 30–60 seconds per batch)
 - Set a positive integer for deterministic batch sizes when coordinating with rate limits
 - Use `0` or a negative value only when everything fits in a single request
 - Typical ranges: 32–128 for responses, 64–256 for embeddings when you need fixed sizes

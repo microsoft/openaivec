@@ -268,18 +268,18 @@ def performance_timer():
 
 @pytest.fixture
 def batch_cache():
-    """BatchingMapProxy cache for testing."""
-    from openaivec._cache import BatchingMapProxy
+    """BatchCache cache for testing."""
+    from openaivec._cache import BatchCache
 
-    return BatchingMapProxy(batch_size=32)
+    return BatchCache(batch_size=32)
 
 
 @pytest.fixture
 def async_batch_cache():
-    """AsyncBatchingMapProxy cache for testing."""
-    from openaivec._cache import AsyncBatchingMapProxy
+    """AsyncBatchCache cache for testing."""
+    from openaivec._cache import AsyncBatchCache
 
-    return AsyncBatchingMapProxy(batch_size=32, max_concurrency=4)
+    return AsyncBatchCache(batch_size=32, max_concurrency=4)
 
 
 # ===== PARAMETRIZED FIXTURES =====

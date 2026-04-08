@@ -111,4 +111,3 @@ TASK_SPEC = TaskSpec(
     factory=multilingual_translation,
     response_format=TranslatedString,
 )
-

@@ -113,7 +113,7 @@ class AzureOpenAIAPIVersion:
 
     value: str
 
+
 @dataclass(frozen=True)
 class BearerTokenProvider:
     value: Callable[[], str]
-

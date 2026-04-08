@@ -59,4 +59,3 @@ TASK_SPEC = TaskSpec(
     factory=named_entity_recognition,
     response_format=NamedEntityRecognition,
 )
-

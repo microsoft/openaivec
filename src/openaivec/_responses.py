@@ -6,7 +6,7 @@ from openai import AsyncOpenAI, InternalServerError, OpenAI, RateLimitError
 from openai.types.responses import ParsedResponse
 from pydantic import BaseModel, ValidationError
 
-from openaivec._cache import AsyncBatchingMapProxy, BatchingMapProxy
+from openaivec._cache import AsyncBatchCache, BatchCache
 from openaivec._cache.proxy import DEFAULT_MANAGED_CACHE_SIZE
 from openaivec._log import observe
 from openaivec._model import PreparedTask, ResponseFormat
@@ -170,7 +170,7 @@ class BatchResponses(Generic[ResponseFormat]):
         model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
         system_message (str): System prompt prepended to every request.
         response_format (type[ResponseFormat]): Expected Pydantic model class or ``str`` for each assistant message.
-        cache (BatchingMapProxy[str, ResponseFormat]): Order-preserving batching
+        cache (BatchCache[str, ResponseFormat]): Order-preserving batching
             proxy with de-duplication and caching. Library-managed instances use
             bounded retention by default.
         max_validation_retries (int): Number of retries when structured output fails
@@ -187,8 +187,8 @@ class BatchResponses(Generic[ResponseFormat]):
     model_name: str  # For Azure: deployment name, for OpenAI: model name
     system_message: str
     response_format: type[ResponseFormat] = str  # type: ignore[assignment]
-    cache: BatchingMapProxy[str, ResponseFormat] = field(
-        default_factory=lambda: BatchingMapProxy(batch_size=None, max_cache_size=DEFAULT_MANAGED_CACHE_SIZE)
+    cache: BatchCache[str, ResponseFormat] = field(
+        default_factory=lambda: BatchCache(batch_size=None, max_cache_size=DEFAULT_MANAGED_CACHE_SIZE)
     )
     api_kwargs: dict[str, Any] = field(default_factory=dict)
     max_validation_retries: int = 3
@@ -227,7 +227,7 @@ class BatchResponses(Generic[ResponseFormat]):
             model_name=model_name,
             system_message=system_message,
             response_format=response_format,
-            cache=BatchingMapProxy(batch_size=batch_size, max_cache_size=DEFAULT_MANAGED_CACHE_SIZE),
+            cache=BatchCache(batch_size=batch_size, max_cache_size=DEFAULT_MANAGED_CACHE_SIZE),
             api_kwargs=api_kwargs,
             max_validation_retries=max_validation_retries,
         )
@@ -262,7 +262,7 @@ class BatchResponses(Generic[ResponseFormat]):
             model_name=model_name,
             system_message=task.instructions,
             response_format=task.response_format,
-            cache=BatchingMapProxy(batch_size=batch_size, max_cache_size=DEFAULT_MANAGED_CACHE_SIZE),
+            cache=BatchCache(batch_size=batch_size, max_cache_size=DEFAULT_MANAGED_CACHE_SIZE),
             api_kwargs=api_kwargs,
             max_validation_retries=max_validation_retries,
         )
@@ -396,7 +396,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
         system_message (str): System prompt prepended to every request.
         response_format (type[ResponseFormat]): Expected Pydantic model class or ``str`` for each assistant message.
-        cache (AsyncBatchingMapProxy[str, ResponseFormat]): Async batching proxy
+        cache (AsyncBatchCache[str, ResponseFormat]): Async batching proxy
             with de-duplication and concurrency control. Library-managed
             instances use bounded retention by default.
         max_validation_retries (int): Number of retries when structured output fails
@@ -407,8 +407,8 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
     model_name: str  # For Azure: deployment name, for OpenAI: model name
     system_message: str
     response_format: type[ResponseFormat] = str  # type: ignore[assignment]
-    cache: AsyncBatchingMapProxy[str, ResponseFormat] = field(
-        default_factory=lambda: AsyncBatchingMapProxy(
+    cache: AsyncBatchCache[str, ResponseFormat] = field(
+        default_factory=lambda: AsyncBatchCache(
             batch_size=None,
             max_concurrency=8,
             max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
@@ -453,7 +453,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             model_name=model_name,
             system_message=system_message,
             response_format=response_format,
-            cache=AsyncBatchingMapProxy(
+            cache=AsyncBatchCache(
                 batch_size=batch_size,
                 max_concurrency=max_concurrency,
                 max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
@@ -494,7 +494,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             model_name=model_name,
             system_message=task.instructions,
             response_format=task.response_format,
-            cache=AsyncBatchingMapProxy(
+            cache=AsyncBatchCache(
                 batch_size=batch_size,
                 max_concurrency=max_concurrency,
                 max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,

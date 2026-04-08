@@ -15,4 +15,3 @@ __all__ = [
     "response_suggestion",
     "urgency_analysis",
 ]
-

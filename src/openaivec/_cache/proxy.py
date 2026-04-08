@@ -1,11 +1,11 @@
 import asyncio
 import threading
-from collections import OrderedDict
 from collections.abc import Awaitable, Callable, Hashable
 from dataclasses import dataclass, field
 from typing import Any, Generic, TypeVar
 
 from openaivec._cache import BatchSizeSuggester
+from openaivec._cache._backend import CacheBackend, InMemoryCacheBackend
 
 __all__ = []
 
@@ -14,8 +14,13 @@ T = TypeVar("T")
 DEFAULT_MANAGED_CACHE_SIZE = 4096
 
 
-class ProxyBase(Generic[S, T]):
-    """Common utilities shared by BatchingMapProxy and AsyncBatchingMapProxy.
+def _default_cache_backend() -> InMemoryCacheBackend:
+    """Factory that returns the default in-memory CacheBackend."""
+    return InMemoryCacheBackend()
+
+
+class BatchCacheBase(Generic[S, T]):
+    """Common utilities shared by BatchCache and AsyncBatchCache.
 
     Provides order-preserving deduplication and batch size normalization that
     depend only on ``batch_size`` and do not touch concurrency primitives.
@@ -35,19 +40,19 @@ class ProxyBase(Generic[S, T]):
     suggester: BatchSizeSuggester  # Batch size optimization, initialized by subclasses
 
     @staticmethod
-    def _touch_keys_unlocked(cache: OrderedDict[S, T], keys: list[S]) -> None:
+    def _touch_keys_unlocked(cache: CacheBackend[S, T], keys: list[S]) -> None:
         """Mark keys as recently used in an ordered cache."""
-        for key in ProxyBase._unique_in_order(keys):
+        for key in BatchCacheBase._unique_in_order(keys):
             if key in cache:
                 cache.move_to_end(key)
 
     @staticmethod
-    def _prune_cache_unlocked(cache: OrderedDict[S, T], max_cache_size: int | None) -> None:
+    def _prune_cache_unlocked(cache: CacheBackend[S, T], max_cache_size: int | None) -> None:
         """Evict oldest cached items until the cache fits the configured limit."""
         if max_cache_size is None:
             return
         while len(cache) > max_cache_size:
-            cache.popitem(last=False)
+            cache.pop_oldest()
 
     def _is_notebook_environment(self) -> bool:
         """Check if running in a Jupyter notebook environment.
@@ -207,7 +212,7 @@ class ProxyBase(Generic[S, T]):
 
 
 @dataclass
-class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
+class BatchCache(BatchCacheBase[S, T], Generic[S, T]):
     """Thread-safe local proxy that caches results of a mapping function.
 
     This proxy batches calls to the ``map_func`` you pass to ``map()`` (if
@@ -225,7 +230,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
 
     Example:
         ```python
-        p = BatchingMapProxy[int, str](batch_size=3)
+        p = BatchCache[int, str](batch_size=3)
 
         def f(xs: list[int]) -> list[str]:
             return [f"v:{x}" for x in xs]
@@ -245,8 +250,9 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     show_progress: bool = True
     suggester: BatchSizeSuggester = field(default_factory=BatchSizeSuggester, repr=False)
 
+    cache: CacheBackend[S, T] = field(default_factory=_default_cache_backend)
+
     # internals
-    _cache: OrderedDict[S, T] = field(default_factory=OrderedDict)
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
     _inflight: dict[S, threading.Event] = field(default_factory=dict, repr=False)
     _active_calls: int = field(default=0, init=False, repr=False)
@@ -268,7 +274,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             bool: True if every item is already cached, False otherwise.
         """
         with self._lock:
-            return all(x in self._cache for x in items)
+            return all(x in self.cache for x in items)
 
     def __values(self, items: list[S]) -> list[T]:
         """Fetch cached values for ``items`` preserving the given order.
@@ -283,8 +289,8 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             order.
         """
         with self._lock:
-            values = [self._cache[x] for x in items]
-            self._touch_keys_unlocked(self._cache, items)
+            values = [self.cache[x] for x in items]
+            self._touch_keys_unlocked(self.cache, items)
             return values
 
     def __acquire_ownership(self, items: list[S]) -> tuple[list[S], list[S]]:
@@ -307,7 +313,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         wait_for: list[S] = []
         with self._lock:
             for x in items:
-                if x in self._cache:
+                if x in self.cache:
                     continue
                 if x in self._inflight:
                     wait_for.append(x)
@@ -330,8 +336,8 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             raise ValueError("map_func must return a list of results with the same length and order as inputs")
         with self._lock:
             for x, y in zip(to_call, results):
-                self._cache[x] = y
-                self._cache.move_to_end(x)
+                self.cache[x] = y
+                self.cache.move_to_end(x)
                 ev = self._inflight.pop(x, None)
                 if ev:
                     ev.set()
@@ -361,7 +367,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             for ev in self._inflight.values():
                 ev.set()
             self._inflight.clear()
-            self._cache.clear()
+            self.cache.clear()
             self._active_calls = 0
 
     def close(self) -> None:
@@ -401,7 +407,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                 batch = owned[i : i + current_batch_size]
                 # Double-check cache right before processing
                 with self._lock:
-                    uncached_in_batch = [x for x in batch if x not in self._cache]
+                    uncached_in_batch = [x for x in batch if x not in self.cache]
 
                 pending_to_call.extend(uncached_in_batch)
 
@@ -464,7 +470,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             while True:
                 waiter: threading.Event | None = None
                 with self._lock:
-                    if x in self._cache:
+                    if x in self.cache:
                         break
                     waiter = self._inflight.get(x)
                     if waiter is None:
@@ -493,7 +499,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         with self._lock:
             self._active_calls -= 1
             if self._active_calls == 0:
-                self._prune_cache_unlocked(self._cache, self.max_cache_size)
+                self._prune_cache_unlocked(self.cache, self.max_cache_size)
 
     # ---- public API ------------------------------------------------------
     def map(self, items: list[S], map_func: Callable[[list[S]], list[T]]) -> list[T]:
@@ -518,7 +524,7 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
 
         Example:
             ```python
-            proxy: BatchingMapProxy[int, str] = BatchingMapProxy(batch_size=2)
+            proxy: BatchCache[int, str] = BatchCache(batch_size=2)
             calls: list[list[int]] = []
 
             def mapper(chunk: list[int]) -> list[str]:
@@ -552,8 +558,8 @@ class BatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
 
 
 @dataclass
-class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
-    """Asynchronous version of BatchingMapProxy for use with async functions.
+class AsyncBatchCache(BatchCacheBase[S, T], Generic[S, T]):
+    """Asynchronous version of BatchCache for use with async functions.
 
     The ``map()`` method accepts an async ``map_func`` that may perform I/O and
     awaits it in mini-batches. It deduplicates inputs, maintains cache
@@ -571,7 +577,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         ```python
         import asyncio
 
-        p = AsyncBatchingMapProxy[int, str](batch_size=2)
+        p = AsyncBatchCache[int, str](batch_size=2)
 
         async def af(xs: list[int]) -> list[str]:
             await asyncio.sleep(0)
@@ -596,8 +602,9 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
     show_progress: bool = True
     suggester: BatchSizeSuggester = field(default_factory=BatchSizeSuggester, repr=False)
 
+    cache: CacheBackend[S, T] = field(default_factory=_default_cache_backend, repr=False)
+
     # internals
-    _cache: OrderedDict[S, T] = field(default_factory=OrderedDict, repr=False)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
     _inflight: dict[S, asyncio.Event] = field(default_factory=dict, repr=False)
     _active_calls: int = field(default=0, init=False, repr=False)
@@ -632,7 +639,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             bool: True if every item in ``items`` is already cached, False otherwise.
         """
         async with self._lock:
-            return all(x in self._cache for x in items)
+            return all(x in self.cache for x in items)
 
     async def __values(self, items: list[S]) -> list[T]:
         """Get cached values for ``items`` preserving their given order.
@@ -647,8 +654,8 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             list[T]: Cached values corresponding to ``items`` in the same order.
         """
         async with self._lock:
-            values = [self._cache[x] for x in items]
-            self._touch_keys_unlocked(self._cache, items)
+            values = [self.cache[x] for x in items]
+            self._touch_keys_unlocked(self.cache, items)
             return values
 
     async def __acquire_ownership(self, items: list[S]) -> tuple[list[S], list[S]]:
@@ -666,7 +673,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         wait_for: list[S] = []
         async with self._lock:
             for x in items:
-                if x in self._cache:
+                if x in self.cache:
                     continue
                 if x in self._inflight:
                     wait_for.append(x)
@@ -688,8 +695,8 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             raise ValueError("map_func must return a list of results with the same length and order as inputs")
         async with self._lock:
             for x, y in zip(to_call, results):
-                self._cache[x] = y
-                self._cache.move_to_end(x)
+                self.cache[x] = y
+                self.cache.move_to_end(x)
                 ev = self._inflight.pop(x, None)
                 if ev:
                     ev.set()
@@ -719,7 +726,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             for ev in self._inflight.values():
                 ev.set()
             self._inflight.clear()
-            self._cache.clear()
+            self.cache.clear()
             self._active_calls = 0
 
     async def aclose(self) -> None:
@@ -808,7 +815,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
             while True:
                 waiter: asyncio.Event | None = None
                 async with self._lock:
-                    if x in self._cache:
+                    if x in self.cache:
                         break
                     waiter = self._inflight.get(x)
                     if waiter is None:
@@ -836,7 +843,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
         async with self._lock:
             self._active_calls -= 1
             if self._active_calls == 0:
-                self._prune_cache_unlocked(self._cache, self.max_cache_size)
+                self._prune_cache_unlocked(self.cache, self.max_cache_size)
 
     # ---- public API ------------------------------------------------------
     async def map(self, items: list[S], map_func: Callable[[list[S]], Awaitable[list[T]]]) -> list[T]:
@@ -858,7 +865,7 @@ class AsyncBatchingMapProxy(ProxyBase[S, T], Generic[S, T]):
                 await asyncio.sleep(0)
                 return [f"v:{x}" for x in chunk]
 
-            proxy: AsyncBatchingMapProxy[int, str] = AsyncBatchingMapProxy(batch_size=2)
+            proxy: AsyncBatchCache[int, str] = AsyncBatchCache(batch_size=2)
             asyncio.run(proxy.map([1, 1, 2], mapper))
             # ['v:1', 'v:1', 'v:2']
             ```

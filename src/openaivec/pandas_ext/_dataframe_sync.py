@@ -3,11 +3,11 @@
 import numpy as np
 import pandas as pd
 
-from openaivec._cache import BatchingMapProxy
+from openaivec._cache import BatchCache
 from openaivec._cache.proxy import DEFAULT_MANAGED_CACHE_SIZE
 from openaivec._model import PreparedTask, ResponseFormat
 from openaivec._schema import SchemaInferenceOutput
-from openaivec.pandas_ext._common import _df_rows_to_json_series
+from openaivec.pandas_ext._common import _df_rows_to_json_series, _embedding_series_to_matrix
 from openaivec.task.table import FillNaResponse
 
 
@@ -21,22 +21,22 @@ class OpenAIVecDataFrameAccessor:
     def responses_with_cache(
         self,
         instructions: str,
-        cache: BatchingMapProxy[str, ResponseFormat],
+        cache: BatchCache[str, ResponseFormat],
         response_format: type[ResponseFormat] = str,
         **api_kwargs,
     ) -> pd.Series:
         """Call an LLM once for every DataFrame row using a provided cache.
 
         This method allows external control over caching behavior by accepting
-        a pre-configured BatchingMapProxy instance, enabling cache sharing
+        a pre-configured BatchCache instance, enabling cache sharing
         across multiple operations or custom batch size management.
 
         Example:
             ```python
-            from openaivec._cache import BatchingMapProxy
+            from openaivec._cache import BatchCache
 
             # Create a shared cache with custom batch size
-            shared_cache = BatchingMapProxy(batch_size=64)
+            shared_cache = BatchCache(batch_size=64)
 
             df = pd.DataFrame([
                 {"name": "cat", "legs": 4},
@@ -51,7 +51,7 @@ class OpenAIVecDataFrameAccessor:
 
         Args:
             instructions (str): System prompt prepended to every user message.
-            cache (BatchingMapProxy[str, ResponseFormat]): Pre-configured cache
+            cache (BatchCache[str, ResponseFormat]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
             response_format (type[ResponseFormat], optional): Pydantic model or built‑in
@@ -116,7 +116,7 @@ class OpenAIVecDataFrameAccessor:
         """
         return self.responses_with_cache(
             instructions=instructions,
-            cache=BatchingMapProxy(
+            cache=BatchCache(
                 batch_size=batch_size,
                 max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
                 show_progress=show_progress,
@@ -128,7 +128,7 @@ class OpenAIVecDataFrameAccessor:
     def task_with_cache(
         self,
         task: PreparedTask[ResponseFormat],
-        cache: BatchingMapProxy[str, ResponseFormat],
+        cache: BatchCache[str, ResponseFormat],
         **api_kwargs,
     ) -> pd.Series:
         """Execute a prepared task on every DataFrame row using a provided cache.
@@ -136,9 +136,9 @@ class OpenAIVecDataFrameAccessor:
         Example:
             ```python
             from openaivec._model import PreparedTask
-            from openaivec._cache import BatchingMapProxy
+            from openaivec._cache import BatchCache
 
-            shared_cache = BatchingMapProxy(batch_size=64)
+            shared_cache = BatchCache(batch_size=64)
             analysis_task = PreparedTask(...)
             df = pd.DataFrame([
                 {"name": "cat", "legs": 4},
@@ -151,7 +151,7 @@ class OpenAIVecDataFrameAccessor:
         Args:
             task (PreparedTask): A pre-configured task containing instructions,
                 response format for processing the inputs.
-            cache (BatchingMapProxy[str, ResponseFormat]): Pre-configured cache
+            cache (BatchCache[str, ResponseFormat]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
@@ -233,7 +233,7 @@ class OpenAIVecDataFrameAccessor:
     def parse_with_cache(
         self,
         instructions: str,
-        cache: BatchingMapProxy[str, ResponseFormat],
+        cache: BatchCache[str, ResponseFormat],
         response_format: type[ResponseFormat] | None = None,
         max_examples: int = 100,
         **api_kwargs,
@@ -246,9 +246,9 @@ class OpenAIVecDataFrameAccessor:
 
         Example:
             ```python
-            from openaivec._cache import BatchingMapProxy
+            from openaivec._cache import BatchCache
 
-            shared = BatchingMapProxy(batch_size=64)
+            shared = BatchCache(batch_size=64)
             result = df.ai.parse_with_cache(
                 "Extract shipping details",
                 cache=shared,
@@ -260,7 +260,7 @@ class OpenAIVecDataFrameAccessor:
             instructions (str): Plain language description of what information
                 to extract from each row (e.g., "Extract shipping details and
                 order status"). Guides both extraction and schema inference.
-            cache (BatchingMapProxy[str, ResponseFormat]): Pre-configured cache
+            cache (BatchCache[str, ResponseFormat]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
             response_format (type[ResponseFormat] | None, optional): Target
@@ -338,7 +338,7 @@ class OpenAIVecDataFrameAccessor:
         """
         return self.parse_with_cache(
             instructions=instructions,
-            cache=BatchingMapProxy(
+            cache=BatchCache(
                 batch_size=batch_size,
                 max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
                 show_progress=show_progress,
@@ -544,10 +544,8 @@ class OpenAIVecDataFrameAccessor:
                 from -1 to 1, where 1 indicates identical direction.
         """
         try:
-            left_values = self._obj[col1].tolist()
-            right_values = self._obj[col2].tolist()
-            left = np.vstack(left_values)
-            right = np.vstack(right_values)
+            left = _embedding_series_to_matrix(self._obj[col1])
+            right = _embedding_series_to_matrix(self._obj[col2])
         except Exception as exc:
             raise TypeError("Both columns must contain numeric vectors with consistent dimensions.") from exc
 

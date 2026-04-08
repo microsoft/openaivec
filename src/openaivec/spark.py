@@ -137,6 +137,7 @@ from typing import Annotated, TypeVar, Union, cast, get_args, get_origin
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import tiktoken
 from pydantic import BaseModel
 from pyspark import SparkContext
@@ -146,12 +147,11 @@ from pyspark.sql.types import ArrayType, BooleanType, FloatType, IntegerType, St
 from pyspark.sql.udf import UserDefinedFunction
 from typing_extensions import Literal
 
-from openaivec import pandas_ext
-from openaivec._cache import AsyncBatchingMapProxy
+from openaivec._cache import AsyncBatchCache
 from openaivec._cache.proxy import DEFAULT_MANAGED_CACHE_SIZE
 from openaivec._embeddings import AsyncBatchEmbeddings
 from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
-from openaivec._provider import CONTAINER
+from openaivec._provider import CONTAINER, get_async_client
 from openaivec._responses import AsyncBatchResponses
 from openaivec._schema import SchemaInferenceInput, SchemaInferenceOutput, SchemaInferer
 from openaivec._serialize import deserialize_base_model, serialize_base_model
@@ -502,9 +502,9 @@ def responses_udf(
 
         @pandas_udf(returnType=spark_schema)  # type: ignore[call-overload]
         def structure_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
-            async_client = pandas_ext.get_async_client()
+            async_client = get_async_client()
             response_model = deserialize_base_model(json_schema_string)
-            cache = AsyncBatchingMapProxy[str, response_model](
+            cache = AsyncBatchCache[str, response_model](
                 batch_size=batch_size,
                 max_concurrency=max_concurrency,
                 max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
@@ -533,8 +533,8 @@ def responses_udf(
 
         @pandas_udf(returnType=StringType())  # type: ignore[call-overload]
         def string_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
-            async_client = pandas_ext.get_async_client()
-            cache = AsyncBatchingMapProxy[str, str](
+            async_client = get_async_client()
+            cache = AsyncBatchCache[str, str](
                 batch_size=batch_size,
                 max_concurrency=max_concurrency,
                 max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
@@ -841,10 +841,11 @@ def embeddings_udf(
     """
 
     _model_name = model_name or CONTAINER.resolve(EmbeddingsModelName).value
+
     @pandas_udf(returnType=ArrayType(FloatType()))  # type: ignore[call-overload,misc]
     def _embeddings_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
-        async_client = pandas_ext.get_async_client()
-        cache = AsyncBatchingMapProxy[str, np.ndarray](
+        async_client = get_async_client()
+        cache = AsyncBatchCache[str, np.ndarray](
             batch_size=batch_size,
             max_concurrency=max_concurrency,
             max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
@@ -858,7 +859,14 @@ def embeddings_udf(
 
         async def run_part(part: pd.Series) -> pd.Series:
             embeddings = await batch_client.create(part.tolist())
-            return pd.Series(embeddings, index=part.index, name=part.name).map(lambda x: x.tolist())
+            if embeddings:
+                flat = np.concatenate(embeddings)
+                dim = len(embeddings[0])
+                arrow_arr = pa.FixedSizeListArray.from_arrays(pa.array(flat, type=pa.float32()), list_size=dim)
+                return pd.Series(
+                    arrow_arr, index=part.index, name=part.name, dtype=pd.ArrowDtype(pa.list_(pa.float32(), dim))
+                )
+            return pd.Series([], index=part.index, name=part.name, dtype=object)
 
         async def cleanup() -> None:
             await cache.clear()
@@ -906,7 +914,11 @@ def count_tokens_udf() -> UserDefinedFunction:
         encoding = tiktoken.get_encoding("o200k_base")
 
         for part in col:
-            yield part.map(lambda x: len(encoding.encode(x)) if isinstance(x, str) else 0)
+            texts = part.tolist()
+            safe_texts = [x if isinstance(x, str) else "" for x in texts]
+            encoded = encoding.encode_batch(safe_texts)
+            token_counts = [len(t) if isinstance(t, list) else 0 for t in encoded]
+            yield pd.Series(token_counts, index=part.index, name=part.name)
 
     return fn  # type: ignore[return-value]
 

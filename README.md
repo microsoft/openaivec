@@ -52,6 +52,7 @@ Batching alone removes most HTTP overhead, and letting batching overlap with con
 - [Pandas authentication options](#pandas-authentication-options)
 - [Using with Apache Spark UDFs](#using-with-apache-spark-udfs)
 - [Spark authentication options](#spark-authentication-options)
+- [Using with DuckDB](#using-with-duckdb)
 - [Building Prompts](#building-prompts)
 - [Using with Microsoft Fabric](#using-with-microsoft-fabric)
 - [Contributing](#contributing)
@@ -61,10 +62,10 @@ Batching alone removes most HTTP overhead, and letting batching overlap with con
 ## Why openaivec?
 
 - Drop-in `.ai` and `.aio` accessors keep pandas analysts in familiar tooling.
-- OpenAI batch-optimized: `BatchingMapProxy`/`AsyncBatchingMapProxy` coalesce requests, dedupe prompts, preserve order, and release waiters on failure.
+- OpenAI batch-optimized: `BatchCache`/`AsyncBatchCache` coalesce requests, dedupe prompts, preserve order, and release waiters on failure.
 - Reasoning support mirrors the OpenAI SDK; structured outputs accept Pydantic `response_format`.
 - Built-in caches and retries remove boilerplate; pandas and async helpers can share caches explicitly, while Spark UDFs dedupe repeated inputs within each partition.
-- Spark UDFs and Microsoft Fabric guides move notebooks into production-scale ETL.
+- Spark UDFs, DuckDB integration, and Microsoft Fabric guides move notebooks into production-scale ETL.
 - Prompt tooling (`FewShotPromptBuilder`, `improve`) and the task library ship curated prompts with validated outputs.
 
 ## Overview
@@ -138,11 +139,12 @@ os.environ.pop("AZURE_OPENAI_API_KEY", None)
 #### Custom clients (optional)
 
 ```python
+import openaivec
 from openai import AsyncOpenAI, OpenAI
 from openaivec import pandas_ext
 
-pandas_ext.set_client(OpenAI())
-pandas_ext.set_async_client(AsyncOpenAI())
+openaivec.set_client(OpenAI())
+openaivec.set_async_client(AsyncOpenAI())
 ```
 
 ### pandas integration (recommended)
@@ -150,10 +152,11 @@ pandas_ext.set_async_client(AsyncOpenAI())
 The easiest way to get started with your DataFrames (after authentication):
 
 ```python
+import openaivec
 import pandas as pd
 from openaivec import pandas_ext
 
-pandas_ext.set_responses_model("gpt-5.1")
+openaivec.set_responses_model("gpt-5.1")
 
 df = pd.DataFrame({"name": ["panda", "rabbit", "koala"]})
 
@@ -178,7 +181,9 @@ result = df.assign(
 Reasoning models (o1-preview, o1-mini, o3-mini, etc.) follow OpenAI SDK semantics. Pass `reasoning` when you want to override model defaults.
 
 ```python
-pandas_ext.set_responses_model("o1-mini")  # Set your reasoning model
+import openaivec
+
+openaivec.set_responses_model("o1-mini")  # Set your reasoning model
 
 result = df.assign(
     analysis=lambda df: df.text.ai.responses(
@@ -226,10 +231,11 @@ High-throughput workloads use the `.aio` accessor for async versions of all oper
 
 ```python
 import asyncio
+import openaivec
 import pandas as pd
 from openaivec import pandas_ext
 
-pandas_ext.set_responses_model("gpt-5.1")
+openaivec.set_responses_model("gpt-5.1")
 
 df = pd.DataFrame({"text": [
     "This product is amazing!",
@@ -334,6 +340,72 @@ Other helper UDFs are available: `task_udf`, `embeddings_udf`, `count_tokens_udf
 - `batch_size=None` auto-optimizes; set 32–128 for fixed sizes if needed.
 - `max_concurrency` is per executor; total concurrency = executors × max_concurrency. Start with 4–12.
 - Monitor rate limits and adjust concurrency to your OpenAI tier.
+
+## Using with DuckDB
+
+Register AI-powered functions as DuckDB UDFs and use them in pure SQL. Structured outputs are returned as native `STRUCT` types with direct field access.
+
+```python
+import openaivec
+import duckdb
+from pydantic import BaseModel
+from typing import Literal
+from openaivec import duckdb_ext
+
+openaivec.set_responses_model("gpt-5.4")
+
+
+class Sentiment(BaseModel):
+    label: Literal["positive", "negative", "neutral"]
+    confidence: float
+    summary: str
+
+
+conn = duckdb.connect()
+
+duckdb_ext.register_responses_udf(
+    conn,
+    "analyze_sentiment",
+    instructions="Analyze customer sentiment. Return label, confidence (0-1), and a one-sentence summary.",
+    response_format=Sentiment,
+)
+
+# Query CSV directly — structured fields, no JSON parsing
+conn.sql("""
+    SELECT
+        customer,
+        analyze_sentiment(response).label      AS sentiment,
+        analyze_sentiment(response).confidence AS confidence,
+        analyze_sentiment(response).summary    AS summary
+    FROM 'survey.csv'
+""")
+
+# Aggregate with standard SQL
+conn.sql("""
+    WITH results AS (
+        SELECT analyze_sentiment(response).label AS sentiment
+        FROM 'survey.csv'
+    )
+    SELECT sentiment, COUNT(*) AS count
+    FROM results
+    GROUP BY sentiment
+""")
+```
+
+Embedding UDFs work the same way:
+
+```python
+duckdb_ext.register_embeddings_udf(conn, "embed")
+
+conn.sql("""
+    SELECT text, list_cosine_similarity(embed(a.text), embed(b.text)) AS similarity
+    FROM docs a, queries b
+""")
+```
+
+All UDFs use Arrow vectorized execution — DuckDB sends batches of rows that are processed with async concurrency and automatic deduplication.
+
+📓 **[DuckDB tutorial →](https://microsoft.github.io/openaivec/examples/duckdb/)**
 
 ## Building Prompts
 

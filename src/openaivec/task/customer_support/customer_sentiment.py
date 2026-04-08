@@ -22,8 +22,8 @@ class CustomerSentiment(BaseModel):
     satisfaction_level: Literal["very_satisfied", "satisfied", "neutral", "dissatisfied", "very_dissatisfied"] = Field(
         description="Customer satisfaction level"
     )
-    emotional_state: Literal["happy", "frustrated", "angry", "disappointed", "confused", "grateful", "worried"] = (
-        Field(description="Primary emotional state")
+    emotional_state: Literal["happy", "frustrated", "angry", "disappointed", "confused", "grateful", "worried"] = Field(
+        description="Primary emotional state"
     )
     confidence: float = Field(ge=0, le=1, description="Confidence score for sentiment analysis (0.0-1.0)")
     churn_risk: Literal["low", "medium", "high", "critical"] = Field(description="Risk of customer churn")
@@ -75,4 +75,3 @@ TASK_SPEC = TaskSpec(
     factory=customer_sentiment,
     response_format=CustomerSentiment,
 )
-

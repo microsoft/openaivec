@@ -1,34 +1,35 @@
-"""Tests for pandas_ext configuration and parameter consistency."""
+"""Tests for configuration and parameter consistency."""
 
 import inspect
 
 import pandas as pd
 import pytest
 
-from openaivec import pandas_ext
+import openaivec
+from openaivec import pandas_ext  # noqa: F401 — registers .ai/.aio accessors
 
 
 @pytest.mark.requires_api
 class TestConfig:
     def test_configuration_methods(self, openai_client, async_openai_client):
-        assert callable(pandas_ext.set_client)
-        assert callable(pandas_ext.get_client)
-        assert callable(pandas_ext.set_async_client)
-        assert callable(pandas_ext.get_async_client)
-        assert callable(pandas_ext.set_responses_model)
-        assert callable(pandas_ext.get_responses_model)
-        assert callable(pandas_ext.set_embeddings_model)
-        assert callable(pandas_ext.get_embeddings_model)
+        assert callable(openaivec.set_client)
+        assert callable(openaivec.get_client)
+        assert callable(openaivec.set_async_client)
+        assert callable(openaivec.get_async_client)
+        assert callable(openaivec.set_responses_model)
+        assert callable(openaivec.get_responses_model)
+        assert callable(openaivec.set_embeddings_model)
+        assert callable(openaivec.get_embeddings_model)
 
         try:
-            pandas_ext.set_client(openai_client)
-            assert pandas_ext.get_client() is openai_client
-            pandas_ext.set_async_client(async_openai_client)
-            assert pandas_ext.get_async_client() is async_openai_client
-            pandas_ext.set_responses_model("gpt-4.1-mini")
-            assert pandas_ext.get_responses_model() == "gpt-4.1-mini"
-            pandas_ext.set_embeddings_model("text-embedding-3-small")
-            assert pandas_ext.get_embeddings_model() == "text-embedding-3-small"
+            openaivec.set_client(openai_client)
+            assert openaivec.get_client() is openai_client
+            openaivec.set_async_client(async_openai_client)
+            assert openaivec.get_async_client() is async_openai_client
+            openaivec.set_responses_model("gpt-4.1-mini")
+            assert openaivec.get_responses_model() == "gpt-4.1-mini"
+            openaivec.set_embeddings_model("text-embedding-3-small")
+            assert openaivec.get_embeddings_model() == "text-embedding-3-small"
         except Exception as e:
             pytest.fail(f"Model configuration failed unexpectedly: {e}")
 

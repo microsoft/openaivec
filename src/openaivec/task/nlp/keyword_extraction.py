@@ -54,4 +54,3 @@ TASK_SPEC = TaskSpec(
     factory=keyword_extraction,
     response_format=KeywordExtraction,
 )
-

@@ -16,6 +16,7 @@ R = TypeVar("R")
 def observe(logger: Logger) -> Callable[[Callable[P, R]], Callable[P, R]]:
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
         if inspect.iscoroutinefunction(func):
+
             @functools.wraps(func)
             async def decorated_async(*args: P.args, **kwargs: P.kwargs) -> R:
                 class_name = args[0].__class__.__name__ if args else "<function>"

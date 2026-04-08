@@ -79,4 +79,3 @@ TASK_SPEC = TaskSpec(
     factory=response_suggestion,
     response_format=ResponseSuggestion,
 )
-

@@ -39,12 +39,12 @@ Environment: set `OPENAI_API_KEY`, or for Azure set `AZURE_OPENAI_API_KEY` + `AZ
 
 ```
 User input (list / Series / Spark column)
-  → BatchingMapProxy (_cache/proxy.py)    # dedup, order-preserve, mini-batch
+  → BatchCache (_cache/proxy.py)    # dedup, order-preserve, mini-batch
     → _responses.py / _embeddings.py      # OpenAI API with backoff
   → results reassembled in original order
 ```
 
-`BatchingMapProxy` / `AsyncBatchingMapProxy` in `_cache/` are the core execution engine. They deduplicate inputs, chunk into batches, call a `map_func`, and restore original ordering. The `map_func` **must** return a list of identical length and order — a mismatch raises `ValueError` after releasing in-flight waiters (deadlock prevention).
+`BatchCache` / `AsyncBatchCache` in `_cache/` are the core execution engine. They deduplicate inputs, chunk into batches, call a `map_func`, and restore original ordering. The `map_func` **must** return a list of identical length and order — a mismatch raises `ValueError` after releasing in-flight waiters (deadlock prevention).
 
 `batch_size=None` enables `BatchSizeSuggester` (`_cache/optimize.py`) auto-tuning that targets ~30–60s per batch. Positive values force fixed chunks; `<= 0` processes everything in one call.
 
@@ -72,7 +72,8 @@ Underscore-prefixed modules (`_responses.py`, `_cache/`, `_schema/`, `_di.py`, e
 - **Ruff** lint + format, `line-length=120`, target `py310`.
 - **Absolute imports only** — enforced by Ruff TID252. Exception: `__init__.py` may use relative imports for re-exports.
 - **Modern typing** — `list[T]`, `dict[K, V]`, `X | None` (not `Optional`), `collections.abc.Callable` (not `typing.Callable`).
-- **`@dataclass`** for simple data; **Pydantic** only at validation boundaries (API responses, task models).
+- **`@dataclass`** for all classes — including wrappers, backends, and caches. Every field must have an explicit type annotation. Use **Pydantic** only at validation boundaries (API responses, task models).
+- **Dependency injection** — never create collaborators inside `__init__` / `__post_init__`. Accept them as typed dataclass fields so they can be swapped or mocked. Provide a `@classmethod of(...)` factory for convenient construction with sensible defaults.
 - **Narrow exceptions** — `ValueError`, `TypeError` on contract violations; no broad `except`.
 - **Google-style docstrings** — Args with `(type)` annotations, Returns/Raises sections.
 - **`__all__`** — alphabetized in every module. Internal modules: `__all__ = []`. New public symbols → update `__all__`, `docs/api/`, and `mkdocs.yml`.
@@ -105,29 +106,30 @@ Pytest with markers defined in `pytest.ini`: `requires_api`, `slow`, `spark`, `i
 ### pandas client setup
 
 ```python
+import openaivec
 from openai import OpenAI, AzureOpenAI, AsyncAzureOpenAI
 from openaivec import pandas_ext
 
-pandas_ext.set_client(OpenAI(api_key="sk-..."))
+openaivec.set_client(OpenAI(api_key="sk-..."))
 
 # Azure
-pandas_ext.set_client(AzureOpenAI(
+openaivec.set_client(AzureOpenAI(
     api_key="...",
     base_url="https://YOUR-RESOURCE.services.ai.azure.com/openai/v1/",
     api_version="preview",
 ))
-pandas_ext.set_async_client(AsyncAzureOpenAI(...))
+openaivec.set_async_client(AsyncAzureOpenAI(...))
 
 # Override default models
-pandas_ext.set_responses_model("gpt-4.1-mini")
-pandas_ext.set_embeddings_model("text-embedding-3-small")
+openaivec.set_responses_model("gpt-4.1-mini")
+openaivec.set_embeddings_model("text-embedding-3-small")
 ```
 
 ### Shared cache across operations
 
 ```python
-from openaivec._cache import BatchingMapProxy
-shared = BatchingMapProxy[str, str](batch_size=64)
+from openaivec._cache import BatchCache
+shared = BatchCache[str, str](batch_size=64)
 df["text"].ai.responses_with_cache("instructions", cache=shared)
 ```
 

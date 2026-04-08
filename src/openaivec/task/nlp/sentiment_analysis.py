@@ -54,4 +54,3 @@ TASK_SPEC = TaskSpec(
     factory=sentiment_analysis,
     response_format=SentimentAnalysis,
 )
-

@@ -143,4 +143,3 @@ TASK_SPEC = TaskSpec(
     factory=inquiry_classification,
     response_format=InquiryClassification,
 )
-

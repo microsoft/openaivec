@@ -8,7 +8,7 @@ import types
 
 import pytest
 
-from openaivec._cache import AsyncBatchingMapProxy, BatchingMapProxy
+from openaivec._cache import AsyncBatchCache, BatchCache
 
 
 def test_batching_map_proxy_batches_calls_by_batch_size():
@@ -19,7 +19,7 @@ def test_batching_map_proxy_batches_calls_by_batch_size():
         # echo back values
         return xs
 
-    proxy = BatchingMapProxy[int, int](batch_size=3)
+    proxy = BatchCache[int, int](batch_size=3)
 
     items = list(range(8))  # 0..7
     out = proxy.map(items, mf)
@@ -39,7 +39,7 @@ def test_batching_map_proxy_cache_skips_already_processed_items():
         calls.append(xs[:])
         return xs
 
-    proxy = BatchingMapProxy[int, int](batch_size=10)
+    proxy = BatchCache[int, int](batch_size=10)
 
     # first call processes 1,2,3
     out1 = proxy.map([1, 2, 3], mf)
@@ -59,7 +59,7 @@ def test_batching_map_proxy_default_process_all_at_once_when_no_batch_size():
         calls.append(xs[:])
         return xs
 
-    proxy = BatchingMapProxy[int, int]()  # batch_size None
+    proxy = BatchCache[int, int]()  # batch_size None
 
     items = [10, 20, 30, 40]
     out = proxy.map(items, mf)
@@ -75,7 +75,7 @@ def test_batching_map_proxy_deduplicates_requests_and_batches():
         calls.append(xs[:])
         return xs
 
-    proxy = BatchingMapProxy[int, int](batch_size=3)
+    proxy = BatchCache[int, int](batch_size=3)
 
     # inputs contain duplicates; 1 and 2 repeat
     items = [1, 1, 2, 3, 2, 4, 4, 5]
@@ -103,7 +103,7 @@ def test_batching_map_proxy_rechecks_cache_within_batch_iteration():
         calls.append(xs[:])
         return xs
 
-    proxy = BatchingMapProxy[int, int](batch_size=4)
+    proxy = BatchCache[int, int](batch_size=4)
 
     # First call: all unique, expect one call with 4
     out1 = proxy.map([1, 2, 3, 4], mf)
@@ -118,9 +118,9 @@ def test_batching_map_proxy_rechecks_cache_within_batch_iteration():
 
 
 def test_batching_map_proxy_map_func_length_mismatch_raises_and_releases():
-    from openaivec._cache import BatchingMapProxy
+    from openaivec._cache import BatchCache
 
-    p = BatchingMapProxy[int, int](batch_size=3)
+    p = BatchCache[int, int](batch_size=3)
 
     def bad(xs: list[int]) -> list[int]:
         # Return wrong length to simulate contract violation
@@ -136,7 +136,7 @@ def test_batching_map_proxy_map_func_length_mismatch_raises_and_releases():
 
 
 def test_batching_map_proxy_map_exception_releases_all_owned_inflight():
-    p = BatchingMapProxy[int, int](batch_size=2)
+    p = BatchCache[int, int](batch_size=2)
 
     def bad(xs: list[int]) -> list[int]:
         if xs == [1, 2]:
@@ -151,16 +151,16 @@ def test_batching_map_proxy_map_exception_releases_all_owned_inflight():
 
 # -------------------- Internal methods tests --------------------
 def test_internal_unique_in_order():
-    from openaivec._cache import BatchingMapProxy
+    from openaivec._cache import BatchCache
 
-    p = BatchingMapProxy[int, int]()
+    p = BatchCache[int, int]()
     assert p._unique_in_order([1, 1, 2, 3, 2, 4]) == [1, 2, 3, 4]
 
 
 def test_internal_normalized_batch_size():
-    from openaivec._cache import BatchingMapProxy
+    from openaivec._cache import BatchCache
 
-    p = BatchingMapProxy[int, int]()
+    p = BatchCache[int, int]()
     assert p._normalized_batch_size(5) == 5  # default None => total
     p.batch_size = 0
     assert p._normalized_batch_size(7) == 7  # non-positive => total
@@ -169,13 +169,13 @@ def test_internal_normalized_batch_size():
 
 
 def test_internal_all_cached_and_values():
-    from openaivec._cache import BatchingMapProxy
+    from openaivec._cache import BatchCache
 
-    p = BatchingMapProxy[int, int]()
+    p = BatchCache[int, int]()
     # fill cache via public API
     p.map([1, 2, 3], lambda xs: xs)
-    all_cached = getattr(p, "_BatchingMapProxy__all_cached")
-    values = getattr(p, "_BatchingMapProxy__values")
+    all_cached = getattr(p, "_BatchCache__all_cached")
+    values = getattr(p, "_BatchCache__values")
     assert all_cached([1, 2]) is True
     assert all_cached([1, 4]) is False
     assert values([3, 2, 1]) == [3, 2, 1]
@@ -184,16 +184,16 @@ def test_internal_all_cached_and_values():
 def test_internal_acquire_ownership():
     import threading
 
-    from openaivec._cache import BatchingMapProxy
+    from openaivec._cache import BatchCache
 
-    p = BatchingMapProxy[int, int]()
+    p = BatchCache[int, int]()
     # Cache 1; mark 2 inflight; 3 is missing
     p.map([1], lambda xs: xs)
     inflight = getattr(p, "_inflight")
     lock = getattr(p, "_lock")
     with lock:
         inflight[2] = threading.Event()
-    acquire = getattr(p, "_BatchingMapProxy__acquire_ownership")
+    acquire = getattr(p, "_BatchCache__acquire_ownership")
     owned, wait_for = acquire([1, 2, 3])
     assert owned == [3]
     assert wait_for == [2]
@@ -202,14 +202,14 @@ def test_internal_acquire_ownership():
 def test_internal_finalize_success_and_failure():
     import threading
 
-    from openaivec._cache import BatchingMapProxy
+    from openaivec._cache import BatchCache
 
-    p = BatchingMapProxy[int, int]()
+    p = BatchCache[int, int]()
     inflight = getattr(p, "_inflight")
-    cache = getattr(p, "_cache")
+    cache = getattr(p, "cache")
     lock = getattr(p, "_lock")
-    finalize_success = getattr(p, "_BatchingMapProxy__finalize_success")
-    finalize_failure = getattr(p, "_BatchingMapProxy__finalize_failure")
+    finalize_success = getattr(p, "_BatchCache__finalize_success")
+    finalize_failure = getattr(p, "_BatchCache__finalize_failure")
 
     # success path
     with lock:
@@ -231,7 +231,7 @@ def test_internal_finalize_success_and_failure():
 
 
 def test_internal_process_owned_batches_and_skip_cached():
-    from openaivec._cache import BatchingMapProxy
+    from openaivec._cache import BatchCache
 
     calls: list[list[int]] = []
 
@@ -239,13 +239,13 @@ def test_internal_process_owned_batches_and_skip_cached():
         calls.append(xs[:])
         return xs
 
-    p = BatchingMapProxy[int, int](batch_size=2)
+    p = BatchCache[int, int](batch_size=2)
     # Pre-cache 3 to force skip in second batch
     p.map([3], mf)
     # Reset call log to focus on process_owned invocations
     calls.clear()
-    process_owned = getattr(p, "_BatchingMapProxy__process_owned")
-    cache = getattr(p, "_cache")
+    process_owned = getattr(p, "_BatchCache__process_owned")
+    cache = getattr(p, "cache")
 
     process_owned([0, 1, 2, 3, 4], mf)
     assert calls[0] == [0, 1]
@@ -259,17 +259,17 @@ def test_internal_wait_for_with_inflight_event():
     import threading
     import time
 
-    from openaivec._cache import BatchingMapProxy
+    from openaivec._cache import BatchCache
 
-    p = BatchingMapProxy[int, int]()
+    p = BatchCache[int, int]()
 
     def mf(xs: list[int]) -> list[int]:
         return [x * 10 for x in xs]
 
     inflight = getattr(p, "_inflight")
-    cache = getattr(p, "_cache")
+    cache = getattr(p, "cache")
     lock = getattr(p, "_lock")
-    wait_for = getattr(p, "_BatchingMapProxy__wait_for")
+    wait_for = getattr(p, "_BatchCache__wait_for")
 
     keys = [100, 200]
     with lock:
@@ -300,7 +300,7 @@ def test_sync_proxy_keeps_valid_none_results_cached():
         calls += 1
         return [None for _ in xs]
 
-    proxy = BatchingMapProxy[int, int | None](batch_size=4)
+    proxy = BatchCache[int, int | None](batch_size=4)
 
     assert proxy.map([1, 1, 2], mf) == [None, None, None]
     assert proxy.map([2, 1], mf) == [None, None]
@@ -308,16 +308,16 @@ def test_sync_proxy_keeps_valid_none_results_cached():
 
 
 def test_sync_proxy_prunes_cache_after_last_active_call():
-    proxy = BatchingMapProxy[int, int](batch_size=4, max_cache_size=2)
+    proxy = BatchCache[int, int](batch_size=4, max_cache_size=2)
 
     assert proxy.map([1, 2, 3], lambda xs: xs) == [1, 2, 3]
-    assert list(proxy._cache.keys()) == [2, 3]
+    assert list(proxy.cache.keys()) == [2, 3]
 
     assert proxy.map([2, 4], lambda xs: xs) == [2, 4]
-    assert list(proxy._cache.keys()) == [2, 4]
+    assert list(proxy.cache.keys()) == [2, 4]
 
 
-# -------------------- AsyncBatchingMapProxy tests --------------------
+# -------------------- AsyncBatchCache tests --------------------
 
 
 async def _afunc_echo(xs: list[int]) -> list[int]:
@@ -326,7 +326,7 @@ async def _afunc_echo(xs: list[int]) -> list[int]:
 
 
 def test_async_localproxy_basic(event_loop=None):
-    from openaivec._cache import AsyncBatchingMapProxy
+    from openaivec._cache import AsyncBatchCache
 
     calls: list[list[int]] = []
 
@@ -334,7 +334,7 @@ def test_async_localproxy_basic(event_loop=None):
         calls.append(xs[:])
         return await _afunc_echo(xs)
 
-    proxy = AsyncBatchingMapProxy[int, int](batch_size=3)
+    proxy = AsyncBatchCache[int, int](batch_size=3)
 
     async def run():
         out = await proxy.map([1, 2, 3, 4, 5], af)
@@ -346,7 +346,7 @@ def test_async_localproxy_basic(event_loop=None):
 
 
 def test_async_localproxy_dedup_and_cache(event_loop=None):
-    from openaivec._cache import AsyncBatchingMapProxy
+    from openaivec._cache import AsyncBatchCache
 
     calls: list[list[int]] = []
 
@@ -354,7 +354,7 @@ def test_async_localproxy_dedup_and_cache(event_loop=None):
         calls.append(xs[:])
         return await _afunc_echo(xs)
 
-    proxy = AsyncBatchingMapProxy[int, int](batch_size=10)
+    proxy = AsyncBatchCache[int, int](batch_size=10)
 
     async def run():
         out1 = await proxy.map([1, 1, 2, 3], af)
@@ -368,7 +368,7 @@ def test_async_localproxy_dedup_and_cache(event_loop=None):
 
 
 def test_async_localproxy_concurrent_requests(event_loop=None):
-    from openaivec._cache import AsyncBatchingMapProxy
+    from openaivec._cache import AsyncBatchCache
 
     calls: list[list[int]] = []
 
@@ -378,7 +378,7 @@ def test_async_localproxy_concurrent_requests(event_loop=None):
         calls.append(xs[:])
         return xs
 
-    proxy = AsyncBatchingMapProxy[int, int](batch_size=3)
+    proxy = AsyncBatchCache[int, int](batch_size=3)
 
     async def run():
         # two overlapping requests with duplicates
@@ -397,7 +397,7 @@ def test_async_localproxy_concurrent_requests(event_loop=None):
 
 
 def test_async_localproxy_max_concurrency_limit(event_loop=None):
-    from openaivec._cache import AsyncBatchingMapProxy
+    from openaivec._cache import AsyncBatchCache
 
     current = 0
     peak = 0
@@ -411,7 +411,7 @@ def test_async_localproxy_max_concurrency_limit(event_loop=None):
         current -= 1
         return xs
 
-    proxy = AsyncBatchingMapProxy[int, int](batch_size=1, max_concurrency=2)
+    proxy = AsyncBatchCache[int, int](batch_size=1, max_concurrency=2)
 
     async def run():
         # Launch several maps concurrently; each map will call af once per batch
@@ -425,12 +425,12 @@ def test_async_localproxy_max_concurrency_limit(event_loop=None):
 
 
 def test_async_localproxy_map_func_length_mismatch_raises_and_releases(event_loop=None):
-    from openaivec._cache import AsyncBatchingMapProxy
+    from openaivec._cache import AsyncBatchCache
 
     async def bad(xs: list[int]) -> list[int]:
         return xs[:-1]
 
-    proxy = AsyncBatchingMapProxy[int, int](batch_size=2)
+    proxy = AsyncBatchCache[int, int](batch_size=2)
 
     async def run_bad():
         with pytest.raises(ValueError):
@@ -446,7 +446,7 @@ def test_async_localproxy_map_func_length_mismatch_raises_and_releases(event_loo
 
 
 def test_async_localproxy_map_exception_releases_all_owned_inflight(event_loop=None):
-    proxy = AsyncBatchingMapProxy[int, int](batch_size=2, max_concurrency=1)
+    proxy = AsyncBatchCache[int, int](batch_size=2, max_concurrency=1)
 
     async def bad(xs: list[int]) -> list[int]:
         if xs == [1, 2]:
@@ -463,16 +463,16 @@ def test_async_localproxy_map_exception_releases_all_owned_inflight(event_loop=N
 
 def test_async_localproxy_invalid_max_concurrency_raises():
     with pytest.raises(ValueError, match="max_concurrency must be >= 1"):
-        AsyncBatchingMapProxy[int, int](max_concurrency=0)
+        AsyncBatchCache[int, int](max_concurrency=0)
     with pytest.raises(ValueError, match="max_concurrency must be >= 1"):
-        AsyncBatchingMapProxy[int, int](max_concurrency=-1)
+        AsyncBatchCache[int, int](max_concurrency=-1)
 
 
 def test_proxy_invalid_max_cache_size_raises():
     with pytest.raises(ValueError, match="max_cache_size must be >= 1"):
-        BatchingMapProxy[int, int](max_cache_size=0)
+        BatchCache[int, int](max_cache_size=0)
     with pytest.raises(ValueError, match="max_cache_size must be >= 1"):
-        AsyncBatchingMapProxy[int, int](max_cache_size=0)
+        AsyncBatchCache[int, int](max_cache_size=0)
 
 
 def test_sync_clear_releases_memory_and_recomputes():
@@ -482,7 +482,7 @@ def test_sync_clear_releases_memory_and_recomputes():
         calls.append(xs[:])
         return xs
 
-    p = BatchingMapProxy[int, int](batch_size=10)
+    p = BatchCache[int, int](batch_size=10)
     out1 = p.map([1, 2, 2, 3], f)
     assert out1 == [1, 2, 2, 3]
     assert len(calls) >= 1  # at least one batch call
@@ -505,7 +505,7 @@ def test_async_proxy_keeps_valid_none_results_cached(event_loop=None):
         await asyncio.sleep(0)
         return [None for _ in xs]
 
-    proxy = AsyncBatchingMapProxy[int, int | None](batch_size=4, max_concurrency=2)
+    proxy = AsyncBatchCache[int, int | None](batch_size=4, max_concurrency=2)
 
     async def run():
         first = await proxy.map([1, 1, 2], af)
@@ -518,7 +518,7 @@ def test_async_proxy_keeps_valid_none_results_cached(event_loop=None):
 
 
 def test_async_proxy_prunes_cache_after_last_active_call(event_loop=None):
-    proxy = AsyncBatchingMapProxy[int, int](batch_size=4, max_cache_size=2, max_concurrency=2)
+    proxy = AsyncBatchCache[int, int](batch_size=4, max_cache_size=2, max_concurrency=2)
 
     async def run():
         first = await proxy.map([1, 2, 3], _afunc_echo)
@@ -527,12 +527,12 @@ def test_async_proxy_prunes_cache_after_last_active_call(event_loop=None):
         assert second == [2, 4]
 
     asyncio.run(run())
-    assert list(proxy._cache.keys()) == [2, 4]
+    assert list(proxy.cache.keys()) == [2, 4]
 
 
 def test_batch_size_maximization_with_cache_hits():
     """Test that batch_size is maximized even when some items are cached."""
-    from openaivec._cache import BatchingMapProxy
+    from openaivec._cache import BatchCache
 
     calls: list[list[int]] = []
 
@@ -540,7 +540,7 @@ def test_batch_size_maximization_with_cache_hits():
         calls.append(xs[:])
         return xs
 
-    p = BatchingMapProxy[int, int](batch_size=3)
+    p = BatchCache[int, int](batch_size=3)
 
     # Pre-cache some items: 2, 5, 8
     p.map([2], mf)
@@ -564,7 +564,7 @@ def test_batch_size_maximization_with_cache_hits():
 
 def test_batch_size_maximization_complex_scenario():
     """Test batch_size maximization with more complex cache hit patterns."""
-    from openaivec._cache import BatchingMapProxy
+    from openaivec._cache import BatchCache
 
     calls: list[list[int]] = []
 
@@ -572,7 +572,7 @@ def test_batch_size_maximization_complex_scenario():
         calls.append(xs[:])
         return [x * 2 for x in xs]
 
-    p = BatchingMapProxy[int, int](batch_size=4)
+    p = BatchCache[int, int](batch_size=4)
 
     # Pre-cache items: 1, 3, 6, 8, 11
     for item in [1, 3, 6, 8, 11]:
@@ -604,7 +604,7 @@ async def test_async_clear_releases_memory_and_recomputes():
         await asyncio.sleep(0)
         return xs
 
-    p = AsyncBatchingMapProxy[int, int](batch_size=10)
+    p = AsyncBatchCache[int, int](batch_size=10)
     out1 = await p.map([1, 2, 3], af)
     assert out1 == [1, 2, 3]
     assert len(calls) >= 1
@@ -619,7 +619,7 @@ async def test_async_clear_releases_memory_and_recomputes():
 @pytest.mark.asyncio
 async def test_async_batch_size_maximization_with_cache_hits():
     """Test that batch_size is maximized even when some items are cached (async version)."""
-    from openaivec._cache import AsyncBatchingMapProxy
+    from openaivec._cache import AsyncBatchCache
 
     calls: list[list[int]] = []
 
@@ -628,7 +628,7 @@ async def test_async_batch_size_maximization_with_cache_hits():
         await asyncio.sleep(0.01)
         return xs
 
-    p = AsyncBatchingMapProxy[int, int](batch_size=3)
+    p = AsyncBatchCache[int, int](batch_size=3)
 
     # Pre-cache some items: 2, 5, 8
     await p.map([2], mf)
@@ -653,7 +653,7 @@ async def test_async_batch_size_maximization_with_cache_hits():
 @pytest.mark.asyncio
 async def test_async_batch_size_maximization_complex_scenario():
     """Test batch_size maximization with more complex cache hit patterns (async version)."""
-    from openaivec._cache import AsyncBatchingMapProxy
+    from openaivec._cache import AsyncBatchCache
 
     calls: list[list[int]] = []
 
@@ -662,7 +662,7 @@ async def test_async_batch_size_maximization_complex_scenario():
         await asyncio.sleep(0.01)
         return [x * 2 for x in xs]
 
-    p = AsyncBatchingMapProxy[int, int](batch_size=4)
+    p = AsyncBatchCache[int, int](batch_size=4)
 
     # Pre-cache items: 1, 3, 6, 8, 11
     for item in [1, 3, 6, 8, 11]:
@@ -690,9 +690,9 @@ async def test_async_batch_size_maximization_complex_scenario():
 
 def test_notebook_environment_detection():
     """Test notebook environment detection functionality."""
-    from openaivec._cache import ProxyBase
+    from openaivec._cache import BatchCacheBase
 
-    proxy = ProxyBase()
+    proxy = BatchCacheBase()
     # The method should return a boolean and not raise an exception
     result = proxy._is_notebook_environment()
     assert isinstance(result, bool)
@@ -700,9 +700,9 @@ def test_notebook_environment_detection():
 
 def test_notebook_environment_detection_with_jpy_parent_pid(monkeypatch):
     """Test notebook detection fallback when IPython import is unavailable."""
-    from openaivec._cache import ProxyBase
+    from openaivec._cache import BatchCacheBase
 
-    proxy = ProxyBase()
+    proxy = BatchCacheBase()
 
     notebook_vars = [
         "JPY_PARENT_PID",
@@ -730,9 +730,9 @@ def test_notebook_environment_detection_with_jpy_parent_pid(monkeypatch):
 
 def test_progress_bar_methods():
     """Test progress bar creation and management methods."""
-    from openaivec._cache import ProxyBase
+    from openaivec._cache import BatchCacheBase
 
-    proxy = ProxyBase()
+    proxy = BatchCacheBase()
     proxy.show_progress = True
 
     # Test progress bar creation (may return None if tqdm not available or not in notebook)
@@ -745,7 +745,7 @@ def test_progress_bar_methods():
 
 def test_progress_bar_methods_handle_falsey_progress_object():
     """Test update/close behavior for progress objects with falsey truth values."""
-    from openaivec._cache import ProxyBase
+    from openaivec._cache import BatchCacheBase
 
     class FalseyProgress:
         def __init__(self):
@@ -761,7 +761,7 @@ def test_progress_bar_methods_handle_falsey_progress_object():
         def close(self):
             self.closed = True
 
-    proxy = ProxyBase()
+    proxy = BatchCacheBase()
     progress_bar = FalseyProgress()
 
     proxy._update_progress_bar(progress_bar, 5)
@@ -773,9 +773,9 @@ def test_progress_bar_methods_handle_falsey_progress_object():
 
 def test_create_progress_bar_falls_back_to_tqdm_auto(monkeypatch):
     """Test progress bar creation fallback from notebook tqdm to auto tqdm."""
-    from openaivec._cache import ProxyBase
+    from openaivec._cache import BatchCacheBase
 
-    proxy = ProxyBase()
+    proxy = BatchCacheBase()
     proxy.show_progress = True
     monkeypatch.setattr(proxy, "_is_notebook_environment", lambda: True)
 
@@ -804,14 +804,14 @@ def test_create_progress_bar_falls_back_to_tqdm_auto(monkeypatch):
 
 
 def test_batching_proxy_with_progress_disabled():
-    """Test BatchingMapProxy with progress disabled via explicit flag."""
+    """Test BatchCache with progress disabled via explicit flag."""
     calls: list[list[int]] = []
 
     def mf(xs: list[int]) -> list[int]:
         calls.append(xs[:])
         return xs
 
-    proxy = BatchingMapProxy[int, int](batch_size=3, show_progress=False)
+    proxy = BatchCache[int, int](batch_size=3, show_progress=False)
     items = list(range(6))
     result = proxy.map(items, mf)
 
@@ -820,14 +820,14 @@ def test_batching_proxy_with_progress_disabled():
 
 
 def test_batching_proxy_with_progress_enabled():
-    """Test BatchingMapProxy with progress enabled."""
+    """Test BatchCache with progress enabled."""
     calls: list[list[int]] = []
 
     def mf(xs: list[int]) -> list[int]:
         calls.append(xs[:])
         return xs
 
-    proxy = BatchingMapProxy[int, int](batch_size=3, show_progress=True)
+    proxy = BatchCache[int, int](batch_size=3, show_progress=True)
     items = list(range(6))
     result = proxy.map(items, mf)
 
@@ -837,7 +837,7 @@ def test_batching_proxy_with_progress_enabled():
 
 @pytest.mark.asyncio
 async def test_async_batching_proxy_with_progress_disabled():
-    """Test AsyncBatchingMapProxy with progress disabled via explicit flag."""
+    """Test AsyncBatchCache with progress disabled via explicit flag."""
     calls: list[list[int]] = []
 
     async def mf(xs: list[int]) -> list[int]:
@@ -845,7 +845,7 @@ async def test_async_batching_proxy_with_progress_disabled():
         await asyncio.sleep(0.01)
         return xs
 
-    proxy = AsyncBatchingMapProxy[int, int](batch_size=3, show_progress=False)
+    proxy = AsyncBatchCache[int, int](batch_size=3, show_progress=False)
     items = list(range(6))
     result = await proxy.map(items, mf)
 
@@ -855,7 +855,7 @@ async def test_async_batching_proxy_with_progress_disabled():
 
 @pytest.mark.asyncio
 async def test_async_batching_proxy_with_progress_enabled():
-    """Test AsyncBatchingMapProxy with progress enabled."""
+    """Test AsyncBatchCache with progress enabled."""
     calls: list[list[int]] = []
 
     async def mf(xs: list[int]) -> list[int]:
@@ -863,7 +863,7 @@ async def test_async_batching_proxy_with_progress_enabled():
         await asyncio.sleep(0.01)
         return xs
 
-    proxy = AsyncBatchingMapProxy[int, int](batch_size=3, show_progress=True)
+    proxy = AsyncBatchCache[int, int](batch_size=3, show_progress=True)
     items = list(range(6))
     result = await proxy.map(items, mf)
 
@@ -873,11 +873,11 @@ async def test_async_batching_proxy_with_progress_enabled():
 
 def test_progress_bar_with_forced_notebook_environment():
     """Test progress bar functionality with forced notebook environment."""
-    from openaivec._cache import ProxyBase
+    from openaivec._cache import BatchCacheBase
 
     # Monkey patch the notebook detection to return True
-    original_method = ProxyBase._is_notebook_environment
-    ProxyBase._is_notebook_environment = lambda self: True
+    original_method = BatchCacheBase._is_notebook_environment
+    BatchCacheBase._is_notebook_environment = lambda self: True
 
     try:
         calls: list[list[int]] = []
@@ -887,7 +887,7 @@ def test_progress_bar_with_forced_notebook_environment():
             return xs
 
         # Create proxy with progress enabled
-        proxy = BatchingMapProxy[int, int](batch_size=3, show_progress=True)
+        proxy = BatchCache[int, int](batch_size=3, show_progress=True)
         items = list(range(10))
         result = proxy.map(items, mf)
 
@@ -897,17 +897,17 @@ def test_progress_bar_with_forced_notebook_environment():
 
     finally:
         # Restore original method
-        ProxyBase._is_notebook_environment = original_method
+        BatchCacheBase._is_notebook_environment = original_method
 
 
 @pytest.mark.asyncio
 async def test_async_progress_bar_with_forced_notebook_environment():
     """Test async progress bar functionality with forced notebook environment."""
-    from openaivec._cache import ProxyBase
+    from openaivec._cache import BatchCacheBase
 
     # Monkey patch the notebook detection to return True
-    original_method = ProxyBase._is_notebook_environment
-    ProxyBase._is_notebook_environment = lambda self: True
+    original_method = BatchCacheBase._is_notebook_environment
+    BatchCacheBase._is_notebook_environment = lambda self: True
 
     try:
         calls: list[list[int]] = []
@@ -918,7 +918,7 @@ async def test_async_progress_bar_with_forced_notebook_environment():
             return xs
 
         # Create proxy with progress enabled
-        proxy = AsyncBatchingMapProxy[int, int](batch_size=3, show_progress=True)
+        proxy = AsyncBatchCache[int, int](batch_size=3, show_progress=True)
         items = list(range(10))
         result = await proxy.map(items, mf)
 
@@ -928,12 +928,12 @@ async def test_async_progress_bar_with_forced_notebook_environment():
 
     finally:
         # Restore original method
-        ProxyBase._is_notebook_environment = original_method
+        BatchCacheBase._is_notebook_environment = original_method
 
 
 @pytest.mark.asyncio
 async def test_async_concurrent_batch_processing():
-    """Test that AsyncBatchingMapProxy processes batches concurrently."""
+    """Test that AsyncBatchCache processes batches concurrently."""
     calls: list[list[int]] = []
     start_times: list[float] = []
 
@@ -945,7 +945,7 @@ async def test_async_concurrent_batch_processing():
         await asyncio.sleep(0.1)  # Simulate network latency
         return xs
 
-    proxy = AsyncBatchingMapProxy[int, int](batch_size=5, max_concurrency=5)
+    proxy = AsyncBatchCache[int, int](batch_size=5, max_concurrency=5)
     items = list(range(25))  # 5 batches of 5 items each
 
     start = time.time()
@@ -985,7 +985,7 @@ async def test_async_max_concurrency_limit():
 
         return xs
 
-    proxy = AsyncBatchingMapProxy[int, int](batch_size=1, max_concurrency=3)
+    proxy = AsyncBatchCache[int, int](batch_size=1, max_concurrency=3)
     items = list(range(10))  # 10 batches of 1 item each
 
     result = await proxy.map(items, tracking_mf)
@@ -1006,13 +1006,13 @@ async def test_async_performance_improvement():
     items = list(range(20))  # 4 batches of 5 items each
 
     # Test with max_concurrency=1 (sequential)
-    proxy_seq = AsyncBatchingMapProxy[int, int](batch_size=5, max_concurrency=1)
+    proxy_seq = AsyncBatchCache[int, int](batch_size=5, max_concurrency=1)
     start = time.time()
     result_seq = await proxy_seq.map(items, slow_mf)
     time_seq = time.time() - start
 
     # Test with max_concurrency=4 (concurrent)
-    proxy_conc = AsyncBatchingMapProxy[int, int](batch_size=5, max_concurrency=4)
+    proxy_conc = AsyncBatchCache[int, int](batch_size=5, max_concurrency=4)
     start = time.time()
     result_conc = await proxy_conc.map(items, slow_mf)
     time_conc = time.time() - start

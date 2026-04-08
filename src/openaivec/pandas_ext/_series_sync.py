@@ -7,14 +7,14 @@ import pandas as pd
 import tiktoken
 from openai import OpenAI
 
-from openaivec._cache import BatchingMapProxy
+from openaivec._cache import BatchCache
 from openaivec._cache.proxy import DEFAULT_MANAGED_CACHE_SIZE
 from openaivec._embeddings import BatchEmbeddings
 from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
 from openaivec._provider import CONTAINER
 from openaivec._responses import BatchResponses
 from openaivec._schema import SchemaInferenceInput, SchemaInferenceOutput, SchemaInferer
-from openaivec.pandas_ext._common import _extract_value
+from openaivec.pandas_ext._common import _embeddings_to_series, _extract_value
 
 
 @pd.api.extensions.register_series_accessor("ai")
@@ -27,7 +27,7 @@ class OpenAIVecSeriesAccessor:
     def responses_with_cache(
         self,
         instructions: str,
-        cache: BatchingMapProxy[str, ResponseFormat],
+        cache: BatchCache[str, ResponseFormat],
         response_format: type[ResponseFormat] = str,
         **api_kwargs,
     ) -> pd.Series:
@@ -38,15 +38,15 @@ class OpenAIVecSeriesAccessor:
 
         Example:
             ```python
-            from openaivec._cache import BatchingMapProxy
+            from openaivec._cache import BatchCache
 
-            shared = BatchingMapProxy(batch_size=64)
+            shared = BatchCache(batch_size=64)
             result = series.ai.responses_with_cache("classify", cache=shared)
             ```
 
         Args:
             instructions (str): System prompt prepended to every user message.
-            cache (BatchingMapProxy[str, ResponseFormat]): Pre-configured cache
+            cache (BatchCache[str, ResponseFormat]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
             response_format (type[ResponseFormat], optional): Pydantic model or built‑in
@@ -118,7 +118,7 @@ class OpenAIVecSeriesAccessor:
         """
         return self.responses_with_cache(
             instructions=instructions,
-            cache=BatchingMapProxy(
+            cache=BatchCache(
                 batch_size=batch_size,
                 max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
                 show_progress=show_progress,
@@ -129,29 +129,29 @@ class OpenAIVecSeriesAccessor:
 
     def embeddings_with_cache(
         self,
-        cache: BatchingMapProxy[str, np.ndarray],
+        cache: BatchCache[str, np.ndarray],
         **api_kwargs,
     ) -> pd.Series:
         """Compute OpenAI embeddings for every Series element using a provided cache.
 
         This method allows external control over caching behavior by accepting
-        a pre-configured BatchingMapProxy instance, enabling cache sharing
+        a pre-configured BatchCache instance, enabling cache sharing
         across multiple operations or custom batch size management.
 
         Example:
             ```python
-            from openaivec._cache import BatchingMapProxy
+            from openaivec._cache import BatchCache
             import numpy as np
 
             # Create a shared cache with custom batch size
-            shared_cache = BatchingMapProxy[str, np.ndarray](batch_size=64)
+            shared_cache = BatchCache[str, np.ndarray](batch_size=64)
 
             animals = pd.Series(["cat", "dog", "elephant"])
             embeddings = animals.ai.embeddings_with_cache(cache=shared_cache)
             ```
 
         Args:
-            cache (BatchingMapProxy[str, np.ndarray]): Pre-configured cache
+            cache (BatchCache[str, np.ndarray]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
@@ -169,7 +169,7 @@ class OpenAIVecSeriesAccessor:
             api_kwargs=api_kwargs,
         )
 
-        return pd.Series(
+        return _embeddings_to_series(
             client.create(self._obj.tolist()),
             index=self._obj.index,
             name=self._obj.name,
@@ -206,7 +206,7 @@ class OpenAIVecSeriesAccessor:
                 (dtype ``float32``).
         """
         return self.embeddings_with_cache(
-            cache=BatchingMapProxy(
+            cache=BatchCache(
                 batch_size=batch_size,
                 max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
                 show_progress=show_progress,
@@ -217,21 +217,21 @@ class OpenAIVecSeriesAccessor:
     def task_with_cache(
         self,
         task: PreparedTask[ResponseFormat],
-        cache: BatchingMapProxy[str, ResponseFormat],
+        cache: BatchCache[str, ResponseFormat],
         **api_kwargs,
     ) -> pd.Series:
         """Execute a prepared task on every Series element using a provided cache.
 
         This mirrors ``responses_with_cache`` but uses the task's stored instructions
-        and response format. A supplied ``BatchingMapProxy`` enables cross‑operation
+        and response format. A supplied ``BatchCache`` enables cross‑operation
         deduplicated reuse and external batch size / progress control.
 
         Example:
             ```python
             from openaivec._model import PreparedTask
-            from openaivec._cache import BatchingMapProxy
+            from openaivec._cache import BatchCache
 
-            shared_cache = BatchingMapProxy(batch_size=64)
+            shared_cache = BatchCache(batch_size=64)
             sentiment_task = PreparedTask(...)
             reviews = pd.Series(["Great product!", "Not satisfied", "Amazing quality"])
             results = reviews.ai.task_with_cache(sentiment_task, cache=shared_cache)
@@ -240,7 +240,7 @@ class OpenAIVecSeriesAccessor:
         Args:
             task (PreparedTask): A pre-configured task containing instructions,
                 response format for processing the inputs.
-            cache (BatchingMapProxy[str, ResponseFormat]): Pre-configured cache
+            cache (BatchCache[str, ResponseFormat]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
@@ -315,7 +315,7 @@ class OpenAIVecSeriesAccessor:
         """
         return self.task_with_cache(
             task=task,
-            cache=BatchingMapProxy(
+            cache=BatchCache(
                 batch_size=batch_size,
                 max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
                 show_progress=show_progress,
@@ -326,7 +326,7 @@ class OpenAIVecSeriesAccessor:
     def parse_with_cache(
         self,
         instructions: str,
-        cache: BatchingMapProxy[str, ResponseFormat],
+        cache: BatchCache[str, ResponseFormat],
         response_format: type[ResponseFormat] | None = None,
         max_examples: int = 100,
         **api_kwargs,
@@ -340,9 +340,9 @@ class OpenAIVecSeriesAccessor:
 
         Example:
             ```python
-            from openaivec._cache import BatchingMapProxy
+            from openaivec._cache import BatchCache
 
-            shared = BatchingMapProxy(batch_size=64)
+            shared = BatchCache(batch_size=64)
             result = series.ai.parse_with_cache(
                 "Extract dates and amounts",
                 cache=shared,
@@ -355,7 +355,7 @@ class OpenAIVecSeriesAccessor:
                 to extract (e.g., "Extract customer information including name
                 and contact details"). This guides both the extraction process
                 and schema inference.
-            cache (BatchingMapProxy[str, ResponseFormat]): Pre-configured cache
+            cache (BatchCache[str, ResponseFormat]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
             response_format (type[ResponseFormat] | None, optional): Target structure
@@ -459,7 +459,7 @@ class OpenAIVecSeriesAccessor:
         """
         return self.parse_with_cache(
             instructions=instructions,
-            cache=BatchingMapProxy(
+            cache=BatchCache(
                 batch_size=batch_size,
                 max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
                 show_progress=show_progress,
@@ -546,6 +546,9 @@ class OpenAIVecSeriesAccessor:
     def count_tokens(self) -> pd.Series:
         """Count ``tiktoken`` tokens per element.
 
+        Uses ``encode_batch`` for vectorized tokenization when available,
+        falling back to per-element ``map`` otherwise.
+
         Example:
             ```python
             animals = pd.Series(["cat", "dog", "elephant"])
@@ -556,7 +559,9 @@ class OpenAIVecSeriesAccessor:
             pandas.Series: Token counts for each element.
         """
         encoding: tiktoken.Encoding = CONTAINER.resolve(tiktoken.Encoding)
-        return self._obj.map(encoding.encode).map(len).rename("num_tokens")
+        texts = self._obj.tolist()
+        token_counts = [len(t) for t in encoding.encode_batch(texts)]
+        return pd.Series(token_counts, index=self._obj.index, name="num_tokens")
 
     def extract(self) -> pd.DataFrame:
         """Expand a Series of Pydantic models or dicts into DataFrame columns.

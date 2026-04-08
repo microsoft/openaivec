@@ -4,12 +4,12 @@ import asyncio
 
 import pytest
 
-from openaivec._cache import AsyncBatchingMapProxy, BatchingMapProxy
+from openaivec._cache import AsyncBatchCache, BatchCache
 
 
 def test_sync_proxy_uses_suggester_when_batch_size_none():
-    """Test that BatchingMapProxy uses suggester when batch_size is None."""
-    proxy = BatchingMapProxy[int, str](batch_size=None)
+    """Test that BatchCache uses suggester when batch_size is None."""
+    proxy = BatchCache[int, str](batch_size=None)
 
     # Set a known batch size in the suggester
     proxy.suggester.current_batch_size = 5
@@ -34,7 +34,7 @@ def test_sync_proxy_uses_suggester_when_batch_size_none():
 
 def test_sync_proxy_suggester_adapts_batch_size():
     """Test that suggester adapts batch size based on execution time."""
-    proxy = BatchingMapProxy[int, str](batch_size=None)
+    proxy = BatchCache[int, str](batch_size=None)
 
     # Configure suggester for testing
     proxy.suggester.min_batch_size = 2
@@ -71,7 +71,7 @@ def test_sync_proxy_suggester_adapts_batch_size():
 
 def test_sync_proxy_respects_total_when_suggested_exceeds():
     """Test that normalized_batch_size doesn't exceed total items."""
-    proxy = BatchingMapProxy[int, str](batch_size=None)
+    proxy = BatchCache[int, str](batch_size=None)
 
     # Set suggester to suggest a large batch size
     proxy.suggester.current_batch_size = 100
@@ -96,8 +96,8 @@ def test_sync_proxy_respects_total_when_suggested_exceeds():
 
 @pytest.mark.asyncio
 async def test_async_proxy_uses_suggester_when_batch_size_none():
-    """Test that AsyncBatchingMapProxy uses suggester when batch_size is None."""
-    proxy = AsyncBatchingMapProxy[int, str](batch_size=None)
+    """Test that AsyncBatchCache uses suggester when batch_size is None."""
+    proxy = AsyncBatchCache[int, str](batch_size=None)
 
     # Set a known batch size in the suggester
     proxy.suggester.current_batch_size = 3
@@ -124,7 +124,7 @@ async def test_async_proxy_uses_suggester_when_batch_size_none():
 @pytest.mark.asyncio
 async def test_async_proxy_suggester_with_concurrency():
     """Test that async proxy with suggester works with concurrent processing."""
-    proxy = AsyncBatchingMapProxy[int, str](batch_size=None, max_concurrency=3)
+    proxy = AsyncBatchCache[int, str](batch_size=None, max_concurrency=3)
 
     # Set a known batch size in the suggester
     proxy.suggester.current_batch_size = 2
@@ -159,7 +159,7 @@ async def test_async_proxy_suggester_with_concurrency():
 
 def test_sync_proxy_batch_size_overrides_suggester():
     """Test that explicit batch_size takes precedence over suggester."""
-    proxy = BatchingMapProxy[int, str](batch_size=7)
+    proxy = BatchCache[int, str](batch_size=7)
 
     # Even though suggester might suggest different size
     proxy.suggester.current_batch_size = 3
@@ -181,7 +181,7 @@ def test_sync_proxy_batch_size_overrides_suggester():
 
 def test_sync_proxy_zero_batch_size_processes_all():
     """Test that batch_size=0 processes all items at once."""
-    proxy = BatchingMapProxy[int, str](batch_size=0)
+    proxy = BatchCache[int, str](batch_size=0)
 
     # Suggester should not be used
     proxy.suggester.current_batch_size = 5

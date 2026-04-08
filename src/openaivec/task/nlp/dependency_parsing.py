@@ -55,4 +55,3 @@ TASK_SPEC = TaskSpec(
     factory=dependency_parsing,
     response_format=DependencyParsing,
 )
-
