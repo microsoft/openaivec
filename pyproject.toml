@@ -94,3 +94,4 @@ source = "uv-dynamic-versioning"
 vcs = "git"
 style = "pep440"
 bump = true
+tag-pattern = "(?i)^v?(?P<base>\\d+\\.\\d+\\.\\d+.*)"
