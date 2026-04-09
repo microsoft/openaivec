@@ -157,16 +157,16 @@ from openaivec._serialize import deserialize_base_model, serialize_base_model
 from openaivec._util import TextChunker, run_partition_async
 
 __all__ = [
-    "setup",
-    "setup_azure",
-    "responses_udf",
-    "task_udf",
+    "count_tokens_udf",
     "embeddings_udf",
     "infer_schema",
     "parse_udf",
-    "split_to_chunks_udf",
-    "count_tokens_udf",
+    "responses_udf",
+    "setup",
+    "setup_azure",
     "similarity_udf",
+    "split_to_chunks_udf",
+    "task_udf",
 ]
 
 
