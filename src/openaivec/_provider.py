@@ -2,6 +2,7 @@ import os
 import threading
 import warnings
 
+import duckdb
 import tiktoken
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
@@ -230,6 +231,7 @@ def _register_default_providers() -> None:
             model_name=CONTAINER.resolve(ResponsesModelName).value,
         ),
     )
+    CONTAINER.register(duckdb.DuckDBPyConnection, lambda: duckdb.connect(":memory:"))
 
 
 def _defaults_installed() -> bool:

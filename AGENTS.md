@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Layout
-- `src/openaivec/`: core batched wrappers (`_responses.py`, `_embeddings.py`), batching/caching internals (`_cache/proxy.py`, `_cache/optimize.py`, `_cache/_backend.py`), provider/DI setup (`_provider.py`, `_di.py`), schema inference (`_schema/`), and integrations (`pandas_ext/`, `spark.py`, `duckdb_ext.py`).
+- `src/openaivec/`: core batched wrappers (`_responses.py`, `_embeddings.py`), batching/caching internals (`_cache/proxy.py`, `_cache/optimize.py`, `_cache/_backend.py`), provider/DI setup (`_provider.py`, `_di.py`), schema inference (`_schema/`), and integrations (`pandas_ext/`, `spark_ext.py`, `duckdb_ext.py`).
 - `src/openaivec/task/`: function-style task factories by domain (`nlp/`, `customer_support/`, `table/`) plus registry plumbing in `_registry.py`.
 - `tests/`: mirrors the source layout, including focused suites in `tests/_cache/` and `tests/_schema/`.
 - `docs/` holds MkDocs sources, `site/` generated pages, and `artifacts/` scratch assets kept out of releases.
@@ -13,7 +13,7 @@
 - `_responses.py` / `_embeddings.py` are batched OpenAI wrappers with retry/backoff; structured outputs use Pydantic `response_format`, and `_responses.py` retries schema failures with validation feedback (`max_validation_retries`).
 - `parse` helpers infer schema when `response_format=None`; pass explicit models when deterministic output shape is required.
 - Reuse caches from `*_with_cache` helpers (or Spark UDF-local caches) per operation and clear them (`clear`/`aclose`) when finished to avoid unbounded cache growth.
-- `duckdb_ext.py` provides DuckDB UDF registration (`register_responses_udf`, `register_embeddings_udf`, `register_task_udf`), `similarity_search` for top-k cosine queries, and `pydantic_to_duckdb_ddl` for schema-to-DDL conversion. Use `DuckDBCacheBackend` as the `cache` field of `BatchCache` for persistent cross-session caching. DuckDB is a core dependency.
+- `duckdb_ext.py` provides DuckDB UDF registration (`responses_udf`, `embeddings_udf`, `task_udf`), `similarity_search` for top-k cosine queries, and `pydantic_to_duckdb_ddl` for schema-to-DDL conversion. Use `DuckDBCacheBackend` as the `cache` field of `BatchCache` for persistent cross-session caching. DuckDB is a core dependency.
 
 ## Task & Schema Conventions
 - Export tasks as factory functions (for example `nlp.sentiment_analysis()`), not constant task instances.

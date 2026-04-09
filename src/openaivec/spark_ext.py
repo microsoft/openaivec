@@ -3,7 +3,7 @@
 This module provides functions (`responses_udf`, `task_udf`, `embeddings_udf`,
 `count_tokens_udf`, `split_to_chunks_udf`, `similarity_udf`, `parse_udf`)
 for creating asynchronous Spark UDFs that communicate with either the public
-OpenAI API or Azure OpenAI using the `openaivec.spark` subpackage.
+OpenAI API or Azure OpenAI using the `openaivec.spark_ext` subpackage.
 It supports UDFs for generating responses, creating embeddings, parsing text,
 and computing similarities asynchronously. The UDFs operate on Spark DataFrames
 and leverage asyncio for improved performance in I/O-bound operations.
@@ -19,7 +19,7 @@ First, obtain a Spark session and configure authentication:
 
 ```python
 from pyspark.sql import SparkSession
-from openaivec.spark import setup, setup_azure
+from openaivec.spark_ext import setup, setup_azure
 
 spark = SparkSession.builder.getOrCreate()
 
@@ -49,7 +49,7 @@ setup(
 Next, create UDFs and register them:
 
 ```python
-from openaivec.spark import responses_udf, task_udf, embeddings_udf, count_tokens_udf, split_to_chunks_udf
+from openaivec.spark_ext import responses_udf, task_udf, embeddings_udf, count_tokens_udf, split_to_chunks_udf
 from pydantic import BaseModel
 
 # Define a Pydantic model for structured responses (optional)
@@ -128,10 +128,9 @@ Note: AI-powered UDFs run one reusable asyncio event loop per invocation and
 use partition-local caches to avoid duplicate remote calls inside a partition.
 """
 
-import asyncio
 import logging
 import os
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Iterator
 from enum import Enum
 from typing import Annotated, TypeVar, Union, cast, get_args, get_origin
 
@@ -155,57 +154,24 @@ from openaivec._provider import CONTAINER, get_async_client
 from openaivec._responses import AsyncBatchResponses
 from openaivec._schema import SchemaInferenceInput, SchemaInferenceOutput, SchemaInferer
 from openaivec._serialize import deserialize_base_model, serialize_base_model
-from openaivec._util import TextChunker
+from openaivec._util import TextChunker, run_partition_async
 
 __all__ = [
-    "setup",
-    "setup_azure",
-    "responses_udf",
-    "task_udf",
+    "count_tokens_udf",
     "embeddings_udf",
     "infer_schema",
     "parse_udf",
-    "split_to_chunks_udf",
-    "count_tokens_udf",
+    "responses_udf",
+    "setup",
+    "setup_azure",
     "similarity_udf",
+    "split_to_chunks_udf",
+    "task_udf",
 ]
 
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 PartitionResult = TypeVar("PartitionResult")
-
-
-def _create_partition_loop() -> asyncio.AbstractEventLoop:
-    """Create an event loop dedicated to a single Spark UDF invocation."""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    return loop
-
-
-def _close_partition_loop(loop: asyncio.AbstractEventLoop) -> None:
-    """Shut down and close a Spark UDF event loop."""
-    try:
-        loop.run_until_complete(loop.shutdown_asyncgens())
-        if hasattr(loop, "shutdown_default_executor"):
-            loop.run_until_complete(loop.shutdown_default_executor())
-    finally:
-        asyncio.set_event_loop(None)
-        loop.close()
-
-
-def _run_partition_async(
-    parts: Iterator[pd.Series],
-    runner: Callable[[pd.Series], Awaitable[PartitionResult]],
-    cleanup: Callable[[], Awaitable[None]],
-) -> Iterator[PartitionResult]:
-    """Run async partition work on a single reusable event loop."""
-    loop = _create_partition_loop()
-    try:
-        for part in parts:
-            yield loop.run_until_complete(runner(part))
-    finally:
-        loop.run_until_complete(cleanup())
-        _close_partition_loop(loop)
 
 
 def setup(
@@ -227,7 +193,7 @@ def setup(
     Example:
         ```python
         from pyspark.sql import SparkSession
-        from openaivec.spark import setup
+        from openaivec.spark_ext import setup
 
         spark = SparkSession.builder.getOrCreate()
         setup(
@@ -288,7 +254,7 @@ def setup_azure(
     Example:
         ```python
         from pyspark.sql import SparkSession
-        from openaivec.spark import setup_azure
+        from openaivec.spark_ext import setup_azure
 
         spark = SparkSession.builder.getOrCreate()
         setup_azure(
@@ -476,7 +442,7 @@ def responses_udf(
     Example:
         ```python
         from pyspark.sql import SparkSession
-        from openaivec.spark import responses_udf, setup
+        from openaivec.spark_ext import responses_udf, setup
 
         spark = SparkSession.builder.getOrCreate()
         setup(spark, api_key="sk-***", responses_model_name="gpt-4.1-mini")
@@ -525,7 +491,7 @@ def responses_udf(
             async def cleanup() -> None:
                 await cache.clear()
 
-            yield from _run_partition_async(col, run_part, cleanup)
+            yield from run_partition_async(col, run_part, cleanup)
 
         return structure_udf  # type: ignore[return-value]
 
@@ -555,7 +521,7 @@ def responses_udf(
             async def cleanup() -> None:
                 await cache.clear()
 
-            yield from _run_partition_async(col, run_part, cleanup)
+            yield from run_partition_async(col, run_part, cleanup)
 
         return string_udf  # type: ignore[return-value]
 
@@ -871,7 +837,7 @@ def embeddings_udf(
         async def cleanup() -> None:
             await cache.clear()
 
-        yield from _run_partition_async(col, run_part, cleanup)
+        yield from run_partition_async(col, run_part, cleanup)
 
     return _embeddings_udf  # type: ignore[return-value]
 

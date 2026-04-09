@@ -270,7 +270,7 @@ Choose one setup path before registering UDFs.
 
 ```python
 from pyspark.sql import SparkSession
-from openaivec.spark import setup
+from openaivec.spark_ext import setup
 
 spark = SparkSession.builder.getOrCreate()
 setup(
@@ -285,7 +285,7 @@ setup(
 
 ```python
 from pyspark.sql import SparkSession
-from openaivec.spark import setup_azure
+from openaivec.spark_ext import setup_azure
 
 spark = SparkSession.builder.getOrCreate()
 setup_azure(
@@ -315,7 +315,7 @@ os.environ.pop("AZURE_OPENAI_API_KEY", None)
 Create and register UDFs using the provided helpers:
 
 ```python
-from openaivec.spark import responses_udf
+from openaivec.spark_ext import responses_udf
 
 spark.udf.register(
     "extract_brand",
@@ -363,7 +363,7 @@ class Sentiment(BaseModel):
 
 conn = duckdb.connect()
 
-duckdb_ext.register_responses_udf(
+duckdb_ext.responses_udf(
     conn,
     "analyze_sentiment",
     instructions="Analyze customer sentiment. Return label, confidence (0-1), and a one-sentence summary.",
@@ -395,7 +395,7 @@ conn.sql("""
 Embedding UDFs work the same way:
 
 ```python
-duckdb_ext.register_embeddings_udf(conn, "embed")
+duckdb_ext.embeddings_udf(conn, "embed")
 
 conn.sql("""
     SELECT text, list_cosine_similarity(embed(a.text), embed(b.text)) AS similarity
@@ -429,7 +429,7 @@ prompt = (
 
 ## Using with Microsoft Fabric
 
-[Microsoft Fabric](https://www.microsoft.com/en-us/microsoft-fabric/) is a unified, cloud-based analytics platform. Add `openaivec` from PyPI in your Fabric environment, select it in your notebook, and use `openaivec.spark` like standard Spark.
+[Microsoft Fabric](https://www.microsoft.com/en-us/microsoft-fabric/) is a unified, cloud-based analytics platform. Add `openaivec` from PyPI in your Fabric environment, select it in your notebook, and use `openaivec.spark_ext` like standard Spark.
 
 ## Contributing
 

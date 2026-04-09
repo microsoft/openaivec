@@ -71,7 +71,7 @@ nav:
       - Main Package: api/main.md
       - pandas_ext: api/pandas_ext.md
       - duckdb_ext: api/duckdb_ext.md
-      - spark: api/spark.md
+      - spark_ext: api/spark_ext.md
       - task: api/task.md
   - Task Domains:
       - Natural Language Processing:

@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import asyncio
 import functools
 import re
+import threading
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass
 from typing import ParamSpec, TypeVar
 
@@ -15,6 +18,91 @@ T = TypeVar("T")
 U = TypeVar("U")
 R = TypeVar("R")
 P = ParamSpec("P")
+
+
+# ---------------------------------------------------------------------------
+# Async-to-sync bridge utilities
+# ---------------------------------------------------------------------------
+
+
+class BackgroundLoop:
+    """Persistent event loop running on a daemon thread.
+
+    Provides a ``run`` method that submits a coroutine and blocks until it
+    completes.  Safe to call from any context, including Jupyter notebooks
+    that already have a running event loop.  A single loop is reused for
+    all calls to avoid per-invocation thread/loop creation overhead.
+    """
+
+    _instance: BackgroundLoop | None = None
+    _lock: threading.Lock = threading.Lock()
+
+    def __init__(self) -> None:
+        self._loop = asyncio.new_event_loop()
+        self._thread = threading.Thread(target=self._loop.run_forever, daemon=True)
+        self._thread.start()
+
+    @classmethod
+    def instance(cls) -> BackgroundLoop:
+        """Return the singleton instance, creating it on first call."""
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = cls()
+        return cls._instance
+
+    def run(self, coro: Awaitable[T]) -> T:
+        """Submit *coro* to the background loop and block for the result."""
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        return future.result()
+
+
+def run_async(coro: Awaitable[T]) -> T:
+    """Run a coroutine from any context, including inside a running event loop.
+
+    Delegates to the singleton ``BackgroundLoop``.
+    """
+    return BackgroundLoop.instance().run(coro)
+
+
+def create_event_loop() -> asyncio.AbstractEventLoop:
+    """Create a new event loop and set it as the current loop for this thread."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    return loop
+
+
+def close_event_loop(loop: asyncio.AbstractEventLoop) -> None:
+    """Gracefully shut down and close an event loop."""
+    try:
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        if hasattr(loop, "shutdown_default_executor"):
+            loop.run_until_complete(loop.shutdown_default_executor())
+    finally:
+        asyncio.set_event_loop(None)
+        loop.close()
+
+
+PartitionResult = TypeVar("PartitionResult")
+
+
+def run_partition_async(
+    parts: Iterator[R],
+    runner: Callable[[R], Awaitable[PartitionResult]],
+    cleanup: Callable[[], Awaitable[None]],
+) -> Iterator[PartitionResult]:
+    """Run async partition work on a single reusable event loop.
+
+    Creates a dedicated loop, iterates *parts* calling *runner* for each,
+    then awaits *cleanup* and closes the loop.
+    """
+    loop = create_event_loop()
+    try:
+        for part in parts:
+            yield loop.run_until_complete(runner(part))
+    finally:
+        loop.run_until_complete(cleanup())
+        close_event_loop(loop)
 
 
 def get_exponential_with_cutoff(scale: float) -> float:
