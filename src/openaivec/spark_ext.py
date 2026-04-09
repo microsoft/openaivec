@@ -3,7 +3,7 @@
 This module provides functions (`responses_udf`, `task_udf`, `embeddings_udf`,
 `count_tokens_udf`, `split_to_chunks_udf`, `similarity_udf`, `parse_udf`)
 for creating asynchronous Spark UDFs that communicate with either the public
-OpenAI API or Azure OpenAI using the `openaivec.spark` subpackage.
+OpenAI API or Azure OpenAI using the `openaivec.spark_ext` subpackage.
 It supports UDFs for generating responses, creating embeddings, parsing text,
 and computing similarities asynchronously. The UDFs operate on Spark DataFrames
 and leverage asyncio for improved performance in I/O-bound operations.
@@ -19,7 +19,7 @@ First, obtain a Spark session and configure authentication:
 
 ```python
 from pyspark.sql import SparkSession
-from openaivec.spark import setup, setup_azure
+from openaivec.spark_ext import setup, setup_azure
 
 spark = SparkSession.builder.getOrCreate()
 
@@ -49,7 +49,7 @@ setup(
 Next, create UDFs and register them:
 
 ```python
-from openaivec.spark import responses_udf, task_udf, embeddings_udf, count_tokens_udf, split_to_chunks_udf
+from openaivec.spark_ext import responses_udf, task_udf, embeddings_udf, count_tokens_udf, split_to_chunks_udf
 from pydantic import BaseModel
 
 # Define a Pydantic model for structured responses (optional)
@@ -227,7 +227,7 @@ def setup(
     Example:
         ```python
         from pyspark.sql import SparkSession
-        from openaivec.spark import setup
+        from openaivec.spark_ext import setup
 
         spark = SparkSession.builder.getOrCreate()
         setup(
@@ -288,7 +288,7 @@ def setup_azure(
     Example:
         ```python
         from pyspark.sql import SparkSession
-        from openaivec.spark import setup_azure
+        from openaivec.spark_ext import setup_azure
 
         spark = SparkSession.builder.getOrCreate()
         setup_azure(
@@ -476,7 +476,7 @@ def responses_udf(
     Example:
         ```python
         from pyspark.sql import SparkSession
-        from openaivec.spark import responses_udf, setup
+        from openaivec.spark_ext import responses_udf, setup
 
         spark = SparkSession.builder.getOrCreate()
         setup(spark, api_key="sk-***", responses_model_name="gpt-4.1-mini")

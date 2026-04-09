@@ -45,7 +45,7 @@ uv run mkdocs build
 - **BatchResponses/AsyncBatchResponses** (`src/openaivec/responses.py`): Vectorized API interface for OpenAI completions
 - **BatchEmbeddings/AsyncBatchEmbeddings** (`src/openaivec/embeddings.py`): Vectorized embedding generation
 - **pandas_ext** (`src/openaivec/pandas_ext/`): Pandas DataFrame/Series extensions with `.ai`/`.aio` accessors
-- **spark** (`src/openaivec/spark.py`): Apache Spark UDF builders for distributed processing
+- **spark** (`src/openaivec/spark_ext.py`): Apache Spark UDF builders for distributed processing
 - **task** (`src/openaivec/task/`): Pre-built task modules for NLP and customer support domains
 - **di** (`src/openaivec/di.py`): Simple dependency injection container with singleton lifecycle management
 
@@ -68,7 +68,7 @@ src/openaivec/
 │   ├── _dataframe_sync.py   #   .ai DataFrame accessor
 │   ├── _series_async.py     #   .aio Series accessor
 │   └── _dataframe_async.py  #   .aio DataFrame accessor
-├── spark.py                 # Spark UDF builders (public)
+├── spark_ext.py                 # Spark UDF builders (public)
 ├── _di.py                   # Dependency injection container (internal)
 ├── _embeddings.py           # Batch embedding processing (internal)
 ├── _log.py                  # Logging configuration (internal)
@@ -92,7 +92,7 @@ src/openaivec/
 
 1. **Core API Changes**: Modify `_responses.py` or `_embeddings.py` for API-level features
 2. **Pandas Integration**: Extend `pandas_ext/` sub-modules for DataFrame/Series functionality  
-3. **Spark Integration**: Update `spark.py` for distributed processing features
+3. **Spark Integration**: Update `spark_ext.py` for distributed processing features
 4. **New Task Domains**: Add modules under `task/` following existing patterns
 5. **Dependency Injection**: Modify `_di.py` for service lifecycle management
 
@@ -172,7 +172,7 @@ When using Azure OpenAI, always use the v1 API format:
 These modules are part of the public API and have appropriate `__all__` declarations:
 
 - `pandas_ext/` - Pandas DataFrame/Series extensions with `.ai/.aio` accessors (package)
-- `spark.py` - Apache Spark UDF builders for distributed processing
+- `spark_ext.py` - Apache Spark UDF builders for distributed processing
 - `task/*` - All task modules (NLP, customer support, table operations)
 
 ### Internal Modules (underscore-prefixed)

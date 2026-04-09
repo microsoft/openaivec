@@ -11,6 +11,7 @@ from numpy.typing import NDArray
 from pydantic import BaseModel
 
 from openaivec._cache.proxy import DEFAULT_MANAGED_CACHE_SIZE  # noqa: F401
+from openaivec._provider import CONTAINER
 
 _LOGGER = logging.getLogger("openaivec.pandas_ext")
 
@@ -23,9 +24,12 @@ def _df_rows_to_json_series(df: pd.DataFrame) -> pd.Series:
     Uses DuckDB's ``to_json`` for high-throughput C++ serialisation.
     Index and name are preserved so downstream operations retain alignment.
     """
-    conn = duckdb.connect(":memory:")
-    json_col = conn.sql("SELECT to_json(df) AS j FROM df").fetchdf()["j"]
-    conn.close()
+    conn = CONTAINER.resolve(duckdb.DuckDBPyConnection)
+    conn.register("__openaivec_input", df)
+    try:
+        json_col = conn.sql("SELECT to_json(__openaivec_input) AS j FROM __openaivec_input").fetchdf()["j"]
+    finally:
+        conn.unregister("__openaivec_input")
     return pd.Series(json_col.values, index=df.index, name="record")
 
 

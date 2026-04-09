@@ -34,7 +34,7 @@ to easily interact with OpenAI APIs for tasks like generating responses or embed
 from openaivec._cache import AsyncBatchCache  # noqa: F401
 
 # Re-export accessor classes and internal helpers so that existing code
-# (tests, monkeypatching, spark.py) that references e.g.
+# (tests, monkeypatching, spark_ext.py) that references e.g.
 # ``pandas_ext.OpenAIVecSeriesAccessor`` continues to work.
 from openaivec.pandas_ext._common import _df_rows_to_json_series  # noqa: F401
 

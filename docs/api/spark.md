@@ -1,3 +1,0 @@
-# Spark Extension
-
-::: openaivec.spark

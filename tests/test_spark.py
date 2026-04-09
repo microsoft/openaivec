@@ -8,7 +8,7 @@ from pyspark.sql.types import ArrayType, FloatType, IntegerType, StringType, Str
 
 from openaivec._model import PreparedTask
 from openaivec._provider import set_default_registrations
-from openaivec.spark import (
+from openaivec.spark_ext import (
     _pydantic_to_spark_schema,
     _run_partition_async,
     count_tokens_udf,

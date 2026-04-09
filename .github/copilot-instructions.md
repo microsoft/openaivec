@@ -32,7 +32,7 @@ Environment: set `OPENAI_API_KEY`, or for Azure set `AZURE_OPENAI_API_KEY` + `AZ
 |-------|------------|-------|
 | Package exports | `openaivec.__init__` | `BatchResponses`, `AsyncBatchResponses`, `BatchEmbeddings`, `AsyncBatchEmbeddings`, `PreparedTask`, `FewShotPromptBuilder`, `FewShotPrompt`, `SchemaInferer`, `SchemaInferenceInput`, `SchemaInferenceOutput` |
 | pandas accessors | `Series.ai` / `Series.aio` | Sync + async; registered by importing `openaivec.pandas_ext` |
-| Spark UDFs | `openaivec.spark` | `responses_udf`, `task_udf`, `embeddings_udf`, `count_tokens_udf`, `split_to_chunks_udf`, `similarity_udf`, `parse_udf`, `infer_schema` |
+| Spark UDFs | `openaivec.spark_ext` | `responses_udf`, `task_udf`, `embeddings_udf`, `count_tokens_udf`, `split_to_chunks_udf`, `similarity_udf`, `parse_udf`, `infer_schema` |
 | Task factories | `openaivec.task.nlp`, `.customer_support`, `.table` | Call as functions: `nlp.sentiment_analysis()`, not constants |
 
 ### Data flow
@@ -50,7 +50,7 @@ User input (list / Series / Spark column)
 
 ### Internal vs public boundary
 
-Underscore-prefixed modules (`_responses.py`, `_cache/`, `_schema/`, `_di.py`, etc.) are internal — set `__all__ = []`. Public modules: `pandas_ext/`, `spark.py`, `task/`, and `__init__.py`.
+Underscore-prefixed modules (`_responses.py`, `_cache/`, `_schema/`, `_di.py`, etc.) are internal — set `__all__ = []`. Public modules: `pandas_ext/`, `spark_ext.py`, `task/`, and `__init__.py`.
 
 ---
 
@@ -137,7 +137,7 @@ df["text"].ai.responses_with_cache("instructions", cache=shared)
 
 ```python
 from pydantic import BaseModel
-from openaivec.spark import responses_udf
+from openaivec.spark_ext import responses_udf
 
 class Result(BaseModel):
     value: str

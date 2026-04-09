@@ -5,7 +5,7 @@ Provides helpers that bridge openaivec's batched AI capabilities with DuckDB:
 - **UDF registration** – register ``responses``, ``embeddings`` and ``task``
   functions directly as DuckDB scalar UDFs so SQL queries can invoke the
   OpenAI API transparently.
-- **Persistent caching** – pass ``DuckDBCacheBackend`` as the ``_cache`` field
+- **Persistent caching** – pass ``DuckDBCacheBackend`` as the ``cache`` field
   of ``BatchCache`` for cross-session cache persistence.
 - **Vector similarity** – ``similarity_search`` performs top-k cosine similarity
   queries against an embedding table using DuckDB's built-in
@@ -34,8 +34,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+import typing
 from collections.abc import Coroutine
+from datetime import date, datetime, time
+from decimal import Decimal
+from enum import Enum
 from typing import Any, TypeVar
+from uuid import UUID
 
 import duckdb
 import numpy as np
@@ -67,28 +72,35 @@ def _run_async(coro: Coroutine[Any, Any, _T]) -> _T:
 
     When called from a Jupyter notebook (or any environment that already has a
     running asyncio loop), ``asyncio.run`` / ``loop.run_until_complete`` would
-    raise ``RuntimeError``.  This helper spawns a dedicated background thread
-    with its own event loop so the call always succeeds.
+    raise ``RuntimeError``.  This helper delegates to a persistent background
+    thread with its own event loop so the call always succeeds without
+    per-call thread/loop creation overhead.
     """
-    result: _T | None = None
-    exc: BaseException | None = None
+    return _BackgroundLoop.instance().run(coro)
 
-    def _target() -> None:
-        nonlocal result, exc
-        loop = asyncio.new_event_loop()
-        try:
-            result = loop.run_until_complete(coro)
-        except BaseException as e:
-            exc = e
-        finally:
-            loop.close()
 
-    thread = threading.Thread(target=_target, daemon=True)
-    thread.start()
-    thread.join()
-    if exc is not None:
-        raise exc
-    return result  # type: ignore[return-value]
+class _BackgroundLoop:
+    """Persistent event loop running on a daemon thread."""
+
+    _instance: _BackgroundLoop | None = None
+    _lock: threading.Lock = threading.Lock()
+
+    def __init__(self) -> None:
+        self._loop = asyncio.new_event_loop()
+        self._thread = threading.Thread(target=self._loop.run_forever, daemon=True)
+        self._thread.start()
+
+    @classmethod
+    def instance(cls) -> _BackgroundLoop:
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = cls()
+        return cls._instance
+
+    def run(self, coro: Coroutine[Any, Any, _T]) -> _T:
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        return future.result()
 
 
 # ---------------------------------------------------------------------------
@@ -102,14 +114,6 @@ def _pydantic_to_struct_type(model: type[BaseModel]) -> duckdb.DuckDBPyType:
     for field_name, field_info in model.model_fields.items():
         fields[field_name] = _python_type_to_duckdb(field_info.annotation) if field_info.annotation else "VARCHAR"
     return duckdb.struct_type(fields)
-
-
-def _model_to_dict(result: BaseModel) -> dict:
-    """Recursively convert a Pydantic model to a plain dict for DuckDB STRUCT."""
-    out = {}
-    for key, value in result.model_dump().items():
-        out[key] = value
-    return out
 
 
 def register_responses_udf(
@@ -184,8 +188,6 @@ def register_responses_udf(
         non_null_texts = [texts[i] for i in non_null_indices]
 
         if not non_null_texts:
-            if is_structured:
-                return pa.nulls(len(texts))
             return pa.array([None] * len(texts), type=pa.string())
 
         results = _run_async(batch_client.parse(non_null_texts))
@@ -369,25 +371,27 @@ def similarity_search(
 # Pydantic → DuckDB DDL
 # ---------------------------------------------------------------------------
 
-_PYDANTIC_TO_DUCKDB_TYPE: dict[type, str] = {
+_PRIMITIVE_TYPE_MAP: dict[type, str] = {
     str: "VARCHAR",
     int: "INTEGER",
     float: "DOUBLE",
     bool: "BOOLEAN",
     bytes: "BLOB",
+    datetime: "TIMESTAMP",
+    date: "DATE",
+    time: "TIME",
+    Decimal: "DECIMAL",
+    UUID: "UUID",
 }
 
 
 def _python_type_to_duckdb(py_type: type) -> str:
     """Map a Python/Pydantic type to its DuckDB column type string."""
-    from enum import Enum
-
-    if py_type in _PYDANTIC_TO_DUCKDB_TYPE:
-        return _PYDANTIC_TO_DUCKDB_TYPE[py_type]
+    if py_type in _PRIMITIVE_TYPE_MAP:
+        return _PRIMITIVE_TYPE_MAP[py_type]
 
     origin = getattr(py_type, "__origin__", None)
 
-    # Enum → map based on value type
     if isinstance(py_type, type) and issubclass(py_type, Enum):
         if issubclass(py_type, int):
             return "INTEGER"
@@ -395,45 +399,33 @@ def _python_type_to_duckdb(py_type: type) -> str:
             return "DOUBLE"
         return "VARCHAR"
 
-    # list[T] → T[]
     if origin is list:
         args = getattr(py_type, "__args__", ())
         inner = args[0] if args else Any
         return f"{_python_type_to_duckdb(inner)}[]"
 
-    # dict → JSON
     if origin is dict or py_type is dict:
         return "JSON"
 
-    # Optional / Union with None
-    if origin is type(int | str):  # types.UnionType for X | Y
+    if origin is type(int | str):  # types.UnionType
         args = [a for a in py_type.__args__ if a is not type(None)]
-        if len(args) == 1:
-            return _python_type_to_duckdb(args[0])
-        return "VARCHAR"
+        return _python_type_to_duckdb(args[0]) if len(args) == 1 else "VARCHAR"
 
-    # Pydantic BaseModel → STRUCT
     if isinstance(py_type, type) and issubclass(py_type, BaseModel):
-        fields = []
-        for field_name, field_info in py_type.model_fields.items():
-            col_type = _python_type_to_duckdb(field_info.annotation) if field_info.annotation else "VARCHAR"
-            fields.append(f"{field_name} {col_type}")
+        fields = [
+            f"{name} {_python_type_to_duckdb(info.annotation) if info.annotation else 'VARCHAR'}"
+            for name, info in py_type.model_fields.items()
+        ]
         return f"STRUCT({', '.join(fields)})"
 
-    # Literal → VARCHAR
-    if hasattr(py_type, "__args__") and hasattr(py_type, "__origin__"):
-        import typing
-
-        if py_type.__origin__ is typing.Literal:
-            return "VARCHAR"
+    if hasattr(py_type, "__origin__") and py_type.__origin__ is typing.Literal:
+        return "VARCHAR"
 
     return "VARCHAR"
 
 
 def _serialize_for_duckdb(value: Any) -> Any:
     """Recursively convert Enum values to their primitives for DuckDB."""
-    from enum import Enum
-
     if isinstance(value, Enum):
         return value.value
     if isinstance(value, dict):

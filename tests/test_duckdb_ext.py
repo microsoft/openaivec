@@ -88,13 +88,70 @@ class TestPydanticToDuckDBDDL:
         assert result[1] == ["a", "b"]
         conn.close()
 
+    def test_datetime_fields(self):
+        from datetime import date, datetime
 
-# ---------------------------------------------------------------------------
-# similarity_search
-# ---------------------------------------------------------------------------
+        class Event(BaseModel):
+            name: str
+            occurred_at: datetime
+            event_date: date
 
+        ddl = pydantic_to_duckdb_ddl(Event, "events")
+        assert "occurred_at TIMESTAMP" in ddl
+        assert "event_date DATE" in ddl
 
-class TestSimilaritySearch:
+        conn = duckdb.connect(":memory:")
+        conn.execute(ddl)
+        conn.execute("INSERT INTO events VALUES ('test', '2024-01-01 12:00:00', '2024-01-01')")
+        row = conn.execute("SELECT * FROM events").fetchone()
+        assert row[0] == "test"
+        conn.close()
+
+    def test_datetime_struct_udf(self):
+        from datetime import datetime
+
+        class Event(BaseModel):
+            name: str
+            ts: datetime
+
+        st = _pydantic_to_struct_type(Event)
+        conn = duckdb.connect(":memory:")
+
+        def mock(x: str) -> dict:
+            return {"name": x, "ts": datetime(2024, 6, 1, 12, 30)}
+
+        conn.create_function("event_fn", mock, [duckdb.sqltype("VARCHAR")], st)
+        row = conn.sql("SELECT event_fn('test').name, event_fn('test').ts").fetchone()
+        assert row[0] == "test"
+        assert row[1] == datetime(2024, 6, 1, 12, 30)
+        conn.close()
+
+    def test_decimal_and_uuid_fields(self):
+        from decimal import Decimal
+        from uuid import UUID
+
+        class Payment(BaseModel):
+            transaction_id: UUID
+            amount: Decimal
+
+        ddl = pydantic_to_duckdb_ddl(Payment, "payments")
+        assert "transaction_id UUID" in ddl
+        assert "amount DECIMAL" in ddl
+
+        st = _pydantic_to_struct_type(Payment)
+        conn = duckdb.connect(":memory:")
+
+        test_uuid = UUID("12345678-1234-5678-1234-567812345678")
+
+        def mock(x: str) -> dict:
+            return {"transaction_id": test_uuid, "amount": Decimal("99.99")}
+
+        conn.create_function("pay_fn", mock, [duckdb.sqltype("VARCHAR")], st)
+        row = conn.sql("SELECT pay_fn('x').transaction_id, pay_fn('x').amount").fetchone()
+        assert row[0] == test_uuid
+        assert row[1] == Decimal("99.99")
+        conn.close()
+
     def test_basic_similarity(self):
         conn = duckdb.connect(":memory:")
         conn.execute("""

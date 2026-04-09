@@ -270,7 +270,7 @@ Choose one setup path before registering UDFs.
 
 ```python
 from pyspark.sql import SparkSession
-from openaivec.spark import setup
+from openaivec.spark_ext import setup
 
 spark = SparkSession.builder.getOrCreate()
 setup(
@@ -285,7 +285,7 @@ setup(
 
 ```python
 from pyspark.sql import SparkSession
-from openaivec.spark import setup_azure
+from openaivec.spark_ext import setup_azure
 
 spark = SparkSession.builder.getOrCreate()
 setup_azure(
@@ -315,7 +315,7 @@ os.environ.pop("AZURE_OPENAI_API_KEY", None)
 Create and register UDFs using the provided helpers:
 
 ```python
-from openaivec.spark import responses_udf
+from openaivec.spark_ext import responses_udf
 
 spark.udf.register(
     "extract_brand",
@@ -429,7 +429,7 @@ prompt = (
 
 ## Using with Microsoft Fabric
 
-[Microsoft Fabric](https://www.microsoft.com/en-us/microsoft-fabric/) is a unified, cloud-based analytics platform. Add `openaivec` from PyPI in your Fabric environment, select it in your notebook, and use `openaivec.spark` like standard Spark.
+[Microsoft Fabric](https://www.microsoft.com/en-us/microsoft-fabric/) is a unified, cloud-based analytics platform. Add `openaivec` from PyPI in your Fabric environment, select it in your notebook, and use `openaivec.spark_ext` like standard Spark.
 
 ## Contributing
 
