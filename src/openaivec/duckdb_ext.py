@@ -31,6 +31,7 @@ conn.sql("SELECT text, embed(text) FROM documents")
 
 from __future__ import annotations
 
+import json
 import logging
 import typing
 from datetime import date, datetime, time
@@ -52,13 +53,15 @@ from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, 
 from openaivec._provider import CONTAINER
 from openaivec._responses import AsyncBatchResponses
 from openaivec._util import run_async
+from openaivec.task.table.fillna import FillNaResponse, fillna
 
 __all__ = [
-    "pydantic_to_duckdb_ddl",
     "embeddings_udf",
+    "impute",
+    "pydantic_to_duckdb_ddl",
     "responses_udf",
-    "task_udf",
     "similarity_search",
+    "task_udf",
 ]
 
 _LOGGER = logging.getLogger(__name__)
@@ -261,6 +264,109 @@ def task_udf(
         max_concurrency=max_concurrency,
         **api_kwargs,
     )
+
+
+# ---------------------------------------------------------------------------
+# Missing value imputation
+# ---------------------------------------------------------------------------
+
+
+def impute(
+    conn: duckdb.DuckDBPyConnection,
+    table: str,
+    target_column: str,
+    *,
+    max_examples: int = 500,
+    model_name: str | None = None,
+    batch_size: int = 64,
+    max_concurrency: int = 8,
+    **api_kwargs: Any,
+) -> duckdb.DuckDBPyRelation:
+    """Impute missing (NULL) values in a column using AI-powered inference.
+
+    Samples non-NULL rows from the table to build a few-shot prompt, then
+    uses the OpenAI Responses API to predict plausible values for NULL entries.
+    Returns a DuckDB relation with the target column filled in.
+
+    Args:
+        conn (duckdb.DuckDBPyConnection): An open DuckDB connection.
+        table (str): Table name or path (e.g. ``'employees'`` or ``'data.csv'``).
+        target_column (str): Column whose NULL values should be imputed.
+        max_examples (int): Maximum non-NULL rows to sample for few-shot context.
+            Defaults to 500.
+        model_name (str | None): Model or deployment name.
+        batch_size (int): Rows per API batch. Defaults to 64.
+        max_concurrency (int): Maximum concurrent API requests. Defaults to 8.
+        **api_kwargs: Extra parameters forwarded to the OpenAI API.
+
+    Returns:
+        duckdb.DuckDBPyRelation: A relation with the same schema as the input
+        table, where NULL values in *target_column* have been replaced with
+        AI-predicted values.
+
+    Example:
+        >>> import duckdb
+        >>> from openaivec.duckdb_ext import impute
+        >>> conn = duckdb.connect()
+        >>> result = impute(conn, "employees", "salary")
+        >>> result.df()
+    """
+
+    samples_df = conn.sql(
+        f"SELECT * FROM {table} WHERE {target_column} IS NOT NULL ORDER BY random() LIMIT {max_examples}"
+    ).df()
+
+    if samples_df.empty:
+        return conn.sql(f"SELECT * FROM {table}")
+
+    task = fillna(samples_df, target_column, max_examples)
+
+    missing_df = conn.sql(f"SELECT * FROM {table} WHERE {target_column} IS NULL").df()
+
+    if missing_df.empty:
+        return conn.sql(f"SELECT * FROM {table}")
+
+    _model_name = model_name or CONTAINER.resolve(ResponsesModelName).value
+    async_client = CONTAINER.resolve(AsyncOpenAI)
+
+    cache: AsyncBatchCache = AsyncBatchCache(
+        batch_size=batch_size,
+        max_concurrency=max_concurrency,
+        max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
+        show_progress=False,
+    )
+    batch_client = AsyncBatchResponses(
+        client=async_client,
+        model_name=_model_name,
+        system_message=task.instructions,
+        response_format=task.response_format,
+        cache=cache,
+        api_kwargs=api_kwargs,
+    )
+
+    other_columns = [c for c in missing_df.columns if c != target_column]
+    inputs = []
+    for i, row in missing_df.iterrows():
+        context = {c: row[c] for c in other_columns}
+        inputs.append(json.dumps({"index": i, "input": context}, ensure_ascii=False, default=str))
+
+    results: list[FillNaResponse] = run_async(batch_client.parse(inputs))
+
+    filled_df = missing_df.copy()
+    for i, result in enumerate(results):
+        if result.output is not None:
+            filled_df.iloc[i, filled_df.columns.get_loc(target_column)] = result.output
+
+    conn.register("__openaivec_filled", filled_df)
+    result_df = conn.sql(f"""
+        SELECT * FROM {table} WHERE {target_column} IS NOT NULL
+        UNION ALL
+        SELECT * FROM __openaivec_filled
+    """).df()
+    conn.unregister("__openaivec_filled")
+
+    conn.register("__openaivec_result", result_df)
+    return conn.sql("SELECT * FROM __openaivec_result")
 
 
 # ---------------------------------------------------------------------------

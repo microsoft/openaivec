@@ -107,8 +107,8 @@ def _build_instructions(df: pd.DataFrame, target_column_name: str, max_examples:
 
     for row in examples:
         builder.example(
-            input_value=json.dumps({"index": row["index"], "input": row["input"]}, ensure_ascii=False),
-            output_value=json.dumps({"index": row["index"], "output": row["output"]}, ensure_ascii=False),
+            input_value=json.dumps({"index": row["index"], "input": row["input"]}, ensure_ascii=False, default=str),
+            output_value=json.dumps({"index": row["index"], "output": row["output"]}, ensure_ascii=False, default=str),
         )
 
     return builder.improve().build()
