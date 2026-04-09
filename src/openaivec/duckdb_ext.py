@@ -18,11 +18,11 @@ Provides helpers that bridge openaivec's batched AI capabilities with DuckDB:
 
 ```python
 import duckdb
-from openaivec.duckdb_ext import register_responses_udf, register_embeddings_udf
+from openaivec.duckdb_ext import responses_udf, embeddings_udf
 
 conn = duckdb.connect()
-register_responses_udf(conn, "translate", instructions="Translate to French")
-register_embeddings_udf(conn, "embed")
+responses_udf(conn, "translate", instructions="Translate to French")
+embeddings_udf(conn, "embed")
 
 conn.sql("SELECT translate(review) FROM products")
 conn.sql("SELECT text, embed(text) FROM documents")
@@ -55,9 +55,9 @@ from openaivec._util import run_async
 
 __all__ = [
     "pydantic_to_duckdb_ddl",
-    "register_embeddings_udf",
-    "register_responses_udf",
-    "register_task_udf",
+    "embeddings_udf",
+    "responses_udf",
+    "task_udf",
     "similarity_search",
 ]
 
@@ -77,7 +77,7 @@ def _pydantic_to_struct_type(model: type[BaseModel]) -> duckdb.DuckDBPyType:
     return duckdb.struct_type(fields)
 
 
-def register_responses_udf(
+def responses_udf(
     conn: duckdb.DuckDBPyConnection,
     name: str,
     *,
@@ -113,12 +113,12 @@ def register_responses_udf(
     Example:
         >>> import duckdb
         >>> from pydantic import BaseModel
-        >>> from openaivec.duckdb_ext import register_responses_udf
+        >>> from openaivec.duckdb_ext import responses_udf
         >>> class Sentiment(BaseModel):
         ...     label: str
         ...     score: float
         >>> conn = duckdb.connect()
-        >>> register_responses_udf(conn, "sentiment", instructions="Analyze sentiment", response_format=Sentiment)
+        >>> responses_udf(conn, "sentiment", instructions="Analyze sentiment", response_format=Sentiment)
         >>> # conn.sql("SELECT sentiment(text).label, sentiment(text).score FROM docs")
     """
 
@@ -165,7 +165,7 @@ def register_responses_udf(
     conn.create_function(name, _batch_udf, [duckdb.sqltype("VARCHAR")], return_type, type="arrow")
 
 
-def register_embeddings_udf(
+def embeddings_udf(
     conn: duckdb.DuckDBPyConnection,
     name: str,
     *,
@@ -189,9 +189,9 @@ def register_embeddings_udf(
 
     Example:
         >>> import duckdb
-        >>> from openaivec.duckdb_ext import register_embeddings_udf
+        >>> from openaivec.duckdb_ext import embeddings_udf
         >>> conn = duckdb.connect()
-        >>> register_embeddings_udf(conn, "embed")
+        >>> embeddings_udf(conn, "embed")
         >>> # conn.sql("SELECT embed(text) FROM docs")
     """
 
@@ -230,7 +230,7 @@ def register_embeddings_udf(
     conn.create_function(name, _batch_udf, [duckdb.sqltype("VARCHAR")], duckdb.list_type("FLOAT"), type="arrow")
 
 
-def register_task_udf(
+def task_udf(
     conn: duckdb.DuckDBPyConnection,
     name: str,
     *,
@@ -251,7 +251,7 @@ def register_task_udf(
         max_concurrency (int): Maximum concurrent API requests. Defaults to 8.
         **api_kwargs: Extra parameters forwarded to the OpenAI API.
     """
-    register_responses_udf(
+    responses_udf(
         conn,
         name,
         instructions=task.instructions,

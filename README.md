@@ -363,7 +363,7 @@ class Sentiment(BaseModel):
 
 conn = duckdb.connect()
 
-duckdb_ext.register_responses_udf(
+duckdb_ext.responses_udf(
     conn,
     "analyze_sentiment",
     instructions="Analyze customer sentiment. Return label, confidence (0-1), and a one-sentence summary.",
@@ -395,7 +395,7 @@ conn.sql("""
 Embedding UDFs work the same way:
 
 ```python
-duckdb_ext.register_embeddings_udf(conn, "embed")
+duckdb_ext.embeddings_udf(conn, "embed")
 
 conn.sql("""
     SELECT text, list_cosine_similarity(embed(a.text), embed(b.text)) AS similarity

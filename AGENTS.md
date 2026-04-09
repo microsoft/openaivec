@@ -13,7 +13,7 @@
 - `_responses.py` / `_embeddings.py` are batched OpenAI wrappers with retry/backoff; structured outputs use Pydantic `response_format`, and `_responses.py` retries schema failures with validation feedback (`max_validation_retries`).
 - `parse` helpers infer schema when `response_format=None`; pass explicit models when deterministic output shape is required.
 - Reuse caches from `*_with_cache` helpers (or Spark UDF-local caches) per operation and clear them (`clear`/`aclose`) when finished to avoid unbounded cache growth.
-- `duckdb_ext.py` provides DuckDB UDF registration (`register_responses_udf`, `register_embeddings_udf`, `register_task_udf`), `similarity_search` for top-k cosine queries, and `pydantic_to_duckdb_ddl` for schema-to-DDL conversion. Use `DuckDBCacheBackend` as the `cache` field of `BatchCache` for persistent cross-session caching. DuckDB is a core dependency.
+- `duckdb_ext.py` provides DuckDB UDF registration (`responses_udf`, `embeddings_udf`, `task_udf`), `similarity_search` for top-k cosine queries, and `pydantic_to_duckdb_ddl` for schema-to-DDL conversion. Use `DuckDBCacheBackend` as the `cache` field of `BatchCache` for persistent cross-session caching. DuckDB is a core dependency.
 
 ## Task & Schema Conventions
 - Export tasks as factory functions (for example `nlp.sentiment_analysis()`), not constant task instances.
