@@ -31,15 +31,12 @@ conn.sql("SELECT text, embed(text) FROM documents")
 
 from __future__ import annotations
 
-import asyncio
 import logging
-import threading
 import typing
-from collections.abc import Coroutine
 from datetime import date, datetime, time
 from decimal import Decimal
 from enum import Enum
-from typing import Any, TypeVar
+from typing import Any
 from uuid import UUID
 
 import duckdb
@@ -54,6 +51,7 @@ from openaivec._embeddings import AsyncBatchEmbeddings
 from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
 from openaivec._provider import CONTAINER
 from openaivec._responses import AsyncBatchResponses
+from openaivec._util import run_async
 
 __all__ = [
     "pydantic_to_duckdb_ddl",
@@ -64,43 +62,6 @@ __all__ = [
 ]
 
 _LOGGER = logging.getLogger(__name__)
-_T = TypeVar("_T")
-
-
-def _run_async(coro: Coroutine[Any, Any, _T]) -> _T:
-    """Run a coroutine from any context, including inside a running event loop.
-
-    When called from a Jupyter notebook (or any environment that already has a
-    running asyncio loop), ``asyncio.run`` / ``loop.run_until_complete`` would
-    raise ``RuntimeError``.  This helper delegates to a persistent background
-    thread with its own event loop so the call always succeeds without
-    per-call thread/loop creation overhead.
-    """
-    return _BackgroundLoop.instance().run(coro)
-
-
-class _BackgroundLoop:
-    """Persistent event loop running on a daemon thread."""
-
-    _instance: _BackgroundLoop | None = None
-    _lock: threading.Lock = threading.Lock()
-
-    def __init__(self) -> None:
-        self._loop = asyncio.new_event_loop()
-        self._thread = threading.Thread(target=self._loop.run_forever, daemon=True)
-        self._thread.start()
-
-    @classmethod
-    def instance(cls) -> _BackgroundLoop:
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = cls()
-        return cls._instance
-
-    def run(self, coro: Coroutine[Any, Any, _T]) -> _T:
-        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
-        return future.result()
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +151,7 @@ def register_responses_udf(
         if not non_null_texts:
             return pa.array([None] * len(texts), type=pa.string())
 
-        results = _run_async(batch_client.parse(non_null_texts))
+        results = run_async(batch_client.parse(non_null_texts))
 
         out = [None] * len(texts)
         for idx, result in zip(non_null_indices, results):
@@ -258,7 +219,7 @@ def register_embeddings_udf(
         if not non_null_texts:
             return pa.array([None] * len(texts))
 
-        results = _run_async(batch_client.create(non_null_texts))
+        results = run_async(batch_client.create(non_null_texts))
 
         out: list[list[float] | None] = [None] * len(texts)
         for idx, vec in zip(non_null_indices, results):
