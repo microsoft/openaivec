@@ -119,13 +119,20 @@ def encode_file_to_data_uri(path: str) -> str:
     return f"data:{mime};base64,{data}"
 
 
+def _url_has_media_extension(url: str) -> bool:
+    """Return ``True`` if a URL path ends with a recognised media extension."""
+    from urllib.parse import urlparse
+
+    path = urlparse(url).path
+    return Path(path).suffix.lower() in _SUPPORTED_MEDIA_EXTENSIONS | _IMAGE_EXTENSIONS
+
+
 def build_multimodal_content(value: str) -> list[ResponseInputContentParam]:
     """Convert a string to a list of OpenAI Responses API content parts.
 
-    If *value* is a URL or local file path pointing to a supported media
-    type, the returned list contains the appropriate ``input_image`` or
-    ``input_file`` content part.  Otherwise a single ``input_text`` part
-    is returned.
+    URLs are treated as multimodal only when they end with a recognised media
+    extension (e.g. ``.jpg``, ``.pdf``).  URLs without an extension are
+    treated as plain text.
 
     Args:
         value (str): Plain text, URL, or local file path.
@@ -134,7 +141,7 @@ def build_multimodal_content(value: str) -> list[ResponseInputContentParam]:
         list[ResponseInputContentParam]: Content parts suitable for the
         ``content`` field of an OpenAI Responses API user message.
     """
-    if is_url(value):
+    if is_url(value) and _url_has_media_extension(value):
         if is_image_path(value):
             return [{"type": "input_image", "image_url": value, "detail": "auto"}]
         return [{"type": "input_file", "file_url": value, "filename": Path(value).name}]
@@ -149,9 +156,13 @@ def build_multimodal_content(value: str) -> list[ResponseInputContentParam]:
 
 
 def is_multimodal_input(value: str) -> bool:
-    """Return ``True`` if *value* is a URL or existing file that needs multimodal handling."""
+    """Return ``True`` if *value* needs multimodal handling.
+
+    URLs are multimodal only when they have a recognised media extension.
+    Local files are multimodal when they exist and have a supported extension.
+    """
     if is_url(value):
-        return True
+        return _url_has_media_extension(value)
     if os.path.isfile(value) and Path(value).suffix.lower() in _SUPPORTED_MEDIA_EXTENSIONS:
         return True
     return False
