@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import collections.abc
 import mimetypes
 import os
 from pathlib import Path
@@ -34,20 +35,33 @@ _FILE_EXTENSIONS = frozenset(
 
 _IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg", ".tiff", ".tif"})
 
-_DOCUMENT_EXTENSIONS = frozenset({
-    ".pdf",
-    ".csv", ".tsv",
-    ".txt", ".log", ".md", ".rst",
-    ".json", ".jsonl",
-    ".html", ".htm", ".xml",
-    ".docx", ".doc",
-    ".pptx", ".ppt",
-    ".xlsx", ".xls",
-    ".rtf",
-    ".epub",
-    ".yaml", ".yml",
-    ".tex",
-})
+_DOCUMENT_EXTENSIONS = frozenset(
+    {
+        ".pdf",
+        ".csv",
+        ".tsv",
+        ".txt",
+        ".log",
+        ".md",
+        ".rst",
+        ".json",
+        ".jsonl",
+        ".html",
+        ".htm",
+        ".xml",
+        ".docx",
+        ".doc",
+        ".pptx",
+        ".ppt",
+        ".xlsx",
+        ".xls",
+        ".rtf",
+        ".epub",
+        ".yaml",
+        ".yml",
+        ".tex",
+    }
+)
 
 _SUPPORTED_MEDIA_EXTENSIONS = _IMAGE_EXTENSIONS | _DOCUMENT_EXTENSIONS
 
@@ -163,8 +177,18 @@ def _url_has_media_extension(url: str) -> bool:
     return Path(path).suffix.lower() in _SUPPORTED_MEDIA_EXTENSIONS | _IMAGE_EXTENSIONS
 
 
-def build_multimodal_content(value: str) -> list[ResponseInputContentParam]:
+def build_multimodal_content(
+    value: str,
+    *,
+    upload_fn: collections.abc.Callable[[str, str], str] | None = None,
+) -> list[ResponseInputContentParam]:
     """Convert a string to a list of OpenAI Responses API content parts.
+
+    Images are sent inline as base64 data URIs or image URLs.
+    Documents (PDF, DOCX, etc.) require the Files API — when *upload_fn*
+    is provided it is called with ``(path, filename)`` and must return a
+    ``file_id``.  Without *upload_fn*, documents fall back to ``file_data``
+    (base64), which may not be supported by all models.
 
     URLs are treated as multimodal only when they end with a recognised media
     extension (e.g. ``.jpg``, ``.pdf``).  URLs without an extension are
@@ -172,6 +196,9 @@ def build_multimodal_content(value: str) -> list[ResponseInputContentParam]:
 
     Args:
         value (str): Plain text, URL, or local file path.
+        upload_fn (Callable[[str, str], str] | None): Optional callback
+            ``upload_fn(file_path, filename) -> file_id`` used to upload
+            documents via the Files API.
 
     Returns:
         list[ResponseInputContentParam]: Content parts suitable for the
@@ -183,9 +210,13 @@ def build_multimodal_content(value: str) -> list[ResponseInputContentParam]:
         return [{"type": "input_file", "file_url": value, "filename": Path(value).name}]
 
     if os.path.isfile(value):
-        data_uri = encode_file_to_data_uri(value)
         if is_image_path(value):
+            data_uri = encode_file_to_data_uri(value)
             return [{"type": "input_image", "image_url": data_uri, "detail": "auto"}]
+        if upload_fn is not None:
+            file_id = upload_fn(value, Path(value).name)
+            return [{"type": "input_file", "file_id": file_id}]
+        data_uri = encode_file_to_data_uri(value)
         return [{"type": "input_file", "file_data": data_uri, "filename": Path(value).name}]
 
     return [{"type": "input_text", "text": value}]

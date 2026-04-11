@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass, field
 from logging import Logger, getLogger
 from typing import Any, Generic, cast
@@ -11,7 +12,7 @@ from pydantic import BaseModel, ValidationError
 
 from openaivec._cache import AsyncBatchCache, BatchCache
 from openaivec._cache.proxy import DEFAULT_MANAGED_CACHE_SIZE
-from openaivec._file import build_multimodal_content, is_multimodal_input
+from openaivec._file import build_multimodal_content, is_image_path, is_multimodal_input
 from openaivec._log import observe
 from openaivec._model import PreparedTask, ResponseFormat
 from openaivec._util import backoff, backoff_async
@@ -425,8 +426,16 @@ class BatchResponses(Generic[ResponseFormat]):
                 for batch_id, orig_idx in enumerate(text_indices):
                     results[orig_idx] = text_dict.get(batch_id, None)
 
+        def _upload_file(path: str, filename: str) -> str:
+            """Upload a document via the Files API and return the file_id."""
+            with open(path, "rb") as f:
+                uploaded = self.client.files.create(file=f, purpose="assistants")
+            return uploaded.id
+
         for idx in multimodal_indices:
-            content_parts: list[ResponseInputContentParam] = build_multimodal_content(user_messages[idx])
+            content_parts: list[ResponseInputContentParam] = build_multimodal_content(
+                user_messages[idx], upload_fn=_upload_file
+            )
             results[idx] = self._request_multimodal(content_parts)
 
         return results
@@ -739,7 +748,13 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
                     results[orig_idx] = text_dict.get(batch_id, None)
 
         for idx in multimodal_indices:
-            content_parts: list[ResponseInputContentParam] = build_multimodal_content(user_messages[idx])
+            input_value = user_messages[idx]
+            if os.path.isfile(input_value) and not is_image_path(input_value):
+                with open(input_value, "rb") as f:
+                    uploaded = await self.client.files.create(file=f, purpose="assistants")
+                content_parts: list[ResponseInputContentParam] = [{"type": "input_file", "file_id": uploaded.id}]
+            else:
+                content_parts = build_multimodal_content(input_value)
             results[idx] = await self._request_multimodal(content_parts)
 
         return results
