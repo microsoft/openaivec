@@ -94,6 +94,9 @@ def _mime_type(path: str) -> str:
     return mime or "application/octet-stream"
 
 
+_MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
+
+
 def encode_file_to_data_uri(path: str) -> str:
     """Read a file from disk and return a ``data:`` URI with base64 encoding.
 
@@ -105,7 +108,11 @@ def encode_file_to_data_uri(path: str) -> str:
 
     Raises:
         FileNotFoundError: If *path* does not exist.
+        ValueError: If the file exceeds 20 MB.
     """
+    size = os.path.getsize(path)
+    if size > _MAX_FILE_SIZE_BYTES:
+        raise ValueError(f"File {path} is {size / 1024 / 1024:.1f} MB, exceeding the 20 MB limit for base64 encoding.")
     mime = _mime_type(path)
     with open(path, "rb") as f:
         data = base64.b64encode(f.read()).decode("ascii")
