@@ -387,6 +387,12 @@ class BatchResponses(Generic[ResponseFormat]):
         When ``self.multimodal`` is ``False`` (default), all inputs are treated
         as plain text and batched via the JSON envelope.  When ``True``, file
         paths and URLs are detected and sent as individual multimodal requests.
+
+        Args:
+            user_messages (list[str]): Unique input strings for this minibatch.
+
+        Returns:
+            list[ResponseFormat | None]: Responses aligned to *user_messages*.
         """
         if not self.multimodal:
             messages: list[Message[str]] = [Message(id=i, body=m) for i, m in enumerate(user_messages)]
@@ -694,6 +700,12 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         When ``self.multimodal`` is ``False`` (default), all inputs are treated
         as plain text.  When ``True``, file paths and URLs are detected and
         sent as individual multimodal requests.
+
+        Args:
+            user_messages (list[str]): Unique input strings for this minibatch.
+
+        Returns:
+            list[ResponseFormat | None]: Responses aligned to *user_messages*.
         """
         if not self.multimodal:
             messages: list[Message[str]] = [Message(id=i, body=m) for i, m in enumerate(user_messages)]

@@ -6,6 +6,7 @@ import base64
 import mimetypes
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 from openai.types.responses.response_input_message_content_list_param import ResponseInputContentParam
 
@@ -86,7 +87,14 @@ def is_url(value: str) -> bool:
 
 
 def _mime_type(path: str) -> str:
-    """Return the MIME type for a file path, with sensible fallbacks."""
+    """Return the MIME type for a file path, with sensible fallbacks.
+
+    Args:
+        path (str): File path to inspect.
+
+    Returns:
+        str: MIME type string (e.g. ``"image/png"``).
+    """
     suffix = Path(path).suffix.lower()
     if suffix in _MIME_OVERRIDES:
         return _MIME_OVERRIDES[suffix]
@@ -120,9 +128,14 @@ def encode_file_to_data_uri(path: str) -> str:
 
 
 def _url_has_media_extension(url: str) -> bool:
-    """Return ``True`` if a URL path ends with a recognised media extension."""
-    from urllib.parse import urlparse
+    """Return ``True`` if a URL path ends with a recognised media extension.
 
+    Args:
+        url (str): Full URL string.
+
+    Returns:
+        bool: ``True`` when the URL path has a known image or document suffix.
+    """
     path = urlparse(url).path
     return Path(path).suffix.lower() in _SUPPORTED_MEDIA_EXTENSIONS | _IMAGE_EXTENSIONS
 
