@@ -209,6 +209,7 @@ class BatchResponses(Generic[ResponseFormat]):
         response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
         max_validation_retries: int = 3,
+        multimodal: bool = False,
         **api_kwargs,
     ) -> "BatchResponses":
         """Factory constructor.
@@ -222,6 +223,8 @@ class BatchResponses(Generic[ResponseFormat]):
                 (automatic batch size optimization). Set to a positive integer for fixed batch size.
             max_validation_retries (int, optional): Retry count when structured output fails local
                 schema validation. Defaults to 3.
+            multimodal (bool, optional): When ``True``, file paths and URLs in
+                inputs are sent as multimodal content. Defaults to ``False``.
             **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
 
         Returns:
@@ -235,6 +238,7 @@ class BatchResponses(Generic[ResponseFormat]):
             cache=BatchCache(batch_size=batch_size, max_cache_size=DEFAULT_MANAGED_CACHE_SIZE),
             api_kwargs=api_kwargs,
             max_validation_retries=max_validation_retries,
+            multimodal=multimodal,
         )
 
     @classmethod
@@ -245,6 +249,7 @@ class BatchResponses(Generic[ResponseFormat]):
         task: PreparedTask[ResponseFormat],
         batch_size: int | None = None,
         max_validation_retries: int = 3,
+        multimodal: bool = False,
         **api_kwargs,
     ) -> "BatchResponses":
         """Factory from a PreparedTask.
@@ -257,6 +262,8 @@ class BatchResponses(Generic[ResponseFormat]):
                 (automatic batch size optimization). Set to a positive integer for fixed batch size.
             max_validation_retries (int, optional): Retry count when structured output fails local
                 schema validation. Defaults to 3.
+            multimodal (bool, optional): When ``True``, file paths and URLs in
+                inputs are sent as multimodal content. Defaults to ``False``.
             **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
 
         Returns:
@@ -270,6 +277,7 @@ class BatchResponses(Generic[ResponseFormat]):
             cache=BatchCache(batch_size=batch_size, max_cache_size=DEFAULT_MANAGED_CACHE_SIZE),
             api_kwargs=api_kwargs,
             max_validation_retries=max_validation_retries,
+            multimodal=multimodal,
         )
 
     def __post_init__(self):
@@ -504,6 +512,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         batch_size: int | None = None,
         max_concurrency: int = 8,
         max_validation_retries: int = 3,
+        multimodal: bool = False,
         **api_kwargs,
     ) -> "AsyncBatchResponses":
         """Factory constructor.
@@ -518,6 +527,8 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             max_concurrency (int, optional): Max concurrent API calls. Defaults to 8.
             max_validation_retries (int, optional): Retry count when structured output fails local
                 schema validation. Defaults to 3.
+            multimodal (bool, optional): When ``True``, file paths and URLs in
+                inputs are sent as multimodal content. Defaults to ``False``.
             **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
 
         Returns:
@@ -535,6 +546,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             ),
             api_kwargs=api_kwargs,
             max_validation_retries=max_validation_retries,
+            multimodal=multimodal,
         )
 
     @classmethod
@@ -546,6 +558,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         batch_size: int | None = None,
         max_concurrency: int = 8,
         max_validation_retries: int = 3,
+        multimodal: bool = False,
         **api_kwargs,
     ) -> "AsyncBatchResponses":
         """Factory from a PreparedTask.
@@ -559,6 +572,8 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             max_concurrency (int, optional): Max concurrent API calls. Defaults to 8.
             max_validation_retries (int, optional): Retry count when structured output fails local
                 schema validation. Defaults to 3.
+            multimodal (bool, optional): When ``True``, file paths and URLs in
+                inputs are sent as multimodal content. Defaults to ``False``.
             **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
 
         Returns:
@@ -576,6 +591,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             ),
             api_kwargs=api_kwargs,
             max_validation_retries=max_validation_retries,
+            multimodal=multimodal,
         )
 
     def __post_init__(self):
