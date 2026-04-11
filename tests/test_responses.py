@@ -440,3 +440,121 @@ class TestAsyncBatchResponses:
             assert len(item.color) > 0
             assert isinstance(item.taste, str)
             assert len(item.taste) > 0
+
+
+# ---------------------------------------------------------------------------
+# Multimodal routing tests
+# ---------------------------------------------------------------------------
+
+
+class TestMultimodalRouting:
+    """Test that multimodal=True routes file/URL inputs correctly."""
+
+    def test_text_only_uses_batch_path(self):
+        from unittest.mock import MagicMock, patch
+
+        from openaivec._cache import BatchCache
+        from openaivec._responses import BatchResponses, Message, Response
+
+        batch = BatchResponses(
+            client=MagicMock(),
+            model_name="gpt-4.1-mini",
+            system_message="test",
+            response_format=str,
+            cache=BatchCache(batch_size=10),
+            multimodal=True,
+        )
+
+        def mock_llm(self, msgs):
+            resp = MagicMock()
+            resp.output_parsed = Response(assistant_messages=[Message(id=m.id, body="ok") for m in msgs])
+            return resp
+
+        with patch.object(BatchResponses, "_request_llm", mock_llm):
+            results = batch.parse(["hello", "world"])
+
+        assert results == ["ok", "ok"]
+
+    def test_multimodal_false_treats_urls_as_text(self):
+        from unittest.mock import MagicMock, patch
+
+        from openaivec._cache import BatchCache
+        from openaivec._responses import BatchResponses, Message, Response
+
+        batch = BatchResponses(
+            client=MagicMock(),
+            model_name="gpt-4.1-mini",
+            system_message="test",
+            response_format=str,
+            cache=BatchCache(batch_size=10),
+            multimodal=False,
+        )
+
+        def mock_llm(self, msgs):
+            resp = MagicMock()
+            resp.output_parsed = Response(
+                assistant_messages=[Message(id=m.id, body=f"text:{m.body[:10]}") for m in msgs]
+            )
+            return resp
+
+        with patch.object(BatchResponses, "_request_llm", mock_llm):
+            results = batch.parse(["https://example.com/photo.jpg", "plain text"])
+
+        assert results[0].startswith("text:https://e")
+        assert results[1].startswith("text:plain tex")
+
+    def test_mixed_routing_with_local_file(self, tmp_path):
+        from unittest.mock import MagicMock, patch
+
+        from openaivec._cache import BatchCache
+        from openaivec._responses import BatchResponses, Message, Response
+
+        img = tmp_path / "test.png"
+        img.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 50)
+
+        batch = BatchResponses(
+            client=MagicMock(),
+            model_name="gpt-4.1-mini",
+            system_message="test",
+            response_format=str,
+            cache=BatchCache(batch_size=10),
+            multimodal=True,
+        )
+
+        calls = {"llm": 0, "mm": 0}
+
+        def mock_llm(self, msgs):
+            calls["llm"] += 1
+            resp = MagicMock()
+            resp.output_parsed = Response(assistant_messages=[Message(id=m.id, body="batch") for m in msgs])
+            return resp
+
+        def mock_mm(self, parts):
+            calls["mm"] += 1
+            return "individual"
+
+        with (
+            patch.object(BatchResponses, "_request_llm", mock_llm),
+            patch.object(BatchResponses, "_request_multimodal", mock_mm),
+        ):
+            results = batch.parse(["plain text", str(img)])
+
+        assert calls["llm"] == 1
+        assert calls["mm"] == 1
+        assert results == ["batch", "individual"]
+
+    def test_url_without_extension_is_text(self):
+        from openaivec._file import is_multimodal_input
+
+        assert not is_multimodal_input("https://api.example.com/v1/data?key=abc")
+        assert is_multimodal_input("https://cdn.example.com/image.png")
+        assert not is_multimodal_input("https://example.com/")
+
+    def test_file_size_limit(self, tmp_path):
+        from openaivec._file import encode_file_to_data_uri
+
+        big_file = tmp_path / "huge.txt"
+        big_file.write_bytes(b"x" * (21 * 1024 * 1024))
+
+        with pytest.raises(ValueError, match="exceeding the 20 MB limit"):
+            encode_file_to_data_uri(str(big_file))
