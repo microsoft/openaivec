@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import base64
-import collections.abc
 import mimetypes
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
+from openai import AsyncOpenAI, OpenAI
 from openai.types.responses.response_input_message_content_list_param import ResponseInputContentParam
 
 __all__: list[str] = []
@@ -81,6 +82,13 @@ _MIME_OVERRIDES: dict[str, str] = {
     ".epub": "application/epub+zip",
 }
 
+_MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
+
+
+# ---------------------------------------------------------------------------
+# Pure utility functions
+# ---------------------------------------------------------------------------
+
 
 def is_file_path(value: str) -> bool:
     """Check whether *value* looks like a file path.
@@ -99,18 +107,12 @@ def is_file_path(value: str) -> bool:
     """
     if not value or not isinstance(value, str):
         return False
-
     if os.path.isfile(value):
         return True
-
     if "/" in value or (os.sep != "/" and os.sep in value):
         return True
-
     suffix = Path(value).suffix.lower()
-    if suffix in _FILE_EXTENSIONS | _SUPPORTED_MEDIA_EXTENSIONS:
-        return True
-
-    return False
+    return suffix in _FILE_EXTENSIONS | _SUPPORTED_MEDIA_EXTENSIONS
 
 
 def is_image_path(value: str) -> bool:
@@ -121,6 +123,19 @@ def is_image_path(value: str) -> bool:
 def is_url(value: str) -> bool:
     """Return ``True`` if *value* starts with ``http://`` or ``https://``."""
     return isinstance(value, str) and value.startswith(("http://", "https://"))
+
+
+def is_multimodal_input(value: str) -> bool:
+    """Return ``True`` if *value* needs multimodal handling.
+
+    URLs are multimodal only when they have a recognised media extension.
+    Local files are multimodal when they exist and have a supported extension.
+    """
+    if is_url(value):
+        return _url_has_media_extension(value)
+    if os.path.isfile(value) and Path(value).suffix.lower() in _SUPPORTED_MEDIA_EXTENSIONS:
+        return True
+    return False
 
 
 def _mime_type(path: str) -> str:
@@ -137,9 +152,6 @@ def _mime_type(path: str) -> str:
         return _MIME_OVERRIDES[suffix]
     mime, _ = mimetypes.guess_type(path)
     return mime or "application/octet-stream"
-
-
-_MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
 
 
 def encode_file_to_data_uri(path: str) -> str:
@@ -177,59 +189,103 @@ def _url_has_media_extension(url: str) -> bool:
     return Path(path).suffix.lower() in _SUPPORTED_MEDIA_EXTENSIONS | _IMAGE_EXTENSIONS
 
 
-def build_multimodal_content(
-    value: str,
-    *,
-    upload_fn: collections.abc.Callable[[str, str], str] | None = None,
-) -> list[ResponseInputContentParam]:
-    """Convert a string to a list of OpenAI Responses API content parts.
+# ---------------------------------------------------------------------------
+# Multimodal content builder
+# ---------------------------------------------------------------------------
 
-    Images are sent inline as base64 data URIs or image URLs.
-    Documents (PDF, DOCX, etc.) require the Files API — when *upload_fn*
-    is provided it is called with ``(path, filename)`` and must return a
-    ``file_id``.  Without *upload_fn*, documents fall back to ``file_data``
-    (base64), which may not be supported by all models.
 
-    URLs are treated as multimodal only when they end with a recognised media
-    extension (e.g. ``.jpg``, ``.pdf``).  URLs without an extension are
-    treated as plain text.
+@dataclass(frozen=True)
+class MultimodalContentBuilder:
+    """Build OpenAI Responses API content parts from strings.
 
-    Args:
-        value (str): Plain text, URL, or local file path.
-        upload_fn (Callable[[str, str], str] | None): Optional callback
-            ``upload_fn(file_path, filename) -> file_id`` used to upload
-            documents via the Files API.
+    Images are sent inline as base64 data URIs.  Documents (PDF, DOCX, etc.)
+    are uploaded via the Files API and referenced by ``file_id``.
 
-    Returns:
-        list[ResponseInputContentParam]: Content parts suitable for the
-        ``content`` field of an OpenAI Responses API user message.
+    Attributes:
+        client (OpenAI): Sync OpenAI client used for Files API uploads.
     """
-    if is_url(value) and _url_has_media_extension(value):
-        if is_image_path(value):
-            return [{"type": "input_image", "image_url": value, "detail": "auto"}]
-        return [{"type": "input_file", "file_url": value, "filename": Path(value).name}]
 
-    if os.path.isfile(value):
-        if is_image_path(value):
-            data_uri = encode_file_to_data_uri(value)
-            return [{"type": "input_image", "image_url": data_uri, "detail": "auto"}]
-        if upload_fn is not None:
-            file_id = upload_fn(value, Path(value).name)
+    client: OpenAI
+
+    def build(self, value: str) -> list[ResponseInputContentParam]:
+        """Convert *value* to content parts.
+
+        Args:
+            value (str): Plain text, URL, or local file path.
+
+        Returns:
+            list[ResponseInputContentParam]: Content parts for the Responses API.
+        """
+        if is_url(value) and _url_has_media_extension(value):
+            if is_image_path(value):
+                return [{"type": "input_image", "image_url": value, "detail": "auto"}]
+            return [{"type": "input_file", "file_url": value, "filename": Path(value).name}]
+
+        if os.path.isfile(value):
+            if is_image_path(value):
+                data_uri = encode_file_to_data_uri(value)
+                return [{"type": "input_image", "image_url": data_uri, "detail": "auto"}]
+            file_id = self._upload(value)
             return [{"type": "input_file", "file_id": file_id}]
-        data_uri = encode_file_to_data_uri(value)
-        return [{"type": "input_file", "file_data": data_uri, "filename": Path(value).name}]
 
-    return [{"type": "input_text", "text": value}]
+        return [{"type": "input_text", "text": value}]
+
+    def _upload(self, path: str) -> str:
+        """Upload a document via the Files API.
+
+        Args:
+            path (str): Local file path.
+
+        Returns:
+            str: The ``file_id`` of the uploaded file.
+        """
+        with open(path, "rb") as f:
+            uploaded = self.client.files.create(file=f, purpose="assistants")
+        return uploaded.id
 
 
-def is_multimodal_input(value: str) -> bool:
-    """Return ``True`` if *value* needs multimodal handling.
+@dataclass(frozen=True)
+class AsyncMultimodalContentBuilder:
+    """Async variant of ``MultimodalContentBuilder``.
 
-    URLs are multimodal only when they have a recognised media extension.
-    Local files are multimodal when they exist and have a supported extension.
+    Attributes:
+        client (AsyncOpenAI): Async OpenAI client used for Files API uploads.
     """
-    if is_url(value):
-        return _url_has_media_extension(value)
-    if os.path.isfile(value) and Path(value).suffix.lower() in _SUPPORTED_MEDIA_EXTENSIONS:
-        return True
-    return False
+
+    client: AsyncOpenAI
+
+    async def build(self, value: str) -> list[ResponseInputContentParam]:
+        """Convert *value* to content parts (async).
+
+        Args:
+            value (str): Plain text, URL, or local file path.
+
+        Returns:
+            list[ResponseInputContentParam]: Content parts for the Responses API.
+        """
+        if is_url(value) and _url_has_media_extension(value):
+            if is_image_path(value):
+                return [{"type": "input_image", "image_url": value, "detail": "auto"}]
+            return [{"type": "input_file", "file_url": value, "filename": Path(value).name}]
+
+        if os.path.isfile(value):
+            if is_image_path(value):
+                data_uri = encode_file_to_data_uri(value)
+                return [{"type": "input_image", "image_url": data_uri, "detail": "auto"}]
+            file_id = await self._upload(value)
+            return [{"type": "input_file", "file_id": file_id}]
+
+        return [{"type": "input_text", "text": value}]
+
+    async def _upload(self, path: str) -> str:
+        """Upload a document via the Files API (async).
+
+        Args:
+            path (str): Local file path.
+
+        Returns:
+            str: The ``file_id`` of the uploaded file.
+        """
+        with open(path, "rb") as f:
+            uploaded = await self.client.files.create(file=f, purpose="assistants")
+        return uploaded.id
