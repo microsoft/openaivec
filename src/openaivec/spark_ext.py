@@ -385,6 +385,7 @@ def responses_udf(
     model_name: str | None = None,
     batch_size: int | None = None,
     max_concurrency: int = 8,
+    multimodal: bool = False,
     **api_kwargs,
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF for generating responses.
@@ -459,6 +460,8 @@ def responses_udf(
         - Monitor OpenAI API rate limits when scaling executor count
         - Consider your OpenAI tier limits: total_requests = max_concurrency × executors
         - Use Spark UI to optimize partition sizes relative to batch_size
+        - **Multimodal**: Local file paths are not accessible from executors.
+          Use HTTP(S) URLs or pre-encoded data URIs when ``multimodal=True``.
     """
     _model_name = model_name or CONTAINER.resolve(ResponsesModelName).value
 
@@ -482,6 +485,7 @@ def responses_udf(
                 response_format=response_model,
                 cache=cache,
                 api_kwargs=api_kwargs,
+                multimodal=multimodal,
             )
 
             async def run_part(part: pd.Series) -> pd.DataFrame:
@@ -512,6 +516,7 @@ def responses_udf(
                 response_format=str,
                 cache=cache,
                 api_kwargs=api_kwargs,
+                multimodal=multimodal,
             )
 
             async def run_part(part: pd.Series) -> pd.Series:
@@ -534,6 +539,7 @@ def task_udf(
     model_name: str | None = None,
     batch_size: int | None = None,
     max_concurrency: int = 8,
+    multimodal: bool = False,
     **api_kwargs,
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF from a predefined task.
@@ -591,6 +597,7 @@ def task_udf(
         model_name=model_name,
         batch_size=batch_size,
         max_concurrency=max_concurrency,
+        multimodal=multimodal,
         **api_kwargs,
     )
 
@@ -653,6 +660,7 @@ def parse_udf(
     model_name: str | None = None,
     batch_size: int | None = None,
     max_concurrency: int = 8,
+    multimodal: bool = False,
     **api_kwargs,
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF for parsing responses.
@@ -741,6 +749,7 @@ def parse_udf(
         model_name=model_name,
         batch_size=batch_size,
         max_concurrency=max_concurrency,
+        multimodal=multimodal,
         **api_kwargs,
     )
 
