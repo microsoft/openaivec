@@ -32,9 +32,22 @@ _FILE_EXTENSIONS = frozenset(
     }
 )
 
-_IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"})
+_IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg", ".tiff", ".tif"})
 
-_DOCUMENT_EXTENSIONS = frozenset({".pdf", ".csv", ".txt", ".json", ".md", ".html", ".xml", ".log"})
+_DOCUMENT_EXTENSIONS = frozenset({
+    ".pdf",
+    ".csv", ".tsv",
+    ".txt", ".log", ".md", ".rst",
+    ".json", ".jsonl",
+    ".html", ".htm", ".xml",
+    ".docx", ".doc",
+    ".pptx", ".ppt",
+    ".xlsx", ".xls",
+    ".rtf",
+    ".epub",
+    ".yaml", ".yml",
+    ".tex",
+})
 
 _SUPPORTED_MEDIA_EXTENSIONS = _IMAGE_EXTENSIONS | _DOCUMENT_EXTENSIONS
 
@@ -42,6 +55,16 @@ _MIME_OVERRIDES: dict[str, str] = {
     ".jpg": "image/jpeg",
     ".svg": "image/svg+xml",
     ".md": "text/markdown",
+    ".rst": "text/x-rst",
+    ".yml": "application/x-yaml",
+    ".yaml": "application/x-yaml",
+    ".tex": "application/x-tex",
+    ".jsonl": "application/jsonl",
+    ".tsv": "text/tab-separated-values",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".epub": "application/epub+zip",
 }
 
 
