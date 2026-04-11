@@ -4,10 +4,14 @@ from typing import Any, Generic, cast
 
 from openai import AsyncOpenAI, InternalServerError, OpenAI, RateLimitError
 from openai.types.responses import ParsedResponse
+from openai.types.responses import Response as OAIResponse
+from openai.types.responses.response_input_message_content_list_param import ResponseInputContentParam
+from openai.types.responses.response_input_param import ResponseInputParam
 from pydantic import BaseModel, ValidationError
 
 from openaivec._cache import AsyncBatchCache, BatchCache
 from openaivec._cache.proxy import DEFAULT_MANAGED_CACHE_SIZE
+from openaivec._file import build_multimodal_content, is_multimodal_input
 from openaivec._log import observe
 from openaivec._model import PreparedTask, ResponseFormat
 from openaivec._util import backoff, backoff_async
@@ -192,6 +196,7 @@ class BatchResponses(Generic[ResponseFormat]):
     )
     api_kwargs: dict[str, Any] = field(default_factory=dict)
     max_validation_retries: int = 3
+    multimodal: bool = False
     _vectorized_system_message: str = field(init=False)
     _model_json_schema: dict = field(init=False)
 
@@ -324,24 +329,93 @@ class BatchResponses(Generic[ResponseFormat]):
         raise RuntimeError("unreachable validation retry loop state")
 
     @observe(_LOGGER)
-    def _predict_chunk(self, user_messages: list[str]) -> list[ResponseFormat | None]:
-        """Helper executed for every unique minibatch.
+    @backoff(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
+    def _request_multimodal(self, content_parts: list[ResponseInputContentParam]) -> ResponseFormat | None:
+        """Send a single multimodal request (image/file + optional text).
 
-            This method:
-            1. Converts plain strings into `Message[str]` with stable indices.
-            2. Delegates the request to `_request_llm`.
-            3. Reorders the responses so they match the original indices.
+        Multimodal inputs cannot be batched via the JSON envelope because
+        the content parts contain binary data or URLs.  Each multimodal
+        item is therefore sent as an individual Responses API call.
 
-        The function is pure – it has no side‑effects and the result depends
-        only on its arguments – which allows safe reuse.
+        Args:
+            content_parts (list[ResponseInputContentParam]): OpenAI content parts
+                (``input_image``, ``input_file``, or ``input_text``).
+
+        Returns:
+            ResponseFormat | None: Parsed response or ``None``.
         """
-        messages = [Message(id=i, body=message) for i, message in enumerate(user_messages)]
-        responses: ParsedResponse[Response[ResponseFormat]] = self._request_llm(messages)
-        if not responses.output_parsed:
-            return [None] * len(messages)
-        response_dict = {message.id: message.body for message in responses.output_parsed.assistant_messages}
-        sorted_responses: list[ResponseFormat | None] = [response_dict.get(m.id, None) for m in messages]
-        return sorted_responses
+        response_format: type[ResponseFormat] = self.response_format
+
+        input_messages: ResponseInputParam = [
+            {
+                "role": "user",
+                "type": "message",
+                "content": content_parts,
+            }
+        ]
+
+        if response_format is str:
+            response: OAIResponse = self.client.responses.create(
+                instructions=self.system_message,
+                model=self.model_name,
+                input=input_messages,
+                **self.api_kwargs,
+            )
+            return cast(ResponseFormat, response.output_text)
+
+        parsed_response: ParsedResponse[ResponseFormat] = self.client.responses.parse(
+            instructions=self.system_message,
+            model=self.model_name,
+            input=input_messages,
+            text_format=response_format,
+            **self.api_kwargs,
+        )
+        return parsed_response.output_parsed
+
+    @observe(_LOGGER)
+    def _predict_chunk(self, user_messages: list[str]) -> list[ResponseFormat | None]:
+        """Process a minibatch, routing multimodal inputs to individual calls.
+
+        When ``self.multimodal`` is ``False`` (default), all inputs are treated
+        as plain text and batched via the JSON envelope.  When ``True``, file
+        paths and URLs are detected and sent as individual multimodal requests.
+        """
+        if not self.multimodal:
+            messages: list[Message[str]] = [Message(id=i, body=m) for i, m in enumerate(user_messages)]
+            response: ParsedResponse[Response[ResponseFormat]] = self._request_llm(messages)
+            if not response.output_parsed:
+                return [None] * len(user_messages)
+            response_dict: dict[int, ResponseFormat] = {m.id: m.body for m in response.output_parsed.assistant_messages}
+            return [response_dict.get(m.id, None) for m in messages]
+
+        text_indices: list[int] = []
+        multimodal_indices: list[int] = []
+
+        for i, msg in enumerate(user_messages):
+            if is_multimodal_input(msg):
+                multimodal_indices.append(i)
+            else:
+                text_indices.append(i)
+
+        results: list[ResponseFormat | None] = [None] * len(user_messages)
+
+        if text_indices:
+            text_messages: list[Message[str]] = [
+                Message(id=i, body=user_messages[idx]) for i, idx in enumerate(text_indices)
+            ]
+            text_response: ParsedResponse[Response[ResponseFormat]] = self._request_llm(text_messages)
+            if text_response.output_parsed:
+                text_dict: dict[int, ResponseFormat] = {
+                    m.id: m.body for m in text_response.output_parsed.assistant_messages
+                }
+                for batch_id, orig_idx in enumerate(text_indices):
+                    results[orig_idx] = text_dict.get(batch_id, None)
+
+        for idx in multimodal_indices:
+            content_parts: list[ResponseInputContentParam] = build_multimodal_content(user_messages[idx])
+            results[idx] = self._request_multimodal(content_parts)
+
+        return results
 
     @observe(_LOGGER)
     def parse(self, inputs: list[str]) -> list[ResponseFormat | None]:
@@ -416,6 +490,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
     )
     api_kwargs: dict[str, Any] = field(default_factory=dict)
     max_validation_retries: int = 3
+    multimodal: bool = False
     _vectorized_system_message: str = field(init=False)
     _model_json_schema: dict = field(init=False)
 
@@ -557,24 +632,89 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         raise RuntimeError("unreachable validation retry loop state")
 
     @observe(_LOGGER)
-    async def _predict_chunk(self, user_messages: list[str]) -> list[ResponseFormat | None]:
-        """Async helper executed for every unique minibatch.
+    @backoff_async(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
+    async def _request_multimodal(self, content_parts: list[ResponseInputContentParam]) -> ResponseFormat | None:
+        """Send a single multimodal request (async).
 
-            This method:
-            1. Converts plain strings into `Message[str]` with stable indices.
-            2. Delegates the request to `_request_llm`.
-            3. Reorders the responses so they match the original indices.
+        Args:
+            content_parts (list[ResponseInputContentParam]): OpenAI content parts
+                (``input_image``, ``input_file``, or ``input_text``).
 
-        The function is pure – it has no side‑effects and the result depends only on its arguments.
+        Returns:
+            ResponseFormat | None: Parsed response or ``None``.
         """
-        messages = [Message(id=i, body=message) for i, message in enumerate(user_messages)]
-        responses: ParsedResponse[Response[ResponseFormat]] = await self._request_llm(messages)
-        if not responses.output_parsed:
-            return [None] * len(messages)
-        response_dict = {message.id: message.body for message in responses.output_parsed.assistant_messages}
-        # Ensure proper handling for missing IDs - this shouldn't happen in normal operation
-        sorted_responses: list[ResponseFormat | None] = [response_dict.get(m.id, None) for m in messages]
-        return sorted_responses
+        response_format: type[ResponseFormat] = self.response_format
+
+        input_messages: ResponseInputParam = [
+            {
+                "role": "user",
+                "type": "message",
+                "content": content_parts,
+            }
+        ]
+
+        if response_format is str:
+            response: OAIResponse = await self.client.responses.create(
+                instructions=self.system_message,
+                model=self.model_name,
+                input=input_messages,
+                **self.api_kwargs,
+            )
+            return cast(ResponseFormat, response.output_text)
+
+        parsed_response: ParsedResponse[ResponseFormat] = await self.client.responses.parse(
+            instructions=self.system_message,
+            model=self.model_name,
+            input=input_messages,
+            text_format=response_format,
+            **self.api_kwargs,
+        )
+        return parsed_response.output_parsed
+
+    @observe(_LOGGER)
+    async def _predict_chunk(self, user_messages: list[str]) -> list[ResponseFormat | None]:
+        """Process a minibatch, routing multimodal inputs to individual async calls.
+
+        When ``self.multimodal`` is ``False`` (default), all inputs are treated
+        as plain text.  When ``True``, file paths and URLs are detected and
+        sent as individual multimodal requests.
+        """
+        if not self.multimodal:
+            messages: list[Message[str]] = [Message(id=i, body=m) for i, m in enumerate(user_messages)]
+            response: ParsedResponse[Response[ResponseFormat]] = await self._request_llm(messages)
+            if not response.output_parsed:
+                return [None] * len(user_messages)
+            response_dict: dict[int, ResponseFormat] = {m.id: m.body for m in response.output_parsed.assistant_messages}
+            return [response_dict.get(m.id, None) for m in messages]
+
+        text_indices: list[int] = []
+        multimodal_indices: list[int] = []
+
+        for i, msg in enumerate(user_messages):
+            if is_multimodal_input(msg):
+                multimodal_indices.append(i)
+            else:
+                text_indices.append(i)
+
+        results: list[ResponseFormat | None] = [None] * len(user_messages)
+
+        if text_indices:
+            text_messages: list[Message[str]] = [
+                Message(id=i, body=user_messages[idx]) for i, idx in enumerate(text_indices)
+            ]
+            text_response: ParsedResponse[Response[ResponseFormat]] = await self._request_llm(text_messages)
+            if text_response.output_parsed:
+                text_dict: dict[int, ResponseFormat] = {
+                    m.id: m.body for m in text_response.output_parsed.assistant_messages
+                }
+                for batch_id, orig_idx in enumerate(text_indices):
+                    results[orig_idx] = text_dict.get(batch_id, None)
+
+        for idx in multimodal_indices:
+            content_parts: list[ResponseInputContentParam] = build_multimodal_content(user_messages[idx])
+            results[idx] = await self._request_multimodal(content_parts)
+
+        return results
 
     @observe(_LOGGER)
     async def parse(self, inputs: list[str]) -> list[ResponseFormat | None]:
