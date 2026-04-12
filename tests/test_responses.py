@@ -1,6 +1,6 @@
 from logging import Handler, StreamHandler, basicConfig
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 from pydantic import BaseModel, ValidationError
@@ -440,3 +440,247 @@ class TestAsyncBatchResponses:
             assert len(item.color) > 0
             assert isinstance(item.taste, str)
             assert len(item.taste) > 0
+
+
+# ---------------------------------------------------------------------------
+# Multimodal routing tests
+# ---------------------------------------------------------------------------
+
+
+class TestMultimodalRouting:
+    """Test that multimodal=True routes file/URL inputs correctly."""
+
+    def test_text_only_uses_batch_path(self):
+        from unittest.mock import MagicMock, patch
+
+        from openaivec._cache import BatchCache
+        from openaivec._responses import BatchResponses, Message, Response
+
+        batch = BatchResponses(
+            client=MagicMock(),
+            model_name="gpt-4.1-mini",
+            system_message="test",
+            response_format=str,
+            cache=BatchCache(batch_size=10),
+            multimodal=True,
+        )
+
+        def mock_llm(self, msgs):
+            resp = MagicMock()
+            resp.output_parsed = Response(assistant_messages=[Message(id=m.id, body="ok") for m in msgs])
+            return resp
+
+        with patch.object(BatchResponses, "_request_llm", mock_llm):
+            results = batch.parse(["hello", "world"])
+
+        assert results == ["ok", "ok"]
+
+    def test_multimodal_false_treats_urls_as_text(self):
+        from unittest.mock import MagicMock, patch
+
+        from openaivec._cache import BatchCache
+        from openaivec._responses import BatchResponses, Message, Response
+
+        batch = BatchResponses(
+            client=MagicMock(),
+            model_name="gpt-4.1-mini",
+            system_message="test",
+            response_format=str,
+            cache=BatchCache(batch_size=10),
+            multimodal=False,
+        )
+
+        def mock_llm(self, msgs):
+            resp = MagicMock()
+            resp.output_parsed = Response(
+                assistant_messages=[Message(id=m.id, body=f"text:{m.body[:10]}") for m in msgs]
+            )
+            return resp
+
+        with patch.object(BatchResponses, "_request_llm", mock_llm):
+            results = batch.parse(["https://example.com/photo.jpg", "plain text"])
+
+        assert results[0].startswith("text:https://e")
+        assert results[1].startswith("text:plain tex")
+
+    def test_mixed_routing_with_local_file(self, tmp_path):
+        from unittest.mock import MagicMock, patch
+
+        from openaivec._cache import BatchCache
+        from openaivec._responses import BatchResponses, Message, Response
+
+        img = tmp_path / "test.png"
+        img.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 50)
+
+        batch = BatchResponses(
+            client=MagicMock(),
+            model_name="gpt-4.1-mini",
+            system_message="test",
+            response_format=str,
+            cache=BatchCache(batch_size=10),
+            multimodal=True,
+        )
+
+        calls = {"llm": 0, "mm": 0}
+
+        def mock_llm(self, msgs):
+            calls["llm"] += 1
+            resp = MagicMock()
+            resp.output_parsed = Response(assistant_messages=[Message(id=m.id, body="batch") for m in msgs])
+            return resp
+
+        def mock_mm(self, parts):
+            calls["mm"] += 1
+            return "individual"
+
+        with (
+            patch.object(BatchResponses, "_request_llm", mock_llm),
+            patch.object(BatchResponses, "_request_multimodal", mock_mm),
+        ):
+            results = batch.parse(["plain text", str(img)])
+
+        assert calls["llm"] == 1
+        assert calls["mm"] == 1
+        assert results == ["batch", "individual"]
+
+    def test_text_files_batched_with_text(self, tmp_path):
+        """Text-readable files (.py, .js, etc.) are inlined and batched."""
+        from unittest.mock import MagicMock, patch
+
+        from openaivec._cache import BatchCache
+        from openaivec._responses import BatchResponses, Message, Response
+
+        py_file = tmp_path / "app.py"
+        py_file.write_text("def hello(): return 42")
+        js_file = tmp_path / "app.js"
+        js_file.write_text("const x = 7;")
+
+        batch = BatchResponses(
+            client=MagicMock(),
+            model_name="gpt-4.1-mini",
+            system_message="test",
+            response_format=str,
+            cache=BatchCache(batch_size=10),
+            multimodal=True,
+        )
+
+        captured_bodies: list[str] = []
+        calls = {"llm": 0, "mm": 0}
+
+        def mock_llm(self, msgs):
+            calls["llm"] += 1
+            for m in msgs:
+                captured_bodies.append(m.body)
+            resp = MagicMock()
+            resp.output_parsed = Response(assistant_messages=[Message(id=m.id, body="ok") for m in msgs])
+            return resp
+
+        def mock_mm(self, parts):
+            calls["mm"] += 1
+            return "mm"
+
+        with (
+            patch.object(BatchResponses, "_request_llm", mock_llm),
+            patch.object(BatchResponses, "_request_multimodal", mock_mm),
+        ):
+            results = batch.parse(["hello", str(py_file), str(js_file)])
+
+        assert calls["llm"] == 1, "All text inputs should be in one batch call"
+        assert calls["mm"] == 0, "No multimodal calls for text files"
+        assert results == ["ok", "ok", "ok"]
+        assert any("[File: app.py]" in b for b in captured_bodies)
+        assert any("[File: app.js]" in b for b in captured_bodies)
+        assert any("def hello" in b for b in captured_bodies)
+
+    def test_binary_file_goes_multimodal(self, tmp_path):
+        """Binary document files (PDF) still go through Files API."""
+        from openaivec._multimodal import is_multimodal_input, is_readable_text_file
+
+        pdf = tmp_path / "report.pdf"
+        pdf.write_bytes(b"%PDF-1.4 test")
+        assert is_multimodal_input(str(pdf))
+        assert not is_readable_text_file(str(pdf))
+
+        py = tmp_path / "code.py"
+        py.write_text("x = 1")
+        assert not is_multimodal_input(str(py))
+        assert is_readable_text_file(str(py))
+
+    def test_url_without_extension_is_text(self):
+        from openaivec._multimodal import is_multimodal_input
+
+        assert not is_multimodal_input("https://api.example.com/v1/data?key=abc")
+        assert is_multimodal_input("https://cdn.example.com/image.png")
+        assert not is_multimodal_input("https://example.com/")
+
+    def test_audio_url_is_multimodal(self):
+        from openaivec._multimodal import is_audio_path, is_multimodal_input
+
+        assert is_multimodal_input("https://cdn.example.com/speech.mp3")
+        assert is_multimodal_input("https://cdn.example.com/audio.wav")
+        assert is_audio_path("recording.mp3")
+        assert is_audio_path("file.wav")
+        assert not is_audio_path("photo.png")
+
+    def test_audio_local_file_raises_error(self, tmp_path):
+        from openaivec._cache import BatchCache
+        from openaivec._responses import BatchResponses
+
+        mp3 = tmp_path / "test.mp3"
+        mp3.write_bytes(b"\xff\xfb\x90\x00" + b"\x00" * 50)
+
+        batch = BatchResponses(
+            client=MagicMock(),
+            model_name="gpt-4.1-mini",
+            system_message="test",
+            response_format=str,
+            cache=BatchCache(batch_size=10),
+            multimodal=True,
+        )
+
+        with pytest.raises(ValueError, match="Audio files.*not supported by the Responses API"):
+            batch.parse([str(mp3)])
+
+    def test_audio_url_raises_error(self):
+        from openaivec._multimodal import MultimodalContentBuilder
+
+        builder = MultimodalContentBuilder(client=MagicMock())
+
+        with pytest.raises(ValueError, match="Audio files.*not supported"):
+            builder.build("https://cdn.example.com/speech.mp3")
+
+    def test_builder_returns_response_input_param(self, tmp_path):
+        from openaivec._multimodal import MultimodalContentBuilder
+
+        builder = MultimodalContentBuilder(client=MagicMock())
+
+        result = builder.build("plain text")
+        assert isinstance(result, list)
+        assert result[0]["role"] == "user"
+
+        img = tmp_path / "photo.jpg"
+        img.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 50)
+        result = builder.build(str(img))
+        assert isinstance(result, list)
+        assert result[0]["role"] == "user"
+        assert result[0]["content"][0]["type"] == "input_image"
+
+    def test_document_url_no_filename(self):
+        from openaivec._multimodal import MultimodalContentBuilder
+
+        builder = MultimodalContentBuilder(client=MagicMock())
+        result = builder.build("https://example.com/report.pdf")
+        assert result[0]["role"] == "user"
+        content = result[0]["content"][0]
+        assert content["type"] == "input_file"
+        assert content["file_url"] == "https://example.com/report.pdf"
+        assert "filename" not in content
+
+    def test_file_size_limit(self, tmp_path):
+        from openaivec._multimodal import encode_file_to_data_uri
+
+        big_file = tmp_path / "huge.txt"
+        big_file.write_bytes(b"x" * (21 * 1024 * 1024))
+
+        with pytest.raises(ValueError, match="exceeding the 20 MB limit"):
+            encode_file_to_data_uri(str(big_file))

@@ -86,6 +86,7 @@ def responses_udf(
     model_name: str | None = None,
     batch_size: int = 64,
     max_concurrency: int = 8,
+    multimodal: bool = False,
     **api_kwargs: Any,
 ) -> None:
     """Register a DuckDB Arrow-based UDF that calls the OpenAI Responses API.
@@ -138,6 +139,7 @@ def responses_udf(
         response_format=response_format,
         cache=cache,
         api_kwargs=api_kwargs,
+        multimodal=multimodal,
     )
 
     is_structured = isinstance(response_format, type) and issubclass(response_format, BaseModel)
@@ -238,6 +240,7 @@ def task_udf(
     model_name: str | None = None,
     batch_size: int = 64,
     max_concurrency: int = 8,
+    multimodal: bool = False,
     **api_kwargs: Any,
 ) -> None:
     """Register a DuckDB UDF backed by a ``PreparedTask``.
@@ -249,6 +252,8 @@ def task_udf(
         model_name (str | None): Model or deployment name.
         batch_size (int): Rows per API batch. Defaults to 64.
         max_concurrency (int): Maximum concurrent API requests. Defaults to 8.
+        multimodal (bool): When ``True``, file paths and URLs are sent as
+            multimodal content. Defaults to ``False``.
         **api_kwargs: Extra parameters forwarded to the OpenAI API.
     """
     responses_udf(
@@ -259,6 +264,7 @@ def task_udf(
         model_name=model_name,
         batch_size=batch_size,
         max_concurrency=max_concurrency,
+        multimodal=multimodal,
         **api_kwargs,
     )
 

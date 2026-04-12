@@ -29,6 +29,7 @@ class OpenAIVecSeriesAccessor:
         instructions: str,
         cache: BatchCache[str, ResponseFormat],
         response_format: type[ResponseFormat] = str,
+        multimodal: bool = False,
         **api_kwargs,
     ) -> pd.Series:
         """Call an LLM once for every Series element using a provided cache.
@@ -66,6 +67,7 @@ class OpenAIVecSeriesAccessor:
             response_format=response_format,
             cache=cache,
             api_kwargs=api_kwargs,
+            multimodal=multimodal,
         )
 
         return pd.Series(client.parse(self._obj.tolist()), index=self._obj.index, name=self._obj.name)
@@ -76,6 +78,7 @@ class OpenAIVecSeriesAccessor:
         response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
         show_progress: bool = True,
+        multimodal: bool = False,
         **api_kwargs,
     ) -> pd.Series:
         """Call an LLM once for every Series element.
@@ -124,6 +127,7 @@ class OpenAIVecSeriesAccessor:
                 show_progress=show_progress,
             ),
             response_format=response_format,
+            multimodal=multimodal,
             **api_kwargs,
         )
 
@@ -218,6 +222,7 @@ class OpenAIVecSeriesAccessor:
         self,
         task: PreparedTask[ResponseFormat],
         cache: BatchCache[str, ResponseFormat],
+        multimodal: bool = False,
         **api_kwargs,
     ) -> pd.Series:
         """Execute a prepared task on every Series element using a provided cache.
@@ -262,6 +267,7 @@ class OpenAIVecSeriesAccessor:
             response_format=task.response_format,
             cache=cache,
             api_kwargs=api_kwargs,
+            multimodal=multimodal,
         )
         return pd.Series(client.parse(self._obj.tolist()), index=self._obj.index, name=self._obj.name)
 
@@ -270,6 +276,7 @@ class OpenAIVecSeriesAccessor:
         task: PreparedTask,
         batch_size: int | None = None,
         show_progress: bool = True,
+        multimodal: bool = False,
         **api_kwargs,
     ) -> pd.Series:
         """Execute a prepared task on every Series element.
@@ -320,6 +327,7 @@ class OpenAIVecSeriesAccessor:
                 max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
                 show_progress=show_progress,
             ),
+            multimodal=multimodal,
             **api_kwargs,
         )
 
@@ -329,6 +337,7 @@ class OpenAIVecSeriesAccessor:
         cache: BatchCache[str, ResponseFormat],
         response_format: type[ResponseFormat] | None = None,
         max_examples: int = 100,
+        multimodal: bool = False,
         **api_kwargs,
     ) -> pd.Series:
         """Parse Series values into structured data using an LLM with a provided cache.
@@ -387,6 +396,7 @@ class OpenAIVecSeriesAccessor:
             instructions=schema.inference_prompt if schema else instructions,
             cache=cache,
             response_format=resolved_response_format,
+            multimodal=multimodal,
             **api_kwargs,
         )
 
@@ -397,6 +407,7 @@ class OpenAIVecSeriesAccessor:
         max_examples: int = 100,
         batch_size: int | None = None,
         show_progress: bool = True,
+        multimodal: bool = False,
         **api_kwargs,
     ) -> pd.Series:
         """Parse Series values into structured data using an LLM.
@@ -466,6 +477,7 @@ class OpenAIVecSeriesAccessor:
             ),
             response_format=response_format,
             max_examples=max_examples,
+            multimodal=multimodal,
             **api_kwargs,
         )
 

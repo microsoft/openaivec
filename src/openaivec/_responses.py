@@ -4,12 +4,21 @@ from typing import Any, Generic, cast
 
 from openai import AsyncOpenAI, InternalServerError, OpenAI, RateLimitError
 from openai.types.responses import ParsedResponse
+from openai.types.responses import Response as OAIResponse
+from openai.types.responses.response_input_param import ResponseInputParam
 from pydantic import BaseModel, ValidationError
 
 from openaivec._cache import AsyncBatchCache, BatchCache
 from openaivec._cache.proxy import DEFAULT_MANAGED_CACHE_SIZE
 from openaivec._log import observe
 from openaivec._model import PreparedTask, ResponseFormat
+from openaivec._multimodal import (
+    AsyncMultimodalContentBuilder,
+    MultimodalContentBuilder,
+    is_multimodal_input,
+    is_readable_text_file,
+    read_text_file,
+)
 from openaivec._util import backoff, backoff_async
 
 __all__ = [
@@ -192,6 +201,7 @@ class BatchResponses(Generic[ResponseFormat]):
     )
     api_kwargs: dict[str, Any] = field(default_factory=dict)
     max_validation_retries: int = 3
+    multimodal: bool = False
     _vectorized_system_message: str = field(init=False)
     _model_json_schema: dict = field(init=False)
 
@@ -204,6 +214,7 @@ class BatchResponses(Generic[ResponseFormat]):
         response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
         max_validation_retries: int = 3,
+        multimodal: bool = False,
         **api_kwargs,
     ) -> "BatchResponses":
         """Factory constructor.
@@ -217,6 +228,8 @@ class BatchResponses(Generic[ResponseFormat]):
                 (automatic batch size optimization). Set to a positive integer for fixed batch size.
             max_validation_retries (int, optional): Retry count when structured output fails local
                 schema validation. Defaults to 3.
+            multimodal (bool, optional): When ``True``, file paths and URLs in
+                inputs are sent as multimodal content. Defaults to ``False``.
             **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
 
         Returns:
@@ -230,6 +243,7 @@ class BatchResponses(Generic[ResponseFormat]):
             cache=BatchCache(batch_size=batch_size, max_cache_size=DEFAULT_MANAGED_CACHE_SIZE),
             api_kwargs=api_kwargs,
             max_validation_retries=max_validation_retries,
+            multimodal=multimodal,
         )
 
     @classmethod
@@ -240,6 +254,7 @@ class BatchResponses(Generic[ResponseFormat]):
         task: PreparedTask[ResponseFormat],
         batch_size: int | None = None,
         max_validation_retries: int = 3,
+        multimodal: bool = False,
         **api_kwargs,
     ) -> "BatchResponses":
         """Factory from a PreparedTask.
@@ -252,6 +267,8 @@ class BatchResponses(Generic[ResponseFormat]):
                 (automatic batch size optimization). Set to a positive integer for fixed batch size.
             max_validation_retries (int, optional): Retry count when structured output fails local
                 schema validation. Defaults to 3.
+            multimodal (bool, optional): When ``True``, file paths and URLs in
+                inputs are sent as multimodal content. Defaults to ``False``.
             **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
 
         Returns:
@@ -265,6 +282,7 @@ class BatchResponses(Generic[ResponseFormat]):
             cache=BatchCache(batch_size=batch_size, max_cache_size=DEFAULT_MANAGED_CACHE_SIZE),
             api_kwargs=api_kwargs,
             max_validation_retries=max_validation_retries,
+            multimodal=multimodal,
         )
 
     def __post_init__(self):
@@ -324,24 +342,95 @@ class BatchResponses(Generic[ResponseFormat]):
         raise RuntimeError("unreachable validation retry loop state")
 
     @observe(_LOGGER)
-    def _predict_chunk(self, user_messages: list[str]) -> list[ResponseFormat | None]:
-        """Helper executed for every unique minibatch.
+    @backoff(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
+    def _request_multimodal(self, input_messages: ResponseInputParam) -> ResponseFormat | None:
+        """Send a single multimodal request.
 
-            This method:
-            1. Converts plain strings into `Message[str]` with stable indices.
-            2. Delegates the request to `_request_llm`.
-            3. Reorders the responses so they match the original indices.
+        Args:
+            input_messages (ResponseInputParam): Pre-built input messages
+                containing multimodal content (images, files, or audio).
 
-        The function is pure – it has no side‑effects and the result depends
-        only on its arguments – which allows safe reuse.
+        Returns:
+            ResponseFormat | None: Parsed response or ``None``.
         """
-        messages = [Message(id=i, body=message) for i, message in enumerate(user_messages)]
-        responses: ParsedResponse[Response[ResponseFormat]] = self._request_llm(messages)
-        if not responses.output_parsed:
-            return [None] * len(messages)
-        response_dict = {message.id: message.body for message in responses.output_parsed.assistant_messages}
-        sorted_responses: list[ResponseFormat | None] = [response_dict.get(m.id, None) for m in messages]
-        return sorted_responses
+        response_format: type[ResponseFormat] = self.response_format
+
+        if response_format is str:
+            response: OAIResponse = self.client.responses.create(
+                instructions=self.system_message,
+                model=self.model_name,
+                input=input_messages,
+                **self.api_kwargs,
+            )
+            return cast(ResponseFormat, response.output_text)
+
+        parsed_response: ParsedResponse[ResponseFormat] = self.client.responses.parse(
+            instructions=self.system_message,
+            model=self.model_name,
+            input=input_messages,
+            text_format=response_format,
+            **self.api_kwargs,
+        )
+        return parsed_response.output_parsed
+
+    @observe(_LOGGER)
+    def _predict_chunk(self, user_messages: list[str]) -> list[ResponseFormat | None]:
+        """Process a minibatch, routing inputs by type.
+
+        When ``self.multimodal`` is ``False`` (default), all inputs are treated
+        as plain text and batched via the JSON envelope.  When ``True``:
+
+        * **Text-readable files** (source code, markup, etc.) are read as
+          strings and batched together with plain text for dedup benefits.
+        * **Binary files and images** are sent as individual multimodal
+          requests via the Files API or inline base64.
+
+        Args:
+            user_messages (list[str]): Unique input strings for this minibatch.
+
+        Returns:
+            list[ResponseFormat | None]: Responses aligned to *user_messages*.
+        """
+        if not self.multimodal:
+            messages: list[Message[str]] = [Message(id=i, body=m) for i, m in enumerate(user_messages)]
+            response: ParsedResponse[Response[ResponseFormat]] = self._request_llm(messages)
+            if not response.output_parsed:
+                return [None] * len(user_messages)
+            response_dict: dict[int, ResponseFormat] = {m.id: m.body for m in response.output_parsed.assistant_messages}
+            return [response_dict.get(m.id, None) for m in messages]
+
+        text_indices: list[int] = []
+        multimodal_indices: list[int] = []
+        resolved_messages: list[str] = list(user_messages)
+
+        for i, msg in enumerate(user_messages):
+            if is_multimodal_input(msg):
+                multimodal_indices.append(i)
+            else:
+                if is_readable_text_file(msg):
+                    resolved_messages[i] = read_text_file(msg)
+                text_indices.append(i)
+
+        results: list[ResponseFormat | None] = [None] * len(user_messages)
+
+        if text_indices:
+            text_messages: list[Message[str]] = [
+                Message(id=i, body=resolved_messages[idx]) for i, idx in enumerate(text_indices)
+            ]
+            text_response: ParsedResponse[Response[ResponseFormat]] = self._request_llm(text_messages)
+            if text_response.output_parsed:
+                text_dict: dict[int, ResponseFormat] = {
+                    m.id: m.body for m in text_response.output_parsed.assistant_messages
+                }
+                for batch_id, orig_idx in enumerate(text_indices):
+                    results[orig_idx] = text_dict.get(batch_id, None)
+
+        builder = MultimodalContentBuilder(client=self.client)
+        for idx in multimodal_indices:
+            input_messages: ResponseInputParam = builder.build(user_messages[idx])
+            results[idx] = self._request_multimodal(input_messages)
+
+        return results
 
     @observe(_LOGGER)
     def parse(self, inputs: list[str]) -> list[ResponseFormat | None]:
@@ -416,6 +505,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
     )
     api_kwargs: dict[str, Any] = field(default_factory=dict)
     max_validation_retries: int = 3
+    multimodal: bool = False
     _vectorized_system_message: str = field(init=False)
     _model_json_schema: dict = field(init=False)
 
@@ -429,6 +519,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         batch_size: int | None = None,
         max_concurrency: int = 8,
         max_validation_retries: int = 3,
+        multimodal: bool = False,
         **api_kwargs,
     ) -> "AsyncBatchResponses":
         """Factory constructor.
@@ -443,6 +534,8 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             max_concurrency (int, optional): Max concurrent API calls. Defaults to 8.
             max_validation_retries (int, optional): Retry count when structured output fails local
                 schema validation. Defaults to 3.
+            multimodal (bool, optional): When ``True``, file paths and URLs in
+                inputs are sent as multimodal content. Defaults to ``False``.
             **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
 
         Returns:
@@ -460,6 +553,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             ),
             api_kwargs=api_kwargs,
             max_validation_retries=max_validation_retries,
+            multimodal=multimodal,
         )
 
     @classmethod
@@ -471,6 +565,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         batch_size: int | None = None,
         max_concurrency: int = 8,
         max_validation_retries: int = 3,
+        multimodal: bool = False,
         **api_kwargs,
     ) -> "AsyncBatchResponses":
         """Factory from a PreparedTask.
@@ -484,6 +579,8 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             max_concurrency (int, optional): Max concurrent API calls. Defaults to 8.
             max_validation_retries (int, optional): Retry count when structured output fails local
                 schema validation. Defaults to 3.
+            multimodal (bool, optional): When ``True``, file paths and URLs in
+                inputs are sent as multimodal content. Defaults to ``False``.
             **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
 
         Returns:
@@ -501,6 +598,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             ),
             api_kwargs=api_kwargs,
             max_validation_retries=max_validation_retries,
+            multimodal=multimodal,
         )
 
     def __post_init__(self):
@@ -557,24 +655,91 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         raise RuntimeError("unreachable validation retry loop state")
 
     @observe(_LOGGER)
-    async def _predict_chunk(self, user_messages: list[str]) -> list[ResponseFormat | None]:
-        """Async helper executed for every unique minibatch.
+    @backoff_async(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
+    async def _request_multimodal(self, input_messages: ResponseInputParam) -> ResponseFormat | None:
+        """Send a single multimodal request (async).
 
-            This method:
-            1. Converts plain strings into `Message[str]` with stable indices.
-            2. Delegates the request to `_request_llm`.
-            3. Reorders the responses so they match the original indices.
+        Args:
+            input_messages (ResponseInputParam): Pre-built input messages
+                containing multimodal content (images, files, or audio).
 
-        The function is pure – it has no side‑effects and the result depends only on its arguments.
+        Returns:
+            ResponseFormat | None: Parsed response or ``None``.
         """
-        messages = [Message(id=i, body=message) for i, message in enumerate(user_messages)]
-        responses: ParsedResponse[Response[ResponseFormat]] = await self._request_llm(messages)
-        if not responses.output_parsed:
-            return [None] * len(messages)
-        response_dict = {message.id: message.body for message in responses.output_parsed.assistant_messages}
-        # Ensure proper handling for missing IDs - this shouldn't happen in normal operation
-        sorted_responses: list[ResponseFormat | None] = [response_dict.get(m.id, None) for m in messages]
-        return sorted_responses
+        response_format: type[ResponseFormat] = self.response_format
+
+        if response_format is str:
+            response: OAIResponse = await self.client.responses.create(
+                instructions=self.system_message,
+                model=self.model_name,
+                input=input_messages,
+                **self.api_kwargs,
+            )
+            return cast(ResponseFormat, response.output_text)
+
+        parsed_response: ParsedResponse[ResponseFormat] = await self.client.responses.parse(
+            instructions=self.system_message,
+            model=self.model_name,
+            input=input_messages,
+            text_format=response_format,
+            **self.api_kwargs,
+        )
+        return parsed_response.output_parsed
+
+    @observe(_LOGGER)
+    async def _predict_chunk(self, user_messages: list[str]) -> list[ResponseFormat | None]:
+        """Process a minibatch, routing inputs by type (async).
+
+        When ``self.multimodal`` is ``False`` (default), all inputs are treated
+        as plain text.  When ``True``, text-readable files are inlined and
+        batched; binary files and images use individual multimodal calls.
+
+        Args:
+            user_messages (list[str]): Unique input strings for this minibatch.
+
+        Returns:
+            list[ResponseFormat | None]: Responses aligned to *user_messages*.
+        """
+        if not self.multimodal:
+            messages: list[Message[str]] = [Message(id=i, body=m) for i, m in enumerate(user_messages)]
+            response: ParsedResponse[Response[ResponseFormat]] = await self._request_llm(messages)
+            if not response.output_parsed:
+                return [None] * len(user_messages)
+            response_dict: dict[int, ResponseFormat] = {m.id: m.body for m in response.output_parsed.assistant_messages}
+            return [response_dict.get(m.id, None) for m in messages]
+
+        text_indices: list[int] = []
+        multimodal_indices: list[int] = []
+        resolved_messages: list[str] = list(user_messages)
+
+        for i, msg in enumerate(user_messages):
+            if is_multimodal_input(msg):
+                multimodal_indices.append(i)
+            else:
+                if is_readable_text_file(msg):
+                    resolved_messages[i] = read_text_file(msg)
+                text_indices.append(i)
+
+        results: list[ResponseFormat | None] = [None] * len(user_messages)
+
+        if text_indices:
+            text_messages: list[Message[str]] = [
+                Message(id=i, body=resolved_messages[idx]) for i, idx in enumerate(text_indices)
+            ]
+            text_response: ParsedResponse[Response[ResponseFormat]] = await self._request_llm(text_messages)
+            if text_response.output_parsed:
+                text_dict: dict[int, ResponseFormat] = {
+                    m.id: m.body for m in text_response.output_parsed.assistant_messages
+                }
+                for batch_id, orig_idx in enumerate(text_indices):
+                    results[orig_idx] = text_dict.get(batch_id, None)
+
+        builder = AsyncMultimodalContentBuilder(client=self.client)
+        for idx in multimodal_indices:
+            input_messages: ResponseInputParam = await builder.build(user_messages[idx])
+            results[idx] = await self._request_multimodal(input_messages)
+
+        return results
 
     @observe(_LOGGER)
     async def parse(self, inputs: list[str]) -> list[ResponseFormat | None]:
