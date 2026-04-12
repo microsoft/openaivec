@@ -550,6 +550,74 @@ class TestMultimodalRouting:
         assert is_multimodal_input("https://cdn.example.com/image.png")
         assert not is_multimodal_input("https://example.com/")
 
+    def test_audio_url_is_multimodal(self):
+        from openaivec._file import is_audio_path, is_multimodal_input
+
+        assert is_multimodal_input("https://cdn.example.com/speech.mp3")
+        assert is_multimodal_input("https://cdn.example.com/audio.wav")
+        assert is_audio_path("recording.mp3")
+        assert is_audio_path("file.wav")
+        assert not is_audio_path("photo.png")
+
+    def test_audio_local_file_routing(self, tmp_path):
+        from unittest.mock import MagicMock, patch
+
+        from openaivec._cache import BatchCache
+        from openaivec._responses import BatchResponses
+
+        mp3 = tmp_path / "test.mp3"
+        mp3.write_bytes(b"\xff\xfb\x90\x00" + b"\x00" * 50)
+
+        batch = BatchResponses(
+            client=MagicMock(),
+            model_name="gpt-4.1-mini",
+            system_message="test",
+            response_format=str,
+            cache=BatchCache(batch_size=10),
+            multimodal=True,
+        )
+
+        calls = {"mm": []}
+
+        def mock_mm(self, input_messages):
+            calls["mm"].append(input_messages)
+            return "audio_response"
+
+        with patch.object(BatchResponses, "_request_multimodal", mock_mm):
+            results = batch.parse([str(mp3)])
+
+        assert results == ["audio_response"]
+        assert len(calls["mm"]) == 1
+        input_msg = calls["mm"][0]
+        assert isinstance(input_msg, list)
+        assert input_msg[0]["type"] == "input_audio"
+        assert input_msg[0]["input_audio"]["format"] == "mp3"
+
+    def test_builder_returns_response_input_param(self, tmp_path):
+        from unittest.mock import MagicMock
+
+        from openaivec._file import MultimodalContentBuilder
+
+        builder = MultimodalContentBuilder(client=MagicMock())
+
+        result = builder.build("plain text")
+        assert isinstance(result, list)
+        assert result[0]["role"] == "user"
+
+        img = tmp_path / "photo.jpg"
+        img.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 50)
+        result = builder.build(str(img))
+        assert isinstance(result, list)
+        assert result[0]["role"] == "user"
+        assert result[0]["content"][0]["type"] == "input_image"
+
+        wav = tmp_path / "audio.wav"
+        wav.write_bytes(b"RIFF" + b"\x00" * 50)
+        result = builder.build(str(wav))
+        assert isinstance(result, list)
+        assert result[0]["type"] == "input_audio"
+        assert result[0]["input_audio"]["format"] == "wav"
+
     def test_file_size_limit(self, tmp_path):
         from openaivec._file import encode_file_to_data_uri
 
