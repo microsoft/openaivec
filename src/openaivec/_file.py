@@ -57,7 +57,7 @@ _DOCUMENT_EXTENSIONS = frozenset(
         # Responses API ``input_file`` (context stuffing) supported formats.
         # Source: API error response for unsupported file types.
         # Note: .svg is also in _IMAGE_EXTENSIONS and handled as input_image.
-        # --- Office / document ---
+        # --- Office / document (binary) ---
         ".doc",
         ".docx",
         ".dot",
@@ -132,6 +132,39 @@ _DOCUMENT_EXTENSIONS = frozenset(
         ".py",
         ".scala",
         ".sh",
+    }
+)
+
+_BINARY_DOCUMENT_EXTENSIONS = frozenset(
+    {
+        ".doc",
+        ".docx",
+        ".dot",
+        ".hwp",
+        ".hwpx",
+        ".keynote",
+        ".mht",
+        ".mhtml",
+        ".odt",
+        ".pages",
+        ".pdf",
+        ".pot",
+        ".ppa",
+        ".pps",
+        ".ppt",
+        ".pptx",
+        ".pwz",
+        ".rtf",
+        ".svgz",
+        ".wiz",
+        ".xla",
+        ".xlb",
+        ".xlc",
+        ".xlm",
+        ".xls",
+        ".xlsx",
+        ".xlt",
+        ".xlw",
     }
 )
 
@@ -223,22 +256,68 @@ def is_url(value: str) -> bool:
 
 
 def is_multimodal_input(value: str) -> bool:
-    """Return ``True`` if *value* needs multimodal handling.
+    """Return ``True`` if *value* needs multimodal API handling.
 
-    URLs are multimodal only when they have a recognised media extension.
-    Local files are multimodal when they exist and have a supported extension.
+    Returns ``True`` for images, audio, and binary documents that cannot
+    be inlined as text.  Text-readable files (source code, markup, plain
+    text) return ``False`` — they should be read as strings and sent
+    through the batched text path for dedup and batching benefits.
 
     Args:
         value (str): String to inspect.
 
     Returns:
-        bool: ``True`` when *value* should be routed through multimodal handling.
+        bool: ``True`` when *value* requires individual multimodal API calls.
     """
     if is_url(value):
         return _url_has_media_extension(value)
-    if os.path.isfile(value) and Path(value).suffix.lower() in _SUPPORTED_MEDIA_EXTENSIONS:
-        return True
+    if os.path.isfile(value):
+        suffix = Path(value).suffix.lower()
+        if suffix in _IMAGE_EXTENSIONS | _AUDIO_EXTENSIONS | _BINARY_DOCUMENT_EXTENSIONS:
+            return True
     return False
+
+
+def is_readable_text_file(value: str) -> bool:
+    """Return ``True`` if *value* is a local text file that can be read as a string.
+
+    Text-readable files are inlined into the batched text path instead of
+    going through the Files API, enabling deduplication and batching.
+
+    Args:
+        value (str): String to inspect.
+
+    Returns:
+        bool: ``True`` when *value* is a local file with a text-readable extension.
+    """
+    if is_url(value):
+        return False
+    if not os.path.isfile(value):
+        return False
+    suffix = Path(value).suffix.lower()
+    return suffix in _DOCUMENT_EXTENSIONS and suffix not in _BINARY_DOCUMENT_EXTENSIONS
+
+
+def read_text_file(path: str) -> str:
+    """Read a local text file and return its content with a filename header.
+
+    The returned string has the format::
+
+        [File: filename.ext]
+        <file content>
+
+    This preserves filename context for the model while allowing the
+    content to go through the batched text path.
+
+    Args:
+        path (str): Path to a text-readable file.
+
+    Returns:
+        str: File content prefixed with a ``[File: ...]`` header.
+    """
+    name = Path(path).name
+    content = Path(path).read_text(errors="replace")
+    return f"[File: {name}]\n{content}"
 
 
 def _mime_type(path: str) -> str:

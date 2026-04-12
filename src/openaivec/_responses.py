@@ -10,7 +10,13 @@ from pydantic import BaseModel, ValidationError
 
 from openaivec._cache import AsyncBatchCache, BatchCache
 from openaivec._cache.proxy import DEFAULT_MANAGED_CACHE_SIZE
-from openaivec._file import AsyncMultimodalContentBuilder, MultimodalContentBuilder, is_multimodal_input
+from openaivec._file import (
+    AsyncMultimodalContentBuilder,
+    MultimodalContentBuilder,
+    is_multimodal_input,
+    is_readable_text_file,
+    read_text_file,
+)
 from openaivec._log import observe
 from openaivec._model import PreparedTask, ResponseFormat
 from openaivec._util import backoff, backoff_async
@@ -369,11 +375,15 @@ class BatchResponses(Generic[ResponseFormat]):
 
     @observe(_LOGGER)
     def _predict_chunk(self, user_messages: list[str]) -> list[ResponseFormat | None]:
-        """Process a minibatch, routing multimodal inputs to individual calls.
+        """Process a minibatch, routing inputs by type.
 
         When ``self.multimodal`` is ``False`` (default), all inputs are treated
-        as plain text and batched via the JSON envelope.  When ``True``, file
-        paths and URLs are detected and sent as individual multimodal requests.
+        as plain text and batched via the JSON envelope.  When ``True``:
+
+        * **Text-readable files** (source code, markup, etc.) are read as
+          strings and batched together with plain text for dedup benefits.
+        * **Binary files and images** are sent as individual multimodal
+          requests via the Files API or inline base64.
 
         Args:
             user_messages (list[str]): Unique input strings for this minibatch.
@@ -391,18 +401,21 @@ class BatchResponses(Generic[ResponseFormat]):
 
         text_indices: list[int] = []
         multimodal_indices: list[int] = []
+        resolved_messages: list[str] = list(user_messages)
 
         for i, msg in enumerate(user_messages):
             if is_multimodal_input(msg):
                 multimodal_indices.append(i)
             else:
+                if is_readable_text_file(msg):
+                    resolved_messages[i] = read_text_file(msg)
                 text_indices.append(i)
 
         results: list[ResponseFormat | None] = [None] * len(user_messages)
 
         if text_indices:
             text_messages: list[Message[str]] = [
-                Message(id=i, body=user_messages[idx]) for i, idx in enumerate(text_indices)
+                Message(id=i, body=resolved_messages[idx]) for i, idx in enumerate(text_indices)
             ]
             text_response: ParsedResponse[Response[ResponseFormat]] = self._request_llm(text_messages)
             if text_response.output_parsed:
@@ -675,11 +688,11 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
 
     @observe(_LOGGER)
     async def _predict_chunk(self, user_messages: list[str]) -> list[ResponseFormat | None]:
-        """Process a minibatch, routing multimodal inputs to individual async calls.
+        """Process a minibatch, routing inputs by type (async).
 
         When ``self.multimodal`` is ``False`` (default), all inputs are treated
-        as plain text.  When ``True``, file paths and URLs are detected and
-        sent as individual multimodal requests.
+        as plain text.  When ``True``, text-readable files are inlined and
+        batched; binary files and images use individual multimodal calls.
 
         Args:
             user_messages (list[str]): Unique input strings for this minibatch.
@@ -697,18 +710,21 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
 
         text_indices: list[int] = []
         multimodal_indices: list[int] = []
+        resolved_messages: list[str] = list(user_messages)
 
         for i, msg in enumerate(user_messages):
             if is_multimodal_input(msg):
                 multimodal_indices.append(i)
             else:
+                if is_readable_text_file(msg):
+                    resolved_messages[i] = read_text_file(msg)
                 text_indices.append(i)
 
         results: list[ResponseFormat | None] = [None] * len(user_messages)
 
         if text_indices:
             text_messages: list[Message[str]] = [
-                Message(id=i, body=user_messages[idx]) for i, idx in enumerate(text_indices)
+                Message(id=i, body=resolved_messages[idx]) for i, idx in enumerate(text_indices)
             ]
             text_response: ParsedResponse[Response[ResponseFormat]] = await self._request_llm(text_messages)
             if text_response.output_parsed:

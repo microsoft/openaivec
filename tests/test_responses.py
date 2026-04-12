@@ -543,6 +543,69 @@ class TestMultimodalRouting:
         assert calls["mm"] == 1
         assert results == ["batch", "individual"]
 
+    def test_text_files_batched_with_text(self, tmp_path):
+        """Text-readable files (.py, .js, etc.) are inlined and batched."""
+        from unittest.mock import MagicMock, patch
+
+        from openaivec._cache import BatchCache
+        from openaivec._responses import BatchResponses, Message, Response
+
+        py_file = tmp_path / "app.py"
+        py_file.write_text("def hello(): return 42")
+        js_file = tmp_path / "app.js"
+        js_file.write_text("const x = 7;")
+
+        batch = BatchResponses(
+            client=MagicMock(),
+            model_name="gpt-4.1-mini",
+            system_message="test",
+            response_format=str,
+            cache=BatchCache(batch_size=10),
+            multimodal=True,
+        )
+
+        captured_bodies: list[str] = []
+        calls = {"llm": 0, "mm": 0}
+
+        def mock_llm(self, msgs):
+            calls["llm"] += 1
+            for m in msgs:
+                captured_bodies.append(m.body)
+            resp = MagicMock()
+            resp.output_parsed = Response(assistant_messages=[Message(id=m.id, body="ok") for m in msgs])
+            return resp
+
+        def mock_mm(self, parts):
+            calls["mm"] += 1
+            return "mm"
+
+        with (
+            patch.object(BatchResponses, "_request_llm", mock_llm),
+            patch.object(BatchResponses, "_request_multimodal", mock_mm),
+        ):
+            results = batch.parse(["hello", str(py_file), str(js_file)])
+
+        assert calls["llm"] == 1, "All text inputs should be in one batch call"
+        assert calls["mm"] == 0, "No multimodal calls for text files"
+        assert results == ["ok", "ok", "ok"]
+        assert any("[File: app.py]" in b for b in captured_bodies)
+        assert any("[File: app.js]" in b for b in captured_bodies)
+        assert any("def hello" in b for b in captured_bodies)
+
+    def test_binary_file_goes_multimodal(self, tmp_path):
+        """Binary document files (PDF) still go through Files API."""
+        from openaivec._file import is_multimodal_input, is_readable_text_file
+
+        pdf = tmp_path / "report.pdf"
+        pdf.write_bytes(b"%PDF-1.4 test")
+        assert is_multimodal_input(str(pdf))
+        assert not is_readable_text_file(str(pdf))
+
+        py = tmp_path / "code.py"
+        py.write_text("x = 1")
+        assert not is_multimodal_input(str(py))
+        assert is_readable_text_file(str(py))
+
     def test_url_without_extension_is_text(self):
         from openaivec._file import is_multimodal_input
 
