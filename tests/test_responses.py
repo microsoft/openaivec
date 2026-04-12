@@ -594,7 +594,7 @@ class TestMultimodalRouting:
 
     def test_binary_file_goes_multimodal(self, tmp_path):
         """Binary document files (PDF) still go through Files API."""
-        from openaivec._file import is_multimodal_input, is_readable_text_file
+        from openaivec._multimodal import is_multimodal_input, is_readable_text_file
 
         pdf = tmp_path / "report.pdf"
         pdf.write_bytes(b"%PDF-1.4 test")
@@ -607,14 +607,14 @@ class TestMultimodalRouting:
         assert is_readable_text_file(str(py))
 
     def test_url_without_extension_is_text(self):
-        from openaivec._file import is_multimodal_input
+        from openaivec._multimodal import is_multimodal_input
 
         assert not is_multimodal_input("https://api.example.com/v1/data?key=abc")
         assert is_multimodal_input("https://cdn.example.com/image.png")
         assert not is_multimodal_input("https://example.com/")
 
     def test_audio_url_is_multimodal(self):
-        from openaivec._file import is_audio_path, is_multimodal_input
+        from openaivec._multimodal import is_audio_path, is_multimodal_input
 
         assert is_multimodal_input("https://cdn.example.com/speech.mp3")
         assert is_multimodal_input("https://cdn.example.com/audio.wav")
@@ -642,7 +642,7 @@ class TestMultimodalRouting:
             batch.parse([str(mp3)])
 
     def test_audio_url_raises_error(self):
-        from openaivec._file import MultimodalContentBuilder
+        from openaivec._multimodal import MultimodalContentBuilder
 
         builder = MultimodalContentBuilder(client=MagicMock())
 
@@ -650,7 +650,7 @@ class TestMultimodalRouting:
             builder.build("https://cdn.example.com/speech.mp3")
 
     def test_builder_returns_response_input_param(self, tmp_path):
-        from openaivec._file import MultimodalContentBuilder
+        from openaivec._multimodal import MultimodalContentBuilder
 
         builder = MultimodalContentBuilder(client=MagicMock())
 
@@ -666,7 +666,7 @@ class TestMultimodalRouting:
         assert result[0]["content"][0]["type"] == "input_image"
 
     def test_document_url_no_filename(self):
-        from openaivec._file import MultimodalContentBuilder
+        from openaivec._multimodal import MultimodalContentBuilder
 
         builder = MultimodalContentBuilder(client=MagicMock())
         result = builder.build("https://example.com/report.pdf")
@@ -677,7 +677,7 @@ class TestMultimodalRouting:
         assert "filename" not in content
 
     def test_file_size_limit(self, tmp_path):
-        from openaivec._file import encode_file_to_data_uri
+        from openaivec._multimodal import encode_file_to_data_uri
 
         big_file = tmp_path / "huge.txt"
         big_file.write_bytes(b"x" * (21 * 1024 * 1024))

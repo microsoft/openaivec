@@ -10,15 +10,15 @@ from pydantic import BaseModel, ValidationError
 
 from openaivec._cache import AsyncBatchCache, BatchCache
 from openaivec._cache.proxy import DEFAULT_MANAGED_CACHE_SIZE
-from openaivec._file import (
+from openaivec._log import observe
+from openaivec._model import PreparedTask, ResponseFormat
+from openaivec._multimodal import (
     AsyncMultimodalContentBuilder,
     MultimodalContentBuilder,
     is_multimodal_input,
     is_readable_text_file,
     read_text_file,
 )
-from openaivec._log import observe
-from openaivec._model import PreparedTask, ResponseFormat
 from openaivec._util import backoff, backoff_async
 
 __all__ = [
