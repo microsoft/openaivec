@@ -52,18 +52,17 @@ _AUDIO_FORMAT: dict[str, str] = {
     ".wav": "wav",
 }
 
-_DOCUMENT_EXTENSIONS = frozenset(
+_BINARY_DOCUMENT_EXTENSIONS = frozenset(
     {
-        # Responses API ``input_file`` (context stuffing) supported formats.
-        # Source: API error response for unsupported file types.
-        # Note: .svg is also in _IMAGE_EXTENSIONS and handled as input_image.
-        # --- Office / document (binary) ---
+        # Office / binary document formats — require Files API upload.
         ".doc",
         ".docx",
         ".dot",
         ".hwp",
         ".hwpx",
         ".keynote",
+        ".mht",
+        ".mhtml",
         ".odt",
         ".pages",
         ".pdf",
@@ -74,6 +73,7 @@ _DOCUMENT_EXTENSIONS = frozenset(
         ".pptx",
         ".pwz",
         ".rtf",
+        ".svgz",
         ".wiz",
         ".xla",
         ".xlb",
@@ -83,7 +83,12 @@ _DOCUMENT_EXTENSIONS = frozenset(
         ".xlsx",
         ".xlt",
         ".xlw",
-        # --- Text / markup ---
+    }
+)
+
+_TEXT_DOCUMENT_EXTENSIONS = frozenset(
+    {
+        # Text / markup — readable as strings, eligible for batching.
         ".csv",
         ".eml",
         ".htm",
@@ -95,14 +100,11 @@ _DOCUMENT_EXTENSIONS = frozenset(
         ".mail",
         ".markdown",
         ".md",
-        ".mht",
-        ".mhtml",
         ".nws",
         ".rst",
         ".shtml",
         ".srt",
         ".sty",
-        ".svgz",
         ".tex",
         ".text",
         ".txt",
@@ -111,7 +113,7 @@ _DOCUMENT_EXTENSIONS = frozenset(
         ".xml",
         ".yaml",
         ".yml",
-        # --- Source code ---
+        # Source code
         ".art",
         ".bat",
         ".brf",
@@ -135,38 +137,7 @@ _DOCUMENT_EXTENSIONS = frozenset(
     }
 )
 
-_BINARY_DOCUMENT_EXTENSIONS = frozenset(
-    {
-        ".doc",
-        ".docx",
-        ".dot",
-        ".hwp",
-        ".hwpx",
-        ".keynote",
-        ".mht",
-        ".mhtml",
-        ".odt",
-        ".pages",
-        ".pdf",
-        ".pot",
-        ".ppa",
-        ".pps",
-        ".ppt",
-        ".pptx",
-        ".pwz",
-        ".rtf",
-        ".svgz",
-        ".wiz",
-        ".xla",
-        ".xlb",
-        ".xlc",
-        ".xlm",
-        ".xls",
-        ".xlsx",
-        ".xlt",
-        ".xlw",
-    }
-)
+_DOCUMENT_EXTENSIONS = _BINARY_DOCUMENT_EXTENSIONS | _TEXT_DOCUMENT_EXTENSIONS
 
 _SUPPORTED_MEDIA_EXTENSIONS = _IMAGE_EXTENSIONS | _AUDIO_EXTENSIONS | _DOCUMENT_EXTENSIONS
 
@@ -295,7 +266,7 @@ def is_readable_text_file(value: str) -> bool:
     if not os.path.isfile(value):
         return False
     suffix = Path(value).suffix.lower()
-    return suffix in _DOCUMENT_EXTENSIONS and suffix not in _BINARY_DOCUMENT_EXTENSIONS
+    return suffix in _TEXT_DOCUMENT_EXTENSIONS
 
 
 def read_text_file(path: str) -> str:
