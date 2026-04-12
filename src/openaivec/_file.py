@@ -291,20 +291,24 @@ def _url_has_media_extension(url: str) -> bool:
     return Path(path).suffix.lower() in _SUPPORTED_MEDIA_EXTENSIONS
 
 
-def _build_audio_input(data_b64: str, fmt: str) -> dict[str, Any]:
-    """Build an ``input_audio`` item dict for the Responses API.
+def _reject_audio(path_or_url: str) -> None:
+    """Raise ``ValueError`` if *path_or_url* is an audio file.
+
+    The Responses API does not accept ``input_audio`` items.  Audio must
+    be processed through the Realtime API or Chat Completions API instead.
 
     Args:
-        data_b64 (str): Base64-encoded audio data.
-        fmt (str): Audio format (``"mp3"`` or ``"wav"``).
+        path_or_url (str): File path or URL to check.
 
-    Returns:
-        dict[str, Any]: A dict matching the ``ResponseInputAudioParam`` shape.
+    Raises:
+        ValueError: If the path has an audio extension (``.mp3`` or ``.wav``).
     """
-    return {
-        "type": "input_audio",
-        "input_audio": {"data": data_b64, "format": fmt},
-    }
+    if is_audio_path(path_or_url):
+        ext = Path(path_or_url).suffix.lower()
+        raise ValueError(
+            f"Audio files ({ext}) are not supported by the Responses API. "
+            f"Use the Realtime API or Chat Completions API for audio input."
+        )
 
 
 def _wrap_content_as_message(*content_parts: dict[str, Any]) -> ResponseInputParam:
@@ -332,10 +336,13 @@ class MultimodalContentBuilder:
     ``ResponseInputParam`` lists ready for ``responses.create(input=...)``.
 
     * **Images** — inlined as base64 ``data:`` URIs via ``input_image``.
-    * **Audio** (``.mp3``, ``.wav``) — base64-encoded via ``input_audio``.
     * **Documents** (PDF, DOCX, etc.) — uploaded via the Files API and
       referenced by ``file_id``.
     * **Plain text** — wrapped as ``input_text``.
+
+    Note:
+        Audio files (``.mp3``, ``.wav``) are **not supported** by the
+        Responses API.  Passing an audio file raises ``ValueError``.
 
     Attributes:
         client (OpenAI): Sync OpenAI client used for Files API uploads.
@@ -351,6 +358,9 @@ class MultimodalContentBuilder:
 
         Returns:
             ResponseInputParam: Input messages for ``responses.create(input=...)``.
+
+        Raises:
+            ValueError: If *value* is an audio file (not supported by Responses API).
         """
         if is_url(value) and _url_has_media_extension(value):
             return self._build_url(value)
@@ -368,12 +378,14 @@ class MultimodalContentBuilder:
 
         Returns:
             ResponseInputParam: Input messages for the URL.
+
+        Raises:
+            ValueError: If the URL points to an audio file.
         """
+        _reject_audio(url)
         if is_image_path(url):
             return _wrap_content_as_message({"type": "input_image", "image_url": url, "detail": "auto"})
-        if is_audio_path(url):
-            return [_build_audio_input(url, _audio_format(url))]  # type: ignore[list-item]
-        return _wrap_content_as_message({"type": "input_file", "file_url": url, "filename": Path(url).name})
+        return _wrap_content_as_message({"type": "input_file", "file_url": url})
 
     def _build_local_file(self, path: str) -> ResponseInputParam:
         """Build input messages for a local file.
@@ -383,13 +395,14 @@ class MultimodalContentBuilder:
 
         Returns:
             ResponseInputParam: Input messages for the file.
+
+        Raises:
+            ValueError: If the file is an audio file.
         """
+        _reject_audio(path)
         if is_image_path(path):
             data_uri = encode_file_to_data_uri(path)
             return _wrap_content_as_message({"type": "input_image", "image_url": data_uri, "detail": "auto"})
-        if is_audio_path(path):
-            data_b64 = encode_file_to_base64(path)
-            return [_build_audio_input(data_b64, _audio_format(path))]  # type: ignore[list-item]
         file_id = self._upload(path)
         return _wrap_content_as_message({"type": "input_file", "file_id": file_id})
 
@@ -425,6 +438,9 @@ class AsyncMultimodalContentBuilder:
 
         Returns:
             ResponseInputParam: Input messages for ``responses.create(input=...)``.
+
+        Raises:
+            ValueError: If *value* is an audio file (not supported by Responses API).
         """
         if is_url(value) and _url_has_media_extension(value):
             return self._build_url(value)
@@ -442,12 +458,14 @@ class AsyncMultimodalContentBuilder:
 
         Returns:
             ResponseInputParam: Input messages for the URL.
+
+        Raises:
+            ValueError: If the URL points to an audio file.
         """
+        _reject_audio(url)
         if is_image_path(url):
             return _wrap_content_as_message({"type": "input_image", "image_url": url, "detail": "auto"})
-        if is_audio_path(url):
-            return [_build_audio_input(url, _audio_format(url))]  # type: ignore[list-item]
-        return _wrap_content_as_message({"type": "input_file", "file_url": url, "filename": Path(url).name})
+        return _wrap_content_as_message({"type": "input_file", "file_url": url})
 
     async def _build_local_file(self, path: str) -> ResponseInputParam:
         """Build input messages for a local file (async).
@@ -457,13 +475,14 @@ class AsyncMultimodalContentBuilder:
 
         Returns:
             ResponseInputParam: Input messages for the file.
+
+        Raises:
+            ValueError: If the file is an audio file.
         """
+        _reject_audio(path)
         if is_image_path(path):
             data_uri = encode_file_to_data_uri(path)
             return _wrap_content_as_message({"type": "input_image", "image_url": data_uri, "detail": "auto"})
-        if is_audio_path(path):
-            data_b64 = encode_file_to_base64(path)
-            return [_build_audio_input(data_b64, _audio_format(path))]  # type: ignore[list-item]
         file_id = await self._upload(path)
         return _wrap_content_as_message({"type": "input_file", "file_id": file_id})
 

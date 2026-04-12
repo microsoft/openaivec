@@ -1,6 +1,6 @@
 from logging import Handler, StreamHandler, basicConfig
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 from pydantic import BaseModel, ValidationError
@@ -559,9 +559,7 @@ class TestMultimodalRouting:
         assert is_audio_path("file.wav")
         assert not is_audio_path("photo.png")
 
-    def test_audio_local_file_routing(self, tmp_path):
-        from unittest.mock import MagicMock, patch
-
+    def test_audio_local_file_raises_error(self, tmp_path):
         from openaivec._cache import BatchCache
         from openaivec._responses import BatchResponses
 
@@ -577,25 +575,18 @@ class TestMultimodalRouting:
             multimodal=True,
         )
 
-        calls = {"mm": []}
+        with pytest.raises(ValueError, match="Audio files.*not supported by the Responses API"):
+            batch.parse([str(mp3)])
 
-        def mock_mm(self, input_messages):
-            calls["mm"].append(input_messages)
-            return "audio_response"
+    def test_audio_url_raises_error(self):
+        from openaivec._file import MultimodalContentBuilder
 
-        with patch.object(BatchResponses, "_request_multimodal", mock_mm):
-            results = batch.parse([str(mp3)])
+        builder = MultimodalContentBuilder(client=MagicMock())
 
-        assert results == ["audio_response"]
-        assert len(calls["mm"]) == 1
-        input_msg = calls["mm"][0]
-        assert isinstance(input_msg, list)
-        assert input_msg[0]["type"] == "input_audio"
-        assert input_msg[0]["input_audio"]["format"] == "mp3"
+        with pytest.raises(ValueError, match="Audio files.*not supported"):
+            builder.build("https://cdn.example.com/speech.mp3")
 
     def test_builder_returns_response_input_param(self, tmp_path):
-        from unittest.mock import MagicMock
-
         from openaivec._file import MultimodalContentBuilder
 
         builder = MultimodalContentBuilder(client=MagicMock())
@@ -611,12 +602,16 @@ class TestMultimodalRouting:
         assert result[0]["role"] == "user"
         assert result[0]["content"][0]["type"] == "input_image"
 
-        wav = tmp_path / "audio.wav"
-        wav.write_bytes(b"RIFF" + b"\x00" * 50)
-        result = builder.build(str(wav))
-        assert isinstance(result, list)
-        assert result[0]["type"] == "input_audio"
-        assert result[0]["input_audio"]["format"] == "wav"
+    def test_document_url_no_filename(self):
+        from openaivec._file import MultimodalContentBuilder
+
+        builder = MultimodalContentBuilder(client=MagicMock())
+        result = builder.build("https://example.com/report.pdf")
+        assert result[0]["role"] == "user"
+        content = result[0]["content"][0]
+        assert content["type"] == "input_file"
+        assert content["file_url"] == "https://example.com/report.pdf"
+        assert "filename" not in content
 
     def test_file_size_limit(self, tmp_path):
         from openaivec._file import encode_file_to_data_uri
