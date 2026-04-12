@@ -5,7 +5,6 @@ from typing import Any, Generic, cast
 from openai import AsyncOpenAI, InternalServerError, OpenAI, RateLimitError
 from openai.types.responses import ParsedResponse
 from openai.types.responses import Response as OAIResponse
-from openai.types.responses.response_input_message_content_list_param import ResponseInputContentParam
 from openai.types.responses.response_input_param import ResponseInputParam
 from pydantic import BaseModel, ValidationError
 
@@ -338,29 +337,17 @@ class BatchResponses(Generic[ResponseFormat]):
 
     @observe(_LOGGER)
     @backoff(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
-    def _request_multimodal(self, content_parts: list[ResponseInputContentParam]) -> ResponseFormat | None:
-        """Send a single multimodal request (image/file + optional text).
-
-        Multimodal inputs cannot be batched via the JSON envelope because
-        the content parts contain binary data or URLs.  Each multimodal
-        item is therefore sent as an individual Responses API call.
+    def _request_multimodal(self, input_messages: ResponseInputParam) -> ResponseFormat | None:
+        """Send a single multimodal request.
 
         Args:
-            content_parts (list[ResponseInputContentParam]): OpenAI content parts
-                (``input_image``, ``input_file``, or ``input_text``).
+            input_messages (ResponseInputParam): Pre-built input messages
+                containing multimodal content (images, files, or audio).
 
         Returns:
             ResponseFormat | None: Parsed response or ``None``.
         """
         response_format: type[ResponseFormat] = self.response_format
-
-        input_messages: ResponseInputParam = [
-            {
-                "role": "user",
-                "type": "message",
-                "content": content_parts,
-            }
-        ]
 
         if response_format is str:
             response: OAIResponse = self.client.responses.create(
@@ -427,8 +414,8 @@ class BatchResponses(Generic[ResponseFormat]):
 
         builder = MultimodalContentBuilder(client=self.client)
         for idx in multimodal_indices:
-            content_parts: list[ResponseInputContentParam] = builder.build(user_messages[idx])
-            results[idx] = self._request_multimodal(content_parts)
+            input_messages: ResponseInputParam = builder.build(user_messages[idx])
+            results[idx] = self._request_multimodal(input_messages)
 
         return results
 
@@ -656,25 +643,17 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
 
     @observe(_LOGGER)
     @backoff_async(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
-    async def _request_multimodal(self, content_parts: list[ResponseInputContentParam]) -> ResponseFormat | None:
+    async def _request_multimodal(self, input_messages: ResponseInputParam) -> ResponseFormat | None:
         """Send a single multimodal request (async).
 
         Args:
-            content_parts (list[ResponseInputContentParam]): OpenAI content parts
-                (``input_image``, ``input_file``, or ``input_text``).
+            input_messages (ResponseInputParam): Pre-built input messages
+                containing multimodal content (images, files, or audio).
 
         Returns:
             ResponseFormat | None: Parsed response or ``None``.
         """
         response_format: type[ResponseFormat] = self.response_format
-
-        input_messages: ResponseInputParam = [
-            {
-                "role": "user",
-                "type": "message",
-                "content": content_parts,
-            }
-        ]
 
         if response_format is str:
             response: OAIResponse = await self.client.responses.create(
@@ -741,8 +720,8 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
 
         builder = AsyncMultimodalContentBuilder(client=self.client)
         for idx in multimodal_indices:
-            content_parts: list[ResponseInputContentParam] = await builder.build(user_messages[idx])
-            results[idx] = await self._request_multimodal(content_parts)
+            input_messages: ResponseInputParam = await builder.build(user_messages[idx])
+            results[idx] = await self._request_multimodal(input_messages)
 
         return results
 

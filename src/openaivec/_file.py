@@ -1,4 +1,12 @@
-"""File path detection and multimodal content utilities."""
+"""File path detection and multimodal content utilities.
+
+Provides helpers for detecting file types (image, audio, document) and
+building OpenAI Responses API input messages from local files or URLs.
+
+Audio files (``.mp3``, ``.wav``) are encoded as base64 and sent via the
+``input_audio`` item type.  Images are inlined as ``data:`` URIs.
+Documents are uploaded through the Files API.
+"""
 
 from __future__ import annotations
 
@@ -7,10 +15,11 @@ import mimetypes
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from openai import AsyncOpenAI, OpenAI
-from openai.types.responses.response_input_message_content_list_param import ResponseInputContentParam
+from openai.types.responses.response_input_param import ResponseInputParam
 
 __all__: list[str] = []
 
@@ -35,6 +44,13 @@ _FILE_EXTENSIONS = frozenset(
 )
 
 _IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg", ".tiff", ".tif"})
+
+_AUDIO_EXTENSIONS = frozenset({".mp3", ".wav"})
+
+_AUDIO_FORMAT: dict[str, str] = {
+    ".mp3": "mp3",
+    ".wav": "wav",
+}
 
 _DOCUMENT_EXTENSIONS = frozenset(
     {
@@ -64,7 +80,7 @@ _DOCUMENT_EXTENSIONS = frozenset(
     }
 )
 
-_SUPPORTED_MEDIA_EXTENSIONS = _IMAGE_EXTENSIONS | _DOCUMENT_EXTENSIONS
+_SUPPORTED_MEDIA_EXTENSIONS = _IMAGE_EXTENSIONS | _AUDIO_EXTENSIONS | _DOCUMENT_EXTENSIONS
 
 _MIME_OVERRIDES: dict[str, str] = {
     ".jpg": "image/jpeg",
@@ -116,12 +132,41 @@ def is_file_path(value: str) -> bool:
 
 
 def is_image_path(value: str) -> bool:
-    """Return ``True`` if *value* ends with a recognised image extension."""
+    """Return ``True`` if *value* ends with a recognised image extension.
+
+    Args:
+        value (str): File path or URL to inspect.
+
+    Returns:
+        bool: ``True`` when the path has an image suffix.
+    """
     return Path(value).suffix.lower() in _IMAGE_EXTENSIONS
 
 
+def is_audio_path(value: str) -> bool:
+    """Return ``True`` if *value* ends with a recognised audio extension.
+
+    Currently recognised formats are ``.mp3`` and ``.wav``, the only
+    formats supported by the OpenAI ``input_audio`` item type.
+
+    Args:
+        value (str): File path or URL to inspect.
+
+    Returns:
+        bool: ``True`` when the path has an audio suffix.
+    """
+    return Path(value).suffix.lower() in _AUDIO_EXTENSIONS
+
+
 def is_url(value: str) -> bool:
-    """Return ``True`` if *value* starts with ``http://`` or ``https://``."""
+    """Return ``True`` if *value* starts with ``http://`` or ``https://``.
+
+    Args:
+        value (str): String to inspect.
+
+    Returns:
+        bool: ``True`` when the string is an HTTP(S) URL.
+    """
     return isinstance(value, str) and value.startswith(("http://", "https://"))
 
 
@@ -130,6 +175,12 @@ def is_multimodal_input(value: str) -> bool:
 
     URLs are multimodal only when they have a recognised media extension.
     Local files are multimodal when they exist and have a supported extension.
+
+    Args:
+        value (str): String to inspect.
+
+    Returns:
+        bool: ``True`` when *value* should be routed through multimodal handling.
     """
     if is_url(value):
         return _url_has_media_extension(value)
@@ -167,13 +218,64 @@ def encode_file_to_data_uri(path: str) -> str:
         FileNotFoundError: If *path* does not exist.
         ValueError: If the file exceeds 20 MB.
     """
-    size = os.path.getsize(path)
-    if size > _MAX_FILE_SIZE_BYTES:
-        raise ValueError(f"File {path} is {size / 1024 / 1024:.1f} MB, exceeding the 20 MB limit for base64 encoding.")
+    _check_file_size(path)
     mime = _mime_type(path)
     with open(path, "rb") as f:
         data = base64.b64encode(f.read()).decode("ascii")
     return f"data:{mime};base64,{data}"
+
+
+def encode_file_to_base64(path: str) -> str:
+    """Read a file from disk and return raw base64 string (no ``data:`` prefix).
+
+    Used for audio encoding where the API expects plain base64.
+
+    Args:
+        path (str): Path to the file.
+
+    Returns:
+        str: Base64-encoded file contents.
+
+    Raises:
+        FileNotFoundError: If *path* does not exist.
+        ValueError: If the file exceeds 20 MB.
+    """
+    _check_file_size(path)
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode("ascii")
+
+
+def _check_file_size(path: str) -> None:
+    """Raise ``ValueError`` if *path* exceeds the 20 MB limit.
+
+    Args:
+        path (str): File path to check.
+
+    Raises:
+        ValueError: If the file exceeds 20 MB.
+    """
+    size = os.path.getsize(path)
+    if size > _MAX_FILE_SIZE_BYTES:
+        raise ValueError(f"File {path} is {size / 1024 / 1024:.1f} MB, exceeding the 20 MB limit for base64 encoding.")
+
+
+def _audio_format(path: str) -> str:
+    """Return the audio format string for the ``input_audio`` item type.
+
+    Args:
+        path (str): File path or URL.
+
+    Returns:
+        str: ``"mp3"`` or ``"wav"``.
+
+    Raises:
+        ValueError: If the extension is not a supported audio format.
+    """
+    suffix = Path(path).suffix.lower()
+    fmt = _AUDIO_FORMAT.get(suffix)
+    if fmt is None:
+        raise ValueError(f"Unsupported audio format: {suffix}")
+    return fmt
 
 
 def _url_has_media_extension(url: str) -> bool:
@@ -183,10 +285,38 @@ def _url_has_media_extension(url: str) -> bool:
         url (str): Full URL string.
 
     Returns:
-        bool: ``True`` when the URL path has a known image or document suffix.
+        bool: ``True`` when the URL path has a known image, audio, or document suffix.
     """
     path = urlparse(url).path
-    return Path(path).suffix.lower() in _SUPPORTED_MEDIA_EXTENSIONS | _IMAGE_EXTENSIONS
+    return Path(path).suffix.lower() in _SUPPORTED_MEDIA_EXTENSIONS
+
+
+def _build_audio_input(data_b64: str, fmt: str) -> dict[str, Any]:
+    """Build an ``input_audio`` item dict for the Responses API.
+
+    Args:
+        data_b64 (str): Base64-encoded audio data.
+        fmt (str): Audio format (``"mp3"`` or ``"wav"``).
+
+    Returns:
+        dict[str, Any]: A dict matching the ``ResponseInputAudioParam`` shape.
+    """
+    return {
+        "type": "input_audio",
+        "input_audio": {"data": data_b64, "format": fmt},
+    }
+
+
+def _wrap_content_as_message(*content_parts: dict[str, Any]) -> ResponseInputParam:
+    """Wrap content parts in a user message for the Responses API.
+
+    Args:
+        *content_parts: Content part dicts (``input_text``, ``input_image``, etc.).
+
+    Returns:
+        ResponseInputParam: A single-element list containing the user message.
+    """
+    return [{"role": "user", "content": list(content_parts)}]  # type: ignore[list-item]
 
 
 # ---------------------------------------------------------------------------
@@ -196,10 +326,16 @@ def _url_has_media_extension(url: str) -> bool:
 
 @dataclass(frozen=True)
 class MultimodalContentBuilder:
-    """Build OpenAI Responses API content parts from strings.
+    """Build OpenAI Responses API input messages from strings.
 
-    Images are sent inline as base64 data URIs.  Documents (PDF, DOCX, etc.)
-    are uploaded via the Files API and referenced by ``file_id``.
+    Converts plain text, URLs, and local file paths into properly formatted
+    ``ResponseInputParam`` lists ready for ``responses.create(input=...)``.
+
+    * **Images** — inlined as base64 ``data:`` URIs via ``input_image``.
+    * **Audio** (``.mp3``, ``.wav``) — base64-encoded via ``input_audio``.
+    * **Documents** (PDF, DOCX, etc.) — uploaded via the Files API and
+      referenced by ``file_id``.
+    * **Plain text** — wrapped as ``input_text``.
 
     Attributes:
         client (OpenAI): Sync OpenAI client used for Files API uploads.
@@ -207,28 +343,55 @@ class MultimodalContentBuilder:
 
     client: OpenAI
 
-    def build(self, value: str) -> list[ResponseInputContentParam]:
-        """Convert *value* to content parts.
+    def build(self, value: str) -> ResponseInputParam:
+        """Convert *value* to Responses API input messages.
 
         Args:
             value (str): Plain text, URL, or local file path.
 
         Returns:
-            list[ResponseInputContentParam]: Content parts for the Responses API.
+            ResponseInputParam: Input messages for ``responses.create(input=...)``.
         """
         if is_url(value) and _url_has_media_extension(value):
-            if is_image_path(value):
-                return [{"type": "input_image", "image_url": value, "detail": "auto"}]
-            return [{"type": "input_file", "file_url": value, "filename": Path(value).name}]
+            return self._build_url(value)
 
         if os.path.isfile(value):
-            if is_image_path(value):
-                data_uri = encode_file_to_data_uri(value)
-                return [{"type": "input_image", "image_url": data_uri, "detail": "auto"}]
-            file_id = self._upload(value)
-            return [{"type": "input_file", "file_id": file_id}]
+            return self._build_local_file(value)
 
-        return [{"type": "input_text", "text": value}]
+        return _wrap_content_as_message({"type": "input_text", "text": value})
+
+    def _build_url(self, url: str) -> ResponseInputParam:
+        """Build input messages for a media URL.
+
+        Args:
+            url (str): URL with a recognised media extension.
+
+        Returns:
+            ResponseInputParam: Input messages for the URL.
+        """
+        if is_image_path(url):
+            return _wrap_content_as_message({"type": "input_image", "image_url": url, "detail": "auto"})
+        if is_audio_path(url):
+            return [_build_audio_input(url, _audio_format(url))]  # type: ignore[list-item]
+        return _wrap_content_as_message({"type": "input_file", "file_url": url, "filename": Path(url).name})
+
+    def _build_local_file(self, path: str) -> ResponseInputParam:
+        """Build input messages for a local file.
+
+        Args:
+            path (str): Path to an existing local file.
+
+        Returns:
+            ResponseInputParam: Input messages for the file.
+        """
+        if is_image_path(path):
+            data_uri = encode_file_to_data_uri(path)
+            return _wrap_content_as_message({"type": "input_image", "image_url": data_uri, "detail": "auto"})
+        if is_audio_path(path):
+            data_b64 = encode_file_to_base64(path)
+            return [_build_audio_input(data_b64, _audio_format(path))]  # type: ignore[list-item]
+        file_id = self._upload(path)
+        return _wrap_content_as_message({"type": "input_file", "file_id": file_id})
 
     def _upload(self, path: str) -> str:
         """Upload a document via the Files API.
@@ -246,7 +409,7 @@ class MultimodalContentBuilder:
 
 @dataclass(frozen=True)
 class AsyncMultimodalContentBuilder:
-    """Async variant of ``MultimodalContentBuilder``.
+    """Async variant of :class:`MultimodalContentBuilder`.
 
     Attributes:
         client (AsyncOpenAI): Async OpenAI client used for Files API uploads.
@@ -254,28 +417,55 @@ class AsyncMultimodalContentBuilder:
 
     client: AsyncOpenAI
 
-    async def build(self, value: str) -> list[ResponseInputContentParam]:
-        """Convert *value* to content parts (async).
+    async def build(self, value: str) -> ResponseInputParam:
+        """Convert *value* to Responses API input messages (async).
 
         Args:
             value (str): Plain text, URL, or local file path.
 
         Returns:
-            list[ResponseInputContentParam]: Content parts for the Responses API.
+            ResponseInputParam: Input messages for ``responses.create(input=...)``.
         """
         if is_url(value) and _url_has_media_extension(value):
-            if is_image_path(value):
-                return [{"type": "input_image", "image_url": value, "detail": "auto"}]
-            return [{"type": "input_file", "file_url": value, "filename": Path(value).name}]
+            return self._build_url(value)
 
         if os.path.isfile(value):
-            if is_image_path(value):
-                data_uri = encode_file_to_data_uri(value)
-                return [{"type": "input_image", "image_url": data_uri, "detail": "auto"}]
-            file_id = await self._upload(value)
-            return [{"type": "input_file", "file_id": file_id}]
+            return await self._build_local_file(value)
 
-        return [{"type": "input_text", "text": value}]
+        return _wrap_content_as_message({"type": "input_text", "text": value})
+
+    def _build_url(self, url: str) -> ResponseInputParam:
+        """Build input messages for a media URL.
+
+        Args:
+            url (str): URL with a recognised media extension.
+
+        Returns:
+            ResponseInputParam: Input messages for the URL.
+        """
+        if is_image_path(url):
+            return _wrap_content_as_message({"type": "input_image", "image_url": url, "detail": "auto"})
+        if is_audio_path(url):
+            return [_build_audio_input(url, _audio_format(url))]  # type: ignore[list-item]
+        return _wrap_content_as_message({"type": "input_file", "file_url": url, "filename": Path(url).name})
+
+    async def _build_local_file(self, path: str) -> ResponseInputParam:
+        """Build input messages for a local file (async).
+
+        Args:
+            path (str): Path to an existing local file.
+
+        Returns:
+            ResponseInputParam: Input messages for the file.
+        """
+        if is_image_path(path):
+            data_uri = encode_file_to_data_uri(path)
+            return _wrap_content_as_message({"type": "input_image", "image_url": data_uri, "detail": "auto"})
+        if is_audio_path(path):
+            data_b64 = encode_file_to_base64(path)
+            return [_build_audio_input(data_b64, _audio_format(path))]  # type: ignore[list-item]
+        file_id = await self._upload(path)
+        return _wrap_content_as_message({"type": "input_file", "file_id": file_id})
 
     async def _upload(self, path: str) -> str:
         """Upload a document via the Files API (async).
