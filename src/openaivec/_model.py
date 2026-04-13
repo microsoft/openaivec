@@ -116,10 +116,10 @@ class AzureOpenAIAPIVersion:
 
 @dataclass(frozen=True)
 class AzureTenantID:
-    """Container for Azure AD tenant ID configuration.
+    """Container for Entra ID tenant ID configuration.
 
     Attributes:
-        value (str | None): The Azure AD tenant ID.
+        value (str | None): The Entra ID tenant ID.
     """
 
     value: str | None
@@ -127,7 +127,7 @@ class AzureTenantID:
 
 @dataclass(frozen=True)
 class AzureClientID:
-    """Container for Azure AD Service Principal client ID configuration.
+    """Container for Entra ID Service Principal client ID configuration.
 
     Attributes:
         value (str | None): The Service Principal (App Registration) client ID.
@@ -138,7 +138,7 @@ class AzureClientID:
 
 @dataclass(frozen=True)
 class AzureClientSecret:
-    """Container for Azure AD Service Principal client secret configuration.
+    """Container for Entra ID Service Principal client secret configuration.
 
     Attributes:
         value (str | None): The Service Principal client secret.

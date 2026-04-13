@@ -331,7 +331,7 @@ def setup_entra_id(
         spark (SparkSession): The Spark session to configure.
         base_url (str): Base URL for the Azure OpenAI resource
             (e.g. ``"https://YOUR-RESOURCE.services.ai.azure.com/openai/v1/"``).
-        tenant_id (str): Azure AD tenant ID.
+        tenant_id (str): Entra ID tenant ID.
         client_id (str): Service Principal (App Registration) client ID.
         client_secret (str | None): Service Principal client secret.
             If ``None``, the secret is retrieved from Key Vault using

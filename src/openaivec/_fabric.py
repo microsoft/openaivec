@@ -5,16 +5,15 @@ built-in and provides ``credentials.getSecret`` for retrieving secrets from
 Azure Key Vault.  This module exposes helpers that:
 
 1. Detect the Fabric runtime.
-2. Automatically retrieve the Service Principal client secret from Key Vault
-   via ``notebookutils.credentials.getSecret`` and set it as
-   ``AZURE_CLIENT_SECRET`` for ``DefaultAzureCredential``.
+2. Retrieve the Service Principal client secret from Key Vault via
+   ``notebookutils.credentials.getSecret``.
 3. Check whether the required environment variables are configured.
 4. Log / warn / format environment-variable status for notebook UX.
 
 On the Fabric driver, set ``AZURE_TENANT_ID``, ``AZURE_CLIENT_ID``,
 ``KEY_VAULT_URL``, and ``KEY_VAULT_SECRET_NAME``.  The library retrieves the
-client secret from Key Vault automatically and sets ``AZURE_CLIENT_SECRET``
-so that ``DefaultAzureCredential`` authenticates as the Service Principal.
+client secret from Key Vault automatically and builds a
+``ClientSecretCredential`` via the DI container.
 """
 
 import logging
@@ -35,7 +34,7 @@ REQUIRED_VARS: list[str] = [
 _ALL_AUTH_VARS: list[str] = [*REQUIRED_VARS, "AZURE_CLIENT_SECRET"]
 
 _ENV_DESCRIPTIONS: dict[str, str] = {
-    "AZURE_TENANT_ID": "Azure AD tenant ID (directory containing the Service Principal)",
+    "AZURE_TENANT_ID": "Entra ID tenant ID (directory containing the Service Principal)",
     "AZURE_CLIENT_ID": "Service Principal (App Registration) client ID",
     "KEY_VAULT_URL": "Key Vault URL (Workspace must have 'Key Vault Secrets User' role)",
     "KEY_VAULT_SECRET_NAME": "Secret name in Key Vault (stores the SP client secret)",
@@ -55,14 +54,13 @@ _AUTH_FLOW_GUIDE = (
     "  2. Key Vault stores the client secret of a Service Principal (App Registration)\n"
     '  3. The Service Principal must have the "AI User" role on the Azure AI Foundry resource\n'
     "  4. openaivec retrieves the secret via notebookutils.credentials.getSecret()\n"
-    "     and sets AZURE_CLIENT_SECRET automatically\n"
-    "  5. DefaultAzureCredential detects the environment variables\n"
-    "     and authenticates as the Service Principal"
+    "     and builds a ClientSecretCredential through the DI container\n"
+    "  5. The credential authenticates as the Service Principal"
 )
 
 _SETUP_GUIDE = (
     "Setup steps:\n"
-    "  1. Create a Service Principal (App Registration) in Azure AD\n"
+    "  1. Create a Service Principal (App Registration) in Entra ID\n"
     '  2. Assign "AI User" role to the Service Principal on your Azure AI Foundry resource\n'
     "  3. Store the Service Principal's client secret in Azure Key Vault\n"
     '  4. Grant Fabric Workspace identity "Key Vault Secrets User" role on the Key Vault\n'
@@ -135,8 +133,7 @@ def retrieve_client_secret(*, kv_url: str | None = None, secret_name: str | None
     """Retrieve the client secret from Key Vault on a Fabric driver.
 
     Calls ``notebookutils.credentials.getSecret`` when both ``kv_url`` and
-    ``secret_name`` are provided.  The caller is responsible for storing the
-    returned value (e.g. in ``os.environ`` or the DI container).
+    ``secret_name`` are provided.
 
     Args:
         kv_url (str | None): Key Vault URL.
@@ -196,7 +193,7 @@ def warn_incomplete_configuration() -> None:
     """
     lines = [
         "Microsoft Fabric environment detected but authentication is not fully configured.",
-        "DefaultAzureCredential will attempt other identity sources (managed identity, Azure CLI, etc.).",
+        "Falling back to DefaultAzureCredential (managed identity, Azure CLI, etc.).",
         "",
         _AUTH_FLOW_GUIDE,
         "",

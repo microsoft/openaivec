@@ -114,7 +114,7 @@ def provide_openai_client() -> OpenAI:
     1. OPENAI_API_KEY - if set, creates standard OpenAI client.
     2. AZURE_OPENAI_BASE_URL and AZURE_OPENAI_API_VERSION - if set, creates AzureOpenAI.
        Authentication uses AZURE_OPENAI_API_KEY when present, otherwise Entra ID
-       via DefaultAzureCredential token provider.
+       via bearer token provider.
 
     Returns:
         OpenAI: Configured OpenAI or AzureOpenAI client instance.
@@ -165,7 +165,7 @@ def provide_async_openai_client() -> AsyncOpenAI:
     1. OPENAI_API_KEY - if set, creates standard AsyncOpenAI client.
     2. AZURE_OPENAI_BASE_URL and AZURE_OPENAI_API_VERSION - if set, creates AsyncAzureOpenAI.
        Authentication uses AZURE_OPENAI_API_KEY when present, otherwise Entra ID
-       via DefaultAzureCredential token provider.
+       via bearer token provider.
 
     Returns:
         AsyncOpenAI: Configured AsyncOpenAI or AsyncAzureOpenAI client instance.
