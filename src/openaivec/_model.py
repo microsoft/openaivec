@@ -115,5 +115,60 @@ class AzureOpenAIAPIVersion:
 
 
 @dataclass(frozen=True)
+class AzureTenantID:
+    """Container for Entra ID tenant ID configuration.
+
+    Attributes:
+        value (str | None): The Entra ID tenant ID.
+    """
+
+    value: str | None
+
+
+@dataclass(frozen=True)
+class AzureClientID:
+    """Container for Entra ID Service Principal client ID configuration.
+
+    Attributes:
+        value (str | None): The Service Principal (App Registration) client ID.
+    """
+
+    value: str | None
+
+
+@dataclass(frozen=True)
+class AzureClientSecret:
+    """Container for Entra ID Service Principal client secret configuration.
+
+    Attributes:
+        value (str | None): The Service Principal client secret.
+    """
+
+    value: str | None
+
+
+@dataclass(frozen=True)
+class KeyVaultURL:
+    """Container for Azure Key Vault URL configuration.
+
+    Attributes:
+        value (str | None): The Key Vault URL used to retrieve secrets on Fabric.
+    """
+
+    value: str | None
+
+
+@dataclass(frozen=True)
+class KeyVaultSecretName:
+    """Container for Key Vault secret name configuration.
+
+    Attributes:
+        value (str | None): The name of the secret in Key Vault that stores the SP client secret.
+    """
+
+    value: str | None
+
+
+@dataclass(frozen=True)
 class BearerTokenProvider:
     value: Callable[[], str]

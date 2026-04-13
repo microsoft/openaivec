@@ -33,7 +33,9 @@ Environment: set `OPENAI_API_KEY`, or for Azure set `AZURE_OPENAI_API_KEY` + `AZ
 | Package exports | `openaivec.__init__` | `BatchResponses`, `AsyncBatchResponses`, `BatchEmbeddings`, `AsyncBatchEmbeddings`, `PreparedTask`, `FewShotPromptBuilder`, `FewShotPrompt`, `SchemaInferer`, `SchemaInferenceInput`, `SchemaInferenceOutput` |
 | pandas accessors | `Series.ai` / `Series.aio` | Sync + async; registered by importing `openaivec.pandas_ext` |
 | Spark UDFs | `openaivec.spark_ext` | `responses_udf`, `task_udf`, `embeddings_udf`, `count_tokens_udf`, `split_to_chunks_udf`, `similarity_udf`, `parse_udf`, `infer_schema` |
+| DuckDB UDFs | `openaivec.duckdb_ext` | `responses_udf`, `embeddings_udf`, `task_udf`, `similarity_search`, `pydantic_to_duckdb_ddl`, `DuckDBCacheBackend` |
 | Task factories | `openaivec.task.nlp`, `.customer_support`, `.table` | Call as functions: `nlp.sentiment_analysis()`, not constants |
+| Schema inference | `openaivec._schema` | `SchemaInferer` infers Pydantic models from sample data; used by `parse` helpers when `response_format=None` |
 
 ### Data flow
 
@@ -47,6 +49,8 @@ User input (list / Series / Spark column)
 `BatchCache` / `AsyncBatchCache` in `_cache/` are the core execution engine. They deduplicate inputs, chunk into batches, call a `map_func`, and restore original ordering. The `map_func` **must** return a list of identical length and order — a mismatch raises `ValueError` after releasing in-flight waiters (deadlock prevention).
 
 `batch_size=None` enables `BatchSizeSuggester` (`_cache/optimize.py`) auto-tuning that targets ~30–60s per batch. Positive values force fixed chunks; `<= 0` processes everything in one call.
+
+The cache layer is pluggable via `CacheBackend` (default: in-memory `OrderedDict`). `DuckDBCacheBackend` provides persistent cross-session caching. Reuse caches from `*_with_cache` helpers per operation and clear them (`clear`/`aclose`) when finished to avoid unbounded growth.
 
 ### Internal vs public boundary
 
@@ -90,6 +94,7 @@ Pytest with markers defined in `pytest.ini`: `requires_api`, `slow`, `spark`, `i
 - **Keep prompts minimal** — batch sizes 1–4 for speed and cost.
 - **Assert structure, not text** — check types, lengths, ordering, containment; avoid pinning verbatim LLM output.
 - **Patch narrowly** — mock the smallest internal callable, not the whole client.
+- **Focused suites** — run `uv run pytest tests/_cache tests/_schema` (or similar) for touched subsystems before the full suite.
 - Task response Pydantic models use `ConfigDict(extra="forbid")`.
 
 ---

@@ -91,7 +91,9 @@ async def test_series_aio_parse_with_cache_forwards_api_kwargs_to_schema_inferen
         captured["infer_kwargs"] = dict(api_kwargs)
         return SimpleNamespace(inference_prompt="inferred prompt", model=str)
 
-    async def fake_responses_with_cache(self, instructions: str, cache, response_format=str, multimodal=False, **api_kwargs):
+    async def fake_responses_with_cache(
+        self, instructions: str, cache, response_format=str, multimodal=False, **api_kwargs
+    ):
         captured["responses_kwargs"] = dict(api_kwargs)
         captured["instructions"] = instructions
         captured["response_format"] = response_format

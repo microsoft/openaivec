@@ -164,6 +164,7 @@ __all__ = [
     "responses_udf",
     "setup",
     "setup_azure",
+    "setup_entra_id",
     "similarity_udf",
     "split_to_chunks_udf",
     "task_udf",
@@ -289,6 +290,135 @@ def setup_azure(
         os.environ.pop("AZURE_OPENAI_API_KEY", None)
     os.environ["AZURE_OPENAI_BASE_URL"] = base_url
     os.environ["AZURE_OPENAI_API_VERSION"] = api_version
+
+    if responses_model_name:
+        CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName(responses_model_name))
+
+    if embeddings_model_name:
+        CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName(embeddings_model_name))
+
+    CONTAINER.clear_singletons()
+
+
+def setup_entra_id(
+    spark: SparkSession,
+    base_url: str,
+    tenant_id: str,
+    client_id: str,
+    client_secret: str | None = None,
+    kv_url: str | None = None,
+    kv_secret_name: str | None = None,
+    api_version: str = "v1",
+    responses_model_name: str | None = None,
+    embeddings_model_name: str | None = None,
+):
+    """Setup Entra ID (Service Principal) authentication for Spark environment.
+
+    Configures Azure OpenAI with Service Principal credentials using
+    ``DefaultAzureCredential`` (via ``EnvironmentCredential``).
+    Propagates credentials to both the local process and Spark executors
+    via ``sc.environment``.
+
+    The client secret can be provided directly via ``client_secret``, or
+    retrieved from Key Vault via ``kv_url`` and ``kv_secret_name`` (requires
+    ``notebookutils`` on the Fabric driver).
+
+    Note:
+        Any existing ``OPENAI_API_KEY`` or ``AZURE_OPENAI_API_KEY`` is
+        cleared to ensure the Entra ID path is used.
+
+    Args:
+        spark (SparkSession): The Spark session to configure.
+        base_url (str): Base URL for the Azure OpenAI resource
+            (e.g. ``"https://YOUR-RESOURCE.services.ai.azure.com/openai/v1/"``).
+        tenant_id (str): Entra ID tenant ID.
+        client_id (str): Service Principal (App Registration) client ID.
+        client_secret (str | None): Service Principal client secret.
+            If ``None``, the secret is retrieved from Key Vault using
+            ``kv_url`` and ``kv_secret_name``.
+        kv_url (str | None): Azure Key Vault URL for secret retrieval.
+            Required when ``client_secret`` is ``None``.
+        kv_secret_name (str | None): Secret name in Key Vault.
+            Required when ``client_secret`` is ``None``.
+        api_version (str): API version to use. Defaults to ``"v1"``.
+        responses_model_name (str | None): Default model name for response generation.
+            If provided, registers ``ResponsesModelName`` in the DI container.
+        embeddings_model_name (str | None): Default model name for embeddings.
+            If provided, registers ``EmbeddingsModelName`` in the DI container.
+
+    Raises:
+        ValueError: If neither ``client_secret`` nor both ``kv_url`` and
+            ``kv_secret_name`` are provided.
+
+    Example:
+        ```python
+        from pyspark.sql import SparkSession
+        from openaivec.spark_ext import setup_entra_id
+
+        spark = SparkSession.builder.getOrCreate()
+
+        # Option 1: Provide client_secret directly
+        setup_entra_id(
+            spark,
+            base_url="https://YOUR-RESOURCE.services.ai.azure.com/openai/v1/",
+            tenant_id="your-tenant-id",
+            client_id="your-client-id",
+            client_secret="your-secret",
+        )
+
+        # Option 2: Retrieve from Key Vault (Fabric driver only)
+        setup_entra_id(
+            spark,
+            base_url="https://YOUR-RESOURCE.services.ai.azure.com/openai/v1/",
+            tenant_id="your-tenant-id",
+            client_id="your-client-id",
+            kv_url="https://YOUR-KEYVAULT.vault.azure.net/",
+            kv_secret_name="your-secret-name",
+        )
+        ```
+    """
+    if client_secret is None:
+        if not kv_url or not kv_secret_name:
+            raise ValueError(
+                "Either client_secret or both kv_url and kv_secret_name must be provided. "
+                "Use kv_url/kv_secret_name to retrieve the secret from Key Vault on a Fabric driver."
+            )
+        import builtins
+
+        nbu = getattr(builtins, "notebookutils", None)
+        if nbu is None:
+            raise ValueError(
+                "notebookutils is not available. Key Vault retrieval via kv_url/kv_secret_name "
+                "is only supported on the Microsoft Fabric driver."
+            )
+        client_secret = nbu.credentials.getSecret(kv_url, kv_secret_name)
+        if not client_secret:
+            raise ValueError(
+                f"Key Vault returned an empty secret for {kv_secret_name!r} at {kv_url!r}. "
+                "Verify the secret exists and has a non-empty value."
+            )
+
+    CONTAINER.register(SparkSession, lambda: spark)
+    CONTAINER.register(SparkContext, lambda: CONTAINER.resolve(SparkSession).sparkContext)
+
+    sc = CONTAINER.resolve(SparkContext)
+
+    # Clear stale API-key auth to ensure Entra ID path is used
+    for key in ("OPENAI_API_KEY", "AZURE_OPENAI_API_KEY"):
+        sc.environment.pop(key, None)
+        os.environ.pop(key, None)
+
+    sc.environment["AZURE_OPENAI_BASE_URL"] = base_url
+    sc.environment["AZURE_OPENAI_API_VERSION"] = api_version
+    sc.environment["AZURE_TENANT_ID"] = tenant_id
+    sc.environment["AZURE_CLIENT_ID"] = client_id
+    sc.environment["AZURE_CLIENT_SECRET"] = client_secret
+
+    os.environ["AZURE_OPENAI_BASE_URL"] = base_url
+    os.environ["AZURE_OPENAI_API_VERSION"] = api_version
+    os.environ["AZURE_TENANT_ID"] = tenant_id
+    os.environ["AZURE_CLIENT_ID"] = client_id
+    os.environ["AZURE_CLIENT_SECRET"] = client_secret
 
     if responses_model_name:
         CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName(responses_model_name))

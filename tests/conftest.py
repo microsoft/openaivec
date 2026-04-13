@@ -209,6 +209,11 @@ def reset_environment():
         "AZURE_OPENAI_API_KEY": os.environ.get("AZURE_OPENAI_API_KEY"),
         "AZURE_OPENAI_BASE_URL": os.environ.get("AZURE_OPENAI_BASE_URL"),
         "AZURE_OPENAI_API_VERSION": os.environ.get("AZURE_OPENAI_API_VERSION"),
+        "AZURE_TENANT_ID": os.environ.get("AZURE_TENANT_ID"),
+        "AZURE_CLIENT_ID": os.environ.get("AZURE_CLIENT_ID"),
+        "AZURE_CLIENT_SECRET": os.environ.get("AZURE_CLIENT_SECRET"),
+        "KEY_VAULT_URL": os.environ.get("KEY_VAULT_URL"),
+        "KEY_VAULT_SECRET_NAME": os.environ.get("KEY_VAULT_SECRET_NAME"),
     }
     yield
     # Restore original environment
