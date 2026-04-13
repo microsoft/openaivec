@@ -1,5 +1,5 @@
-import builtins
 import os
+import sys
 import warnings
 from unittest.mock import MagicMock, patch
 
@@ -138,6 +138,19 @@ class TestProvideOpenAIClient:
         client = provide_openai_client()
         assert isinstance(client, AzureOpenAI)
 
+    def test_provide_openai_client_with_fabric_placeholder_key(self):
+        """Test that OPENAI_API_KEY='place_holder_for_fabric_internal' is treated as not set."""
+        self.set_env_and_reset(
+            OPENAI_API_KEY="place_holder_for_fabric_internal",
+            AZURE_OPENAI_API_KEY="test-azure-key",
+            AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
+            AZURE_OPENAI_API_VERSION="v1",
+        )
+
+        client = provide_openai_client()
+
+        assert isinstance(client, AzureOpenAI)
+
     def test_provide_openai_client_reinstalls_defaults_after_container_clear(self):
         """Test lazy default reinstallation after the shared container is cleared."""
         self.set_env_and_reset(OPENAI_API_KEY="test-key")
@@ -270,6 +283,19 @@ class TestProvideAsyncOpenAIClient:
         )
 
         client = provide_async_openai_client()
+        assert isinstance(client, AsyncAzureOpenAI)
+
+    def test_provide_async_openai_client_with_fabric_placeholder_key(self):
+        """Test that OPENAI_API_KEY='place_holder_for_fabric_internal' is treated as not set."""
+        self.set_env_and_reset(
+            OPENAI_API_KEY="place_holder_for_fabric_internal",
+            AZURE_OPENAI_API_KEY="test-azure-key",
+            AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
+            AZURE_OPENAI_API_VERSION="v1",
+        )
+
+        client = provide_async_openai_client()
+
         assert isinstance(client, AsyncAzureOpenAI)
 
     def test_provide_async_openai_client_reinstalls_defaults_after_container_clear(self):
@@ -550,26 +576,26 @@ class TestFabricEnvironment:
         assert is_fabric_environment() is False
 
     def test_is_fabric_environment_returns_true_with_notebookutils(self):
-        """Test that is_fabric_environment returns True when notebookutils is in builtins."""
+        """Test that is_fabric_environment returns True when notebookutils is importable."""
         from openaivec._fabric import is_fabric_environment
 
         mock_nbu = MagicMock()
-        builtins.notebookutils = mock_nbu
+        sys.modules["notebookutils"] = mock_nbu
         try:
             assert is_fabric_environment() is True
         finally:
-            del builtins.notebookutils
+            sys.modules.pop("notebookutils", None)
 
     def test_is_fabric_environment_false_without_credentials(self):
         """Test that detection fails when notebookutils lacks credentials.getSecret."""
         from openaivec._fabric import is_fabric_environment
 
         mock_nbu = MagicMock(spec=[])  # no attributes
-        builtins.notebookutils = mock_nbu
+        sys.modules["notebookutils"] = mock_nbu
         try:
             assert is_fabric_environment() is False
         finally:
-            del builtins.notebookutils
+            sys.modules.pop("notebookutils", None)
 
     # -- Configuration check --
 
@@ -647,7 +673,7 @@ class TestFabricEnvironment:
 
         mock_nbu = MagicMock()
         mock_nbu.credentials.getSecret.return_value = "fake-client-secret"
-        builtins.notebookutils = mock_nbu
+        sys.modules["notebookutils"] = mock_nbu
 
         try:
             result = retrieve_client_secret(
@@ -657,7 +683,7 @@ class TestFabricEnvironment:
             assert result == "fake-client-secret"
             mock_nbu.credentials.getSecret.assert_called_once_with("https://kv.vault.azure.net/", "my-secret")
         finally:
-            del builtins.notebookutils
+            sys.modules.pop("notebookutils", None)
 
     def test_retrieve_client_secret_returns_none_when_kv_vars_missing(self):
         """Test that retrieve_client_secret returns None when KV args are absent."""
@@ -673,7 +699,7 @@ class TestFabricEnvironment:
     def test_provide_openai_client_uses_dac_in_fabric(self, _mock_fabric):
         """Test that provide_openai_client uses DefaultAzureCredential in Fabric."""
         mock_nbu = MagicMock()
-        builtins.notebookutils = mock_nbu
+        sys.modules["notebookutils"] = mock_nbu
 
         try:
             self.set_env_and_reset(
@@ -687,7 +713,7 @@ class TestFabricEnvironment:
             client = provide_openai_client()
             assert isinstance(client, AzureOpenAI)
         finally:
-            del builtins.notebookutils
+            sys.modules.pop("notebookutils", None)
 
     # -- Client creation (async) --
 
@@ -695,7 +721,7 @@ class TestFabricEnvironment:
     def test_provide_async_openai_client_uses_dac_in_fabric(self, _mock_fabric):
         """Test that provide_async_openai_client uses DefaultAzureCredential in Fabric."""
         mock_nbu = MagicMock()
-        builtins.notebookutils = mock_nbu
+        sys.modules["notebookutils"] = mock_nbu
 
         try:
             self.set_env_and_reset(
@@ -709,7 +735,7 @@ class TestFabricEnvironment:
             client = provide_async_openai_client()
             assert isinstance(client, AsyncAzureOpenAI)
         finally:
-            del builtins.notebookutils
+            sys.modules.pop("notebookutils", None)
 
     # -- Precedence --
 
@@ -717,7 +743,7 @@ class TestFabricEnvironment:
     def test_openai_key_wins_over_fabric(self, _mock_fabric):
         """Test that OPENAI_API_KEY takes priority even in Fabric environment."""
         mock_nbu = MagicMock()
-        builtins.notebookutils = mock_nbu
+        sys.modules["notebookutils"] = mock_nbu
 
         try:
             self.set_env_and_reset(
@@ -732,13 +758,13 @@ class TestFabricEnvironment:
             client = provide_openai_client()
             assert isinstance(client, OpenAI)
         finally:
-            del builtins.notebookutils
+            sys.modules.pop("notebookutils", None)
 
     @patch("openaivec._fabric.is_fabric_environment", return_value=True)
     def test_azure_api_key_wins_over_dac(self, _mock_fabric):
         """Test that AZURE_OPENAI_API_KEY takes priority over DefaultAzureCredential."""
         mock_nbu = MagicMock()
-        builtins.notebookutils = mock_nbu
+        sys.modules["notebookutils"] = mock_nbu
 
         try:
             self.set_env_and_reset(
@@ -753,7 +779,7 @@ class TestFabricEnvironment:
             client = provide_openai_client()
             assert isinstance(client, AzureOpenAI)
         finally:
-            del builtins.notebookutils
+            sys.modules.pop("notebookutils", None)
 
     # -- Fallback to DefaultAzureCredential --
 
@@ -761,7 +787,7 @@ class TestFabricEnvironment:
     def test_fabric_uses_dac_when_sp_vars_missing(self, _mock_fabric):
         """Test that Fabric without SP vars still uses DefaultAzureCredential."""
         mock_nbu = MagicMock()
-        builtins.notebookutils = mock_nbu
+        sys.modules["notebookutils"] = mock_nbu
 
         try:
             self.set_env_and_reset(
@@ -773,7 +799,7 @@ class TestFabricEnvironment:
             client = provide_openai_client()
             assert isinstance(client, AzureOpenAI)
         finally:
-            del builtins.notebookutils
+            sys.modules.pop("notebookutils", None)
 
     # -- Error message --
 
@@ -816,7 +842,7 @@ class TestFabricEnvironment:
     def test_partial_config_emits_warning_with_guidance(self, _mock_fabric):
         """Test that partial Fabric config emits a UserWarning with detailed setup guidance."""
         mock_nbu = MagicMock()
-        builtins.notebookutils = mock_nbu
+        sys.modules["notebookutils"] = mock_nbu
 
         try:
             os.environ["AZURE_TENANT_ID"] = "t"
@@ -839,14 +865,14 @@ class TestFabricEnvironment:
             assert "AZURE_OPENAI_BASE_URL" in msg
             assert "set_default_registrations()" in msg
         finally:
-            del builtins.notebookutils
+            sys.modules.pop("notebookutils", None)
 
     @patch("openaivec._fabric.is_fabric_environment", return_value=True)
     def test_no_warning_when_kv_path_configured(self, _mock_fabric):
         """Test that no warning is emitted when all KV path vars are set."""
         mock_nbu = MagicMock()
         mock_nbu.credentials.getSecret.return_value = "fake-secret"
-        builtins.notebookutils = mock_nbu
+        sys.modules["notebookutils"] = mock_nbu
 
         try:
             with warnings.catch_warnings(record=True) as w:
@@ -863,13 +889,13 @@ class TestFabricEnvironment:
             fabric_warnings = [x for x in w if "Fabric" in str(x.message)]
             assert len(fabric_warnings) == 0
         finally:
-            del builtins.notebookutils
+            sys.modules.pop("notebookutils", None)
 
     @patch("openaivec._fabric.is_fabric_environment", return_value=True)
     def test_no_warning_when_direct_path_configured(self, _mock_fabric):
         """Test that no warning is emitted when direct path (AZURE_CLIENT_SECRET) is set."""
         mock_nbu = MagicMock()
-        builtins.notebookutils = mock_nbu
+        sys.modules["notebookutils"] = mock_nbu
 
         try:
             with warnings.catch_warnings(record=True) as w:
@@ -885,13 +911,13 @@ class TestFabricEnvironment:
             fabric_warnings = [x for x in w if "Fabric" in str(x.message)]
             assert len(fabric_warnings) == 0
         finally:
-            del builtins.notebookutils
+            sys.modules.pop("notebookutils", None)
 
     @patch("openaivec._fabric.is_fabric_environment", return_value=True)
     def test_no_warning_when_no_fabric_vars_set(self, _mock_fabric):
         """Test that no warning is emitted when zero Fabric vars are set (intentional DAC/API key)."""
         mock_nbu = MagicMock()
-        builtins.notebookutils = mock_nbu
+        sys.modules["notebookutils"] = mock_nbu
 
         try:
             with warnings.catch_warnings(record=True) as w:
@@ -904,7 +930,7 @@ class TestFabricEnvironment:
             fabric_warnings = [x for x in w if "Fabric" in str(x.message)]
             assert len(fabric_warnings) == 0
         finally:
-            del builtins.notebookutils
+            sys.modules.pop("notebookutils", None)
 
     # -- Logging --
 
@@ -915,7 +941,7 @@ class TestFabricEnvironment:
 
         mock_nbu = MagicMock()
         mock_nbu.credentials.getSecret.return_value = "fake-secret"
-        builtins.notebookutils = mock_nbu
+        sys.modules["notebookutils"] = mock_nbu
 
         try:
             with caplog.at_level(logging.INFO, logger="openaivec._fabric"):
@@ -931,7 +957,7 @@ class TestFabricEnvironment:
             assert "fully configured" in caplog.text
             assert "✓ AZURE_TENANT_ID" in caplog.text
         finally:
-            del builtins.notebookutils
+            sys.modules.pop("notebookutils", None)
 
     @patch("openaivec._fabric.is_fabric_environment", return_value=True)
     def test_kv_retrieval_resolves_secret_via_di(self, _mock_fabric, caplog):
@@ -940,7 +966,7 @@ class TestFabricEnvironment:
 
         mock_nbu = MagicMock()
         mock_nbu.credentials.getSecret.return_value = "kv-retrieved-secret"
-        builtins.notebookutils = mock_nbu
+        sys.modules["notebookutils"] = mock_nbu
 
         try:
             with caplog.at_level(logging.INFO, logger="openaivec._fabric"):
@@ -959,7 +985,7 @@ class TestFabricEnvironment:
             assert "Retrieved client secret from Key Vault" in caplog.text
             mock_nbu.credentials.getSecret.assert_called_with("https://kv.vault.azure.net/", "my-secret")
         finally:
-            del builtins.notebookutils
+            sys.modules.pop("notebookutils", None)
 
     @patch("openaivec._fabric.is_fabric_environment", return_value=True)
     def test_partial_config_logs_var_status(self, _mock_fabric, caplog):
@@ -967,7 +993,7 @@ class TestFabricEnvironment:
         import logging
 
         mock_nbu = MagicMock()
-        builtins.notebookutils = mock_nbu
+        sys.modules["notebookutils"] = mock_nbu
 
         try:
             os.environ["AZURE_TENANT_ID"] = "t"
@@ -980,4 +1006,4 @@ class TestFabricEnvironment:
             assert "✓ AZURE_TENANT_ID" in caplog.text
             assert "✗ AZURE_CLIENT_ID" in caplog.text
         finally:
-            del builtins.notebookutils
+            sys.modules.pop("notebookutils", None)

@@ -383,10 +383,9 @@ def setup_entra_id(
                 "Either client_secret or both kv_url and kv_secret_name must be provided. "
                 "Use kv_url/kv_secret_name to retrieve the secret from Key Vault on a Fabric driver."
             )
-        import builtins
-
-        nbu = getattr(builtins, "notebookutils", None)
-        if nbu is None:
+        try:
+            import notebookutils as nbu  # type: ignore[import-not-found]
+        except ImportError:
             raise ValueError(
                 "notebookutils is not available. Key Vault retrieval via kv_url/kv_secret_name "
                 "is only supported on the Microsoft Fabric driver."

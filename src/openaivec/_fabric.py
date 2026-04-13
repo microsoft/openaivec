@@ -1,7 +1,7 @@
 """Microsoft Fabric environment detection and Entra ID authentication.
 
 When running inside a Fabric notebook, ``notebookutils`` is available as a
-built-in and provides ``credentials.getSecret`` for retrieving secrets from
+site-package and provides ``credentials.getSecret`` for retrieving secrets from
 Azure Key Vault.  This module exposes helpers that:
 
 1. Detect the Fabric runtime.
@@ -77,7 +77,8 @@ _SETUP_GUIDE = (
 def is_fabric_environment() -> bool:
     """Detect whether the current runtime is a Microsoft Fabric notebook.
 
-    Checks for the ``notebookutils`` built-in injected by Fabric and verifies
+    Checks for the ``notebookutils`` package (installed at
+    ``site-packages/notebookutils`` on the Fabric runtime) and verifies
     that the ``credentials.getSecret`` capability is available.
 
     Returns:
@@ -85,11 +86,8 @@ def is_fabric_environment() -> bool:
             support, ``False`` otherwise.
     """
     try:
-        import builtins
+        import notebookutils as nbu  # type: ignore[import-not-found]
 
-        nbu = getattr(builtins, "notebookutils", None)
-        if nbu is None:
-            return False
         return hasattr(nbu, "credentials") and callable(getattr(nbu.credentials, "getSecret", None))
     except Exception:
         return False
@@ -146,9 +144,8 @@ def retrieve_client_secret(*, kv_url: str | None = None, secret_name: str | None
         return None
 
     try:
-        import builtins
+        import notebookutils as nbu  # type: ignore[import-not-found]
 
-        nbu = getattr(builtins, "notebookutils")
         client_secret: str = nbu.credentials.getSecret(kv_url, secret_name)
         _LOGGER.info("Retrieved client secret from Key Vault (%s).", kv_url)
         return client_secret
