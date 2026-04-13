@@ -590,14 +590,45 @@ class TestFabricEnvironment:
         # others not set
         assert is_auth_configured() is False
 
+    def test_partially_configured_true_when_some_vars_set(self):
+        """Test that is_partially_configured returns True with partial vars."""
+        from openaivec._fabric import is_partially_configured
+
+        os.environ["AZURE_TENANT_ID"] = "t"
+        os.environ["AZURE_APP_CLIENT_ID"] = "c"
+        # KEY_VAULT_URL and KEY_VAULT_SECRET_NAME not set
+
+        assert is_partially_configured() is True
+
+    def test_partially_configured_false_when_all_set(self):
+        """Test that is_partially_configured returns False when all vars set."""
+        from openaivec._fabric import is_partially_configured
+
+        os.environ["AZURE_TENANT_ID"] = "t"
+        os.environ["AZURE_APP_CLIENT_ID"] = "c"
+        os.environ["KEY_VAULT_URL"] = "https://kv.vault.azure.net/"
+        os.environ["KEY_VAULT_SECRET_NAME"] = "s"
+
+        assert is_partially_configured() is False
+
+    def test_partially_configured_false_when_none_set(self):
+        """Test that is_partially_configured returns False when no vars set."""
+        from openaivec._fabric import is_partially_configured
+
+        assert is_partially_configured() is False
+
     # -- Token provider --
 
     def test_build_fabric_token_provider_raises_when_vars_missing(self):
-        """Test that build_token_provider raises ValueError for missing vars."""
+        """Test that build_token_provider raises ValueError with auth flow guidance."""
         from openaivec._fabric import build_token_provider
 
-        with pytest.raises(ValueError, match="required environment variables are missing"):
+        with pytest.raises(ValueError, match="required environment variables are missing") as exc_info:
             build_token_provider()
+
+        message = str(exc_info.value)
+        assert "Authentication flow" in message
+        assert "Setup steps" in message
 
     def test_build_fabric_token_provider_calls_key_vault(self):
         """Test that build_token_provider retrieves secret from Key Vault."""
@@ -762,8 +793,8 @@ class TestFabricEnvironment:
     # -- Error message --
 
     @patch("openaivec._fabric.is_fabric_environment", return_value=True)
-    def test_error_message_includes_fabric_vars(self, _mock_fabric):
-        """Test that error message includes Fabric env vars when Fabric is detected."""
+    def test_error_message_includes_fabric_auth_flow(self, _mock_fabric):
+        """Test that error message includes auth flow and setup guidance when Fabric detected."""
         message = _build_missing_credentials_error(
             openai_api_key=None,
             azure_api_key=None,
@@ -776,6 +807,11 @@ class TestFabricEnvironment:
         assert "AZURE_APP_CLIENT_ID" in message
         assert "KEY_VAULT_URL" in message
         assert "KEY_VAULT_SECRET_NAME" in message
+        assert "Authentication flow" in message
+        assert "Key Vault Secrets User" in message
+        assert "AI User" in message
+        assert "Setup steps" in message
+        assert "Service Principal" in message
 
     def test_error_message_excludes_fabric_vars_outside_fabric(self):
         """Test that error message omits Fabric section when not in Fabric."""
@@ -789,11 +825,87 @@ class TestFabricEnvironment:
         assert "Fabric" not in message
         assert "KEY_VAULT_URL" not in message
 
+    # -- Warning on partial configuration --
+
+    @patch("openaivec._fabric.is_fabric_environment", return_value=True)
+    def test_partial_config_emits_warning_with_guidance(self, _mock_fabric):
+        """Test that partial Fabric config emits a UserWarning with detailed setup guidance."""
+        mock_nbu = MagicMock()
+        mock_nbu.credentials.getSecret.return_value = "fake-secret"
+        builtins.notebookutils = mock_nbu
+
+        try:
+            os.environ["AZURE_TENANT_ID"] = "t"
+            # Only 1 of 4 vars set → partial config
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                set_default_registrations()
+
+            fabric_warnings = [x for x in w if "Fabric" in str(x.message)]
+            assert len(fabric_warnings) == 1
+            msg = str(fabric_warnings[0].message)
+            assert "not fully configured" in msg
+            assert "Authentication flow" in msg
+            assert "Key Vault Secrets User" in msg
+            assert "AI User" in msg
+            assert "Setup steps" in msg
+            assert "Service Principal" in msg
+            assert "✓ AZURE_TENANT_ID" in msg
+            assert "✗ AZURE_APP_CLIENT_ID" in msg
+            assert "AZURE_OPENAI_BASE_URL" in msg
+            assert "set_default_registrations()" in msg
+        finally:
+            del builtins.notebookutils
+
+    @patch("openaivec._fabric.is_fabric_environment", return_value=True)
+    def test_no_warning_when_fully_configured(self, _mock_fabric):
+        """Test that no warning is emitted when all Fabric vars are set."""
+        mock_nbu = MagicMock()
+        mock_nbu.credentials.getSecret.return_value = "fake-secret"
+        builtins.notebookutils = mock_nbu
+
+        try:
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                with patch("openaivec._fabric.ClientSecretCredential"):
+                    self.set_env_and_reset(
+                        AZURE_TENANT_ID="t",
+                        AZURE_APP_CLIENT_ID="c",
+                        KEY_VAULT_URL="https://kv.vault.azure.net/",
+                        KEY_VAULT_SECRET_NAME="s",
+                        AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
+                        AZURE_OPENAI_API_VERSION="v1",
+                    )
+
+            fabric_warnings = [x for x in w if "Fabric" in str(x.message)]
+            assert len(fabric_warnings) == 0
+        finally:
+            del builtins.notebookutils
+
+    @patch("openaivec._fabric.is_fabric_environment", return_value=True)
+    def test_no_warning_when_no_fabric_vars_set(self, _mock_fabric):
+        """Test that no warning is emitted when zero Fabric vars are set (intentional DAC/API key)."""
+        mock_nbu = MagicMock()
+        builtins.notebookutils = mock_nbu
+
+        try:
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                self.set_env_and_reset(
+                    AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
+                    AZURE_OPENAI_API_VERSION="v1",
+                )
+
+            fabric_warnings = [x for x in w if "Fabric" in str(x.message)]
+            assert len(fabric_warnings) == 0
+        finally:
+            del builtins.notebookutils
+
     # -- Logging --
 
     @patch("openaivec._fabric.is_fabric_environment", return_value=True)
-    def test_fabric_detection_logs_env_info(self, _mock_fabric, caplog):
-        """Test that Fabric detection emits an INFO log with env var status."""
+    def test_fully_configured_logs_info(self, _mock_fabric, caplog):
+        """Test that fully configured Fabric logs INFO confirmation."""
         import logging
 
         mock_nbu = MagicMock()
@@ -801,9 +913,36 @@ class TestFabricEnvironment:
         builtins.notebookutils = mock_nbu
 
         try:
+            with caplog.at_level(logging.INFO, logger="openaivec._fabric"):
+                with patch("openaivec._fabric.ClientSecretCredential"):
+                    self.set_env_and_reset(
+                        AZURE_TENANT_ID="t",
+                        AZURE_APP_CLIENT_ID="c",
+                        KEY_VAULT_URL="https://kv.vault.azure.net/",
+                        KEY_VAULT_SECRET_NAME="s",
+                        AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
+                        AZURE_OPENAI_API_VERSION="v1",
+                    )
+
+            assert "fully configured" in caplog.text
+            assert "✓ AZURE_TENANT_ID" in caplog.text
+        finally:
+            del builtins.notebookutils
+
+    @patch("openaivec._fabric.is_fabric_environment", return_value=True)
+    def test_partial_config_logs_var_status(self, _mock_fabric, caplog):
+        """Test that partial config logs variable status at INFO level."""
+        import logging
+
+        mock_nbu = MagicMock()
+        builtins.notebookutils = mock_nbu
+
+        try:
             os.environ["AZURE_TENANT_ID"] = "t"
             with caplog.at_level(logging.INFO, logger="openaivec._fabric"):
-                set_default_registrations()
+                with warnings.catch_warnings():
+                    warnings.simplefilter("always")
+                    set_default_registrations()
 
             assert "Microsoft Fabric environment detected" in caplog.text
             assert "✓ AZURE_TENANT_ID" in caplog.text

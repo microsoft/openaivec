@@ -210,6 +210,8 @@ def _register_default_providers() -> None:
 
     if fabric.is_fabric_environment():
         fabric.log_environment_info()
+        if not fabric.is_auth_configured() and fabric.is_partially_configured():
+            fabric.warn_incomplete_configuration()
 
     if fabric.is_fabric_environment() and fabric.is_auth_configured():
         CONTAINER.register(
