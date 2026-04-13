@@ -4,7 +4,7 @@ import warnings
 
 import duckdb
 import tiktoken
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+from azure.identity import ClientSecretCredential, DefaultAzureCredential, get_bearer_token_provider
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
 
 from openaivec import _di as di
@@ -212,12 +212,32 @@ def _provide_azure_client_secret() -> AzureClientSecret:
     """Provide ``AzureClientSecret``, auto-retrieving from Key Vault on Fabric."""
     secret = os.getenv("AZURE_CLIENT_SECRET")
     if not secret and fabric.is_fabric_environment():
-        fabric.retrieve_client_secret(
+        secret = fabric.retrieve_client_secret(
             kv_url=CONTAINER.resolve(KeyVaultURL).value,
             secret_name=CONTAINER.resolve(KeyVaultSecretName).value,
         )
-        secret = os.getenv("AZURE_CLIENT_SECRET")
     return AzureClientSecret(secret)
+
+
+def _provide_bearer_token_provider() -> BearerTokenProvider:
+    """Provide ``BearerTokenProvider`` using the best available credential.
+
+    When ``AzureTenantID``, ``AzureClientID``, and ``AzureClientSecret`` are all
+    present in the DI container, builds a ``ClientSecretCredential`` directly.
+    Otherwise falls back to ``DefaultAzureCredential``.
+    """
+    tenant_id = CONTAINER.resolve(AzureTenantID).value
+    client_id = CONTAINER.resolve(AzureClientID).value
+    client_secret = CONTAINER.resolve(AzureClientSecret).value
+
+    if tenant_id and client_id and client_secret:
+        credential = ClientSecretCredential(tenant_id, client_id, client_secret)
+    else:
+        credential = DefaultAzureCredential()
+
+    return BearerTokenProvider(
+        value=get_bearer_token_provider(credential, "https://cognitiveservices.azure.com/.default")
+    )
 
 
 def _register_default_providers() -> None:
@@ -244,16 +264,7 @@ def _register_default_providers() -> None:
         if fabric.is_partially_configured():
             fabric.warn_incomplete_configuration()
 
-    CONTAINER.register(DefaultAzureCredential, lambda: DefaultAzureCredential())
-    CONTAINER.register(
-        BearerTokenProvider,
-        lambda: BearerTokenProvider(
-            value=get_bearer_token_provider(
-                CONTAINER.resolve(DefaultAzureCredential),
-                "https://cognitiveservices.azure.com/.default",
-            )
-        ),
-    )
+    CONTAINER.register(BearerTokenProvider, _provide_bearer_token_provider)
 
     CONTAINER.register(OpenAI, provide_openai_client)
     CONTAINER.register(AsyncOpenAI, provide_async_openai_client)

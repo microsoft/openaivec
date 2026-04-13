@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
 
+from openaivec._model import AzureClientSecret
 from openaivec._provider import (
     CONTAINER,
     _build_missing_credentials_error,
@@ -641,42 +642,30 @@ class TestFabricEnvironment:
     # -- Key Vault retrieval --
 
     def test_retrieve_client_secret_from_kv(self):
-        """Test that retrieve_client_secret gets secret from KV and sets env var."""
+        """Test that retrieve_client_secret returns the secret from KV."""
         from openaivec._fabric import retrieve_client_secret
-
-        os.environ["KEY_VAULT_URL"] = "https://kv.vault.azure.net/"
-        os.environ["KEY_VAULT_SECRET_NAME"] = "my-secret"
 
         mock_nbu = MagicMock()
         mock_nbu.credentials.getSecret.return_value = "fake-client-secret"
         builtins.notebookutils = mock_nbu
 
         try:
-            result = retrieve_client_secret()
-            assert result is True
-            assert os.environ["AZURE_CLIENT_SECRET"] == "fake-client-secret"
+            result = retrieve_client_secret(
+                kv_url="https://kv.vault.azure.net/",
+                secret_name="my-secret",
+            )
+            assert result == "fake-client-secret"
             mock_nbu.credentials.getSecret.assert_called_once_with("https://kv.vault.azure.net/", "my-secret")
         finally:
             del builtins.notebookutils
 
-    def test_retrieve_client_secret_skips_when_already_set(self):
-        """Test that retrieve_client_secret skips when AZURE_CLIENT_SECRET is already set."""
+    def test_retrieve_client_secret_returns_none_when_kv_vars_missing(self):
+        """Test that retrieve_client_secret returns None when KV args are absent."""
         from openaivec._fabric import retrieve_client_secret
 
-        os.environ["AZURE_CLIENT_SECRET"] = "already-set"
-        os.environ["KEY_VAULT_URL"] = "https://kv.vault.azure.net/"
-        os.environ["KEY_VAULT_SECRET_NAME"] = "my-secret"
-
-        result = retrieve_client_secret()
-        assert result is False
-        assert os.environ["AZURE_CLIENT_SECRET"] == "already-set"
-
-    def test_retrieve_client_secret_returns_false_when_kv_vars_missing(self):
-        """Test that retrieve_client_secret returns False when KV vars are absent."""
-        from openaivec._fabric import retrieve_client_secret
-
-        result = retrieve_client_secret()
-        assert result is False
+        assert retrieve_client_secret() is None
+        assert retrieve_client_secret(kv_url="https://kv.vault.azure.net/") is None
+        assert retrieve_client_secret(secret_name="my-secret") is None
 
     # -- Client creation (sync) --
 
@@ -945,8 +934,8 @@ class TestFabricEnvironment:
             del builtins.notebookutils
 
     @patch("openaivec._fabric.is_fabric_environment", return_value=True)
-    def test_kv_retrieval_sets_client_secret_during_registration(self, _mock_fabric, caplog):
-        """Test that KV retrieval sets AZURE_CLIENT_SECRET during provider registration."""
+    def test_kv_retrieval_resolves_secret_via_di(self, _mock_fabric, caplog):
+        """Test that KV retrieval populates AzureClientSecret via DI without env side effect."""
         import logging
 
         mock_nbu = MagicMock()
@@ -964,7 +953,9 @@ class TestFabricEnvironment:
                     AZURE_OPENAI_API_VERSION="v1",
                 )
 
-            assert os.environ.get("AZURE_CLIENT_SECRET") == "kv-retrieved-secret"
+            resolved = CONTAINER.resolve(AzureClientSecret)
+            assert resolved.value == "kv-retrieved-secret"
+            assert os.environ.get("AZURE_CLIENT_SECRET") is None
             assert "Retrieved client secret from Key Vault" in caplog.text
             mock_nbu.credentials.getSecret.assert_called_with("https://kv.vault.azure.net/", "my-secret")
         finally:

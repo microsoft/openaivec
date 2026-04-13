@@ -131,40 +131,33 @@ def is_partially_configured() -> bool:
     return any(os.getenv(name) for name in _ALL_AUTH_VARS)
 
 
-def retrieve_client_secret(*, kv_url: str | None = None, secret_name: str | None = None) -> bool:
+def retrieve_client_secret(*, kv_url: str | None = None, secret_name: str | None = None) -> str | None:
     """Retrieve the client secret from Key Vault on a Fabric driver.
 
-    When ``KEY_VAULT_URL`` and ``KEY_VAULT_SECRET_NAME`` are set and
-    ``AZURE_CLIENT_SECRET`` is not yet present, calls
-    ``notebookutils.credentials.getSecret`` and stores the result in
-    ``os.environ["AZURE_CLIENT_SECRET"]``.
+    Calls ``notebookutils.credentials.getSecret`` when both ``kv_url`` and
+    ``secret_name`` are provided.  The caller is responsible for storing the
+    returned value (e.g. in ``os.environ`` or the DI container).
 
     Args:
-        kv_url (str | None): Key Vault URL. Falls back to ``os.getenv("KEY_VAULT_URL")``.
-        secret_name (str | None): Secret name. Falls back to ``os.getenv("KEY_VAULT_SECRET_NAME")``.
+        kv_url (str | None): Key Vault URL.
+        secret_name (str | None): Secret name in Key Vault.
 
     Returns:
-        bool: ``True`` if the secret was successfully retrieved and set.
+        str | None: The secret value, or ``None`` when retrieval is skipped or fails.
     """
-    if os.getenv("AZURE_CLIENT_SECRET"):
-        return False
-
-    kv_url = kv_url or os.getenv("KEY_VAULT_URL")
-    secret_name = secret_name or os.getenv("KEY_VAULT_SECRET_NAME")
     if not kv_url or not secret_name:
-        return False
+        return None
 
     try:
         import builtins
 
         nbu = getattr(builtins, "notebookutils")
         client_secret: str = nbu.credentials.getSecret(kv_url, secret_name)
-        os.environ["AZURE_CLIENT_SECRET"] = client_secret
-        _LOGGER.info("Retrieved client secret from Key Vault (%s) and set AZURE_CLIENT_SECRET.", kv_url)
-        return True
+        _LOGGER.info("Retrieved client secret from Key Vault (%s).", kv_url)
+        return client_secret
     except Exception as exc:
         _LOGGER.warning("Failed to retrieve client secret from Key Vault: %s", exc)
-        return False
+        return None
 
 
 def log_environment_info() -> None:
