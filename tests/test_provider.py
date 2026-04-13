@@ -542,66 +542,66 @@ class TestFabricEnvironment:
     # -- Detection --
 
     def test_is_fabric_environment_returns_false_by_default(self):
-        """Test that _is_fabric_environment returns False when notebookutils is absent."""
-        from openaivec._provider import _is_fabric_environment
+        """Test that is_fabric_environment returns False when notebookutils is absent."""
+        from openaivec._fabric import is_fabric_environment
 
-        assert _is_fabric_environment() is False
+        assert is_fabric_environment() is False
 
     def test_is_fabric_environment_returns_true_with_notebookutils(self):
-        """Test that _is_fabric_environment returns True when notebookutils is in builtins."""
-        from openaivec._provider import _is_fabric_environment
+        """Test that is_fabric_environment returns True when notebookutils is in builtins."""
+        from openaivec._fabric import is_fabric_environment
 
         mock_nbu = MagicMock()
         builtins.notebookutils = mock_nbu
         try:
-            assert _is_fabric_environment() is True
+            assert is_fabric_environment() is True
         finally:
             del builtins.notebookutils
 
     def test_is_fabric_environment_false_without_credentials(self):
         """Test that detection fails when notebookutils lacks credentials.getSecret."""
-        from openaivec._provider import _is_fabric_environment
+        from openaivec._fabric import is_fabric_environment
 
         mock_nbu = MagicMock(spec=[])  # no attributes
         builtins.notebookutils = mock_nbu
         try:
-            assert _is_fabric_environment() is False
+            assert is_fabric_environment() is False
         finally:
             del builtins.notebookutils
 
     # -- Configuration check --
 
     def test_fabric_auth_configured_true_when_all_vars_set(self):
-        """Test that _fabric_auth_configured returns True when all vars present."""
-        from openaivec._provider import _fabric_auth_configured
+        """Test that is_auth_configured returns True when all vars present."""
+        from openaivec._fabric import is_auth_configured
 
         os.environ["AZURE_TENANT_ID"] = "t"
         os.environ["AZURE_APP_CLIENT_ID"] = "c"
         os.environ["KEY_VAULT_URL"] = "https://kv.vault.azure.net/"
         os.environ["KEY_VAULT_SECRET_NAME"] = "s"
 
-        assert _fabric_auth_configured() is True
+        assert is_auth_configured() is True
 
     def test_fabric_auth_configured_false_when_vars_missing(self):
-        """Test that _fabric_auth_configured returns False when a var is absent."""
-        from openaivec._provider import _fabric_auth_configured
+        """Test that is_auth_configured returns False when a var is absent."""
+        from openaivec._fabric import is_auth_configured
 
         os.environ["AZURE_TENANT_ID"] = "t"
         # others not set
-        assert _fabric_auth_configured() is False
+        assert is_auth_configured() is False
 
     # -- Token provider --
 
     def test_build_fabric_token_provider_raises_when_vars_missing(self):
-        """Test that _build_fabric_token_provider raises ValueError for missing vars."""
-        from openaivec._provider import _build_fabric_token_provider
+        """Test that build_token_provider raises ValueError for missing vars."""
+        from openaivec._fabric import build_token_provider
 
         with pytest.raises(ValueError, match="required environment variables are missing"):
-            _build_fabric_token_provider()
+            build_token_provider()
 
     def test_build_fabric_token_provider_calls_key_vault(self):
-        """Test that _build_fabric_token_provider retrieves secret from Key Vault."""
-        from openaivec._provider import _build_fabric_token_provider
+        """Test that build_token_provider retrieves secret from Key Vault."""
+        from openaivec._fabric import build_token_provider
 
         os.environ["AZURE_TENANT_ID"] = "test-tenant"
         os.environ["AZURE_APP_CLIENT_ID"] = "test-client"
@@ -613,12 +613,12 @@ class TestFabricEnvironment:
         builtins.notebookutils = mock_nbu
 
         try:
-            with patch("openaivec._provider.ClientSecretCredential") as mock_cred_cls:
+            with patch("openaivec._fabric.ClientSecretCredential") as mock_cred_cls:
                 mock_cred = MagicMock()
                 mock_cred.get_token.return_value = MagicMock(token="fake-bearer-token")
                 mock_cred_cls.return_value = mock_cred
 
-                provider = _build_fabric_token_provider()
+                provider = build_token_provider()
                 token = provider()
 
                 assert token == "fake-bearer-token"
@@ -634,7 +634,7 @@ class TestFabricEnvironment:
 
     # -- Client creation (sync) --
 
-    @patch("openaivec._provider._is_fabric_environment", return_value=True)
+    @patch("openaivec._fabric.is_fabric_environment", return_value=True)
     def test_provide_openai_client_uses_fabric_auth(self, _mock_fabric):
         """Test that provide_openai_client uses Fabric token provider when configured."""
         mock_nbu = MagicMock()
@@ -642,7 +642,7 @@ class TestFabricEnvironment:
         builtins.notebookutils = mock_nbu
 
         try:
-            with patch("openaivec._provider.ClientSecretCredential") as mock_cred_cls:
+            with patch("openaivec._fabric.ClientSecretCredential") as mock_cred_cls:
                 mock_cred = MagicMock()
                 mock_cred.get_token.return_value = MagicMock(token="tok")
                 mock_cred_cls.return_value = mock_cred
@@ -663,7 +663,7 @@ class TestFabricEnvironment:
 
     # -- Client creation (async) --
 
-    @patch("openaivec._provider._is_fabric_environment", return_value=True)
+    @patch("openaivec._fabric.is_fabric_environment", return_value=True)
     def test_provide_async_openai_client_uses_fabric_auth(self, _mock_fabric):
         """Test that provide_async_openai_client uses Fabric token provider when configured."""
         mock_nbu = MagicMock()
@@ -671,7 +671,7 @@ class TestFabricEnvironment:
         builtins.notebookutils = mock_nbu
 
         try:
-            with patch("openaivec._provider.ClientSecretCredential") as mock_cred_cls:
+            with patch("openaivec._fabric.ClientSecretCredential") as mock_cred_cls:
                 mock_cred = MagicMock()
                 mock_cred.get_token.return_value = MagicMock(token="tok")
                 mock_cred_cls.return_value = mock_cred
@@ -692,7 +692,7 @@ class TestFabricEnvironment:
 
     # -- Precedence --
 
-    @patch("openaivec._provider._is_fabric_environment", return_value=True)
+    @patch("openaivec._fabric.is_fabric_environment", return_value=True)
     def test_openai_key_wins_over_fabric(self, _mock_fabric):
         """Test that OPENAI_API_KEY takes priority even in Fabric environment."""
         mock_nbu = MagicMock()
@@ -715,7 +715,7 @@ class TestFabricEnvironment:
         finally:
             del builtins.notebookutils
 
-    @patch("openaivec._provider._is_fabric_environment", return_value=True)
+    @patch("openaivec._fabric.is_fabric_environment", return_value=True)
     def test_azure_api_key_wins_over_fabric_token(self, _mock_fabric):
         """Test that AZURE_OPENAI_API_KEY takes priority over Fabric token provider."""
         mock_nbu = MagicMock()
@@ -740,7 +740,7 @@ class TestFabricEnvironment:
 
     # -- Fallback to DefaultAzureCredential --
 
-    @patch("openaivec._provider._is_fabric_environment", return_value=True)
+    @patch("openaivec._fabric.is_fabric_environment", return_value=True)
     def test_fabric_falls_back_to_dac_when_vars_missing(self, _mock_fabric):
         """Test that Fabric without required vars falls back to DefaultAzureCredential."""
         mock_nbu = MagicMock()
@@ -761,7 +761,7 @@ class TestFabricEnvironment:
 
     # -- Error message --
 
-    @patch("openaivec._provider._is_fabric_environment", return_value=True)
+    @patch("openaivec._fabric.is_fabric_environment", return_value=True)
     def test_error_message_includes_fabric_vars(self, _mock_fabric):
         """Test that error message includes Fabric env vars when Fabric is detected."""
         message = _build_missing_credentials_error(
@@ -791,7 +791,7 @@ class TestFabricEnvironment:
 
     # -- Logging --
 
-    @patch("openaivec._provider._is_fabric_environment", return_value=True)
+    @patch("openaivec._fabric.is_fabric_environment", return_value=True)
     def test_fabric_detection_logs_env_info(self, _mock_fabric, caplog):
         """Test that Fabric detection emits an INFO log with env var status."""
         import logging
@@ -802,7 +802,7 @@ class TestFabricEnvironment:
 
         try:
             os.environ["AZURE_TENANT_ID"] = "t"
-            with caplog.at_level(logging.INFO, logger="openaivec._provider"):
+            with caplog.at_level(logging.INFO, logger="openaivec._fabric"):
                 set_default_registrations()
 
             assert "Microsoft Fabric environment detected" in caplog.text
