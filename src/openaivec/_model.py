@@ -115,5 +115,38 @@ class AzureOpenAIAPIVersion:
 
 
 @dataclass(frozen=True)
+class AzureTenantID:
+    """Container for Azure AD tenant ID configuration.
+
+    Attributes:
+        value (str | None): The Azure AD tenant ID.
+    """
+
+    value: str | None
+
+
+@dataclass(frozen=True)
+class AzureClientID:
+    """Container for Azure AD Service Principal client ID configuration.
+
+    Attributes:
+        value (str | None): The Service Principal (App Registration) client ID.
+    """
+
+    value: str | None
+
+
+@dataclass(frozen=True)
+class AzureClientSecret:
+    """Container for Azure AD Service Principal client secret configuration.
+
+    Attributes:
+        value (str | None): The Service Principal client secret.
+    """
+
+    value: str | None
+
+
+@dataclass(frozen=True)
 class BearerTokenProvider:
     value: Callable[[], str]

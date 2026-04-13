@@ -10,9 +10,12 @@ from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
 from openaivec import _di as di
 from openaivec import _fabric as fabric
 from openaivec._model import (
+    AzureClientID,
+    AzureClientSecret,
     AzureOpenAIAPIKey,
     AzureOpenAIAPIVersion,
     AzureOpenAIBaseURL,
+    AzureTenantID,
     BearerTokenProvider,
     EmbeddingsModelName,
     OpenAIAPIKey,
@@ -210,25 +213,19 @@ def _register_default_providers() -> None:
 
     if fabric.is_fabric_environment():
         fabric.log_environment_info()
-        if not fabric.is_auth_configured() and fabric.is_partially_configured():
+        if fabric.is_partially_configured():
             fabric.warn_incomplete_configuration()
 
-    if fabric.is_fabric_environment() and fabric.is_auth_configured():
-        CONTAINER.register(
-            BearerTokenProvider,
-            lambda: BearerTokenProvider(value=fabric.build_token_provider()),
-        )
-    else:
-        CONTAINER.register(DefaultAzureCredential, lambda: DefaultAzureCredential())
-        CONTAINER.register(
-            BearerTokenProvider,
-            lambda: BearerTokenProvider(
-                value=get_bearer_token_provider(
-                    CONTAINER.resolve(DefaultAzureCredential),
-                    "https://cognitiveservices.azure.com/.default",
-                )
-            ),
-        )
+    CONTAINER.register(DefaultAzureCredential, lambda: DefaultAzureCredential())
+    CONTAINER.register(
+        BearerTokenProvider,
+        lambda: BearerTokenProvider(
+            value=get_bearer_token_provider(
+                CONTAINER.resolve(DefaultAzureCredential),
+                "https://cognitiveservices.azure.com/.default",
+            )
+        ),
+    )
 
     CONTAINER.register(OpenAIAPIKey, lambda: OpenAIAPIKey(os.getenv("OPENAI_API_KEY")))
     CONTAINER.register(AzureOpenAIAPIKey, lambda: AzureOpenAIAPIKey(os.getenv("AZURE_OPENAI_API_KEY")))
@@ -237,6 +234,9 @@ def _register_default_providers() -> None:
         cls=AzureOpenAIAPIVersion,
         provider=lambda: AzureOpenAIAPIVersion(os.getenv("AZURE_OPENAI_API_VERSION", "v1")),
     )
+    CONTAINER.register(AzureTenantID, lambda: AzureTenantID(os.getenv("AZURE_TENANT_ID")))
+    CONTAINER.register(AzureClientID, lambda: AzureClientID(os.getenv("AZURE_CLIENT_ID")))
+    CONTAINER.register(AzureClientSecret, lambda: AzureClientSecret(os.getenv("AZURE_CLIENT_SECRET")))
     CONTAINER.register(OpenAI, provide_openai_client)
     CONTAINER.register(AsyncOpenAI, provide_async_openai_client)
     CONTAINER.register(tiktoken.Encoding, lambda: tiktoken.get_encoding("o200k_base"))

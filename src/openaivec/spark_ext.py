@@ -164,6 +164,7 @@ __all__ = [
     "responses_udf",
     "setup",
     "setup_azure",
+    "setup_entra_id",
     "similarity_udf",
     "split_to_chunks_udf",
     "task_udf",
@@ -289,6 +290,94 @@ def setup_azure(
         os.environ.pop("AZURE_OPENAI_API_KEY", None)
     os.environ["AZURE_OPENAI_BASE_URL"] = base_url
     os.environ["AZURE_OPENAI_API_VERSION"] = api_version
+
+    if responses_model_name:
+        CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName(responses_model_name))
+
+    if embeddings_model_name:
+        CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName(embeddings_model_name))
+
+    CONTAINER.clear_singletons()
+
+
+def setup_entra_id(
+    spark: SparkSession,
+    base_url: str,
+    tenant_id: str,
+    client_id: str,
+    client_secret: str,
+    api_version: str = "v1",
+    responses_model_name: str | None = None,
+    embeddings_model_name: str | None = None,
+):
+    """Setup Entra ID (Service Principal) authentication for Spark environment.
+
+    Configures Azure OpenAI with Service Principal credentials using
+    ``DefaultAzureCredential`` (via ``EnvironmentCredential``).
+    Propagates credentials to both the local process and Spark executors
+    via ``sc.environment``.
+
+    This is the recommended setup for Microsoft Fabric when using
+    Key Vault to retrieve the Service Principal's client secret.
+
+    Note:
+        Any existing ``OPENAI_API_KEY`` or ``AZURE_OPENAI_API_KEY`` is
+        cleared to ensure the Entra ID path is used.
+
+    Args:
+        spark (SparkSession): The Spark session to configure.
+        base_url (str): Base URL for the Azure OpenAI resource
+            (e.g. ``"https://YOUR-RESOURCE.services.ai.azure.com/openai/v1/"``).
+        tenant_id (str): Azure AD tenant ID.
+        client_id (str): Service Principal (App Registration) client ID.
+        client_secret (str): Service Principal client secret.
+        api_version (str): API version to use. Defaults to ``"v1"``.
+        responses_model_name (str | None): Default model name for response generation.
+            If provided, registers ``ResponsesModelName`` in the DI container.
+        embeddings_model_name (str | None): Default model name for embeddings.
+            If provided, registers ``EmbeddingsModelName`` in the DI container.
+
+    Example:
+        ```python
+        from pyspark.sql import SparkSession
+        from openaivec.spark_ext import setup_entra_id
+
+        spark = SparkSession.builder.getOrCreate()
+
+        # In Fabric, retrieve the secret from Key Vault first:
+        # secret = notebookutils.credentials.getSecret(kv_url, secret_name)
+
+        setup_entra_id(
+            spark,
+            base_url="https://YOUR-RESOURCE.services.ai.azure.com/openai/v1/",
+            tenant_id="your-tenant-id",
+            client_id="your-client-id",
+            client_secret=secret,
+            responses_model_name="gpt-4.1-mini",
+        )
+        ```
+    """
+    CONTAINER.register(SparkSession, lambda: spark)
+    CONTAINER.register(SparkContext, lambda: CONTAINER.resolve(SparkSession).sparkContext)
+
+    sc = CONTAINER.resolve(SparkContext)
+
+    # Clear stale API-key auth to ensure Entra ID path is used
+    for key in ("OPENAI_API_KEY", "AZURE_OPENAI_API_KEY"):
+        sc.environment.pop(key, None)
+        os.environ.pop(key, None)
+
+    sc.environment["AZURE_OPENAI_BASE_URL"] = base_url
+    sc.environment["AZURE_OPENAI_API_VERSION"] = api_version
+    sc.environment["AZURE_TENANT_ID"] = tenant_id
+    sc.environment["AZURE_CLIENT_ID"] = client_id
+    sc.environment["AZURE_CLIENT_SECRET"] = client_secret
+
+    os.environ["AZURE_OPENAI_BASE_URL"] = base_url
+    os.environ["AZURE_OPENAI_API_VERSION"] = api_version
+    os.environ["AZURE_TENANT_ID"] = tenant_id
+    os.environ["AZURE_CLIENT_ID"] = client_id
+    os.environ["AZURE_CLIENT_SECRET"] = client_secret
 
     if responses_model_name:
         CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName(responses_model_name))

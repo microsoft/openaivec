@@ -515,9 +515,8 @@ class TestFabricEnvironment:
         "AZURE_OPENAI_BASE_URL",
         "AZURE_OPENAI_API_VERSION",
         "AZURE_TENANT_ID",
-        "AZURE_APP_CLIENT_ID",
-        "KEY_VAULT_URL",
-        "KEY_VAULT_SECRET_NAME",
+        "AZURE_CLIENT_ID",
+        "AZURE_CLIENT_SECRET",
     ]
 
     @pytest.fixture(autouse=True)
@@ -576,9 +575,8 @@ class TestFabricEnvironment:
         from openaivec._fabric import is_auth_configured
 
         os.environ["AZURE_TENANT_ID"] = "t"
-        os.environ["AZURE_APP_CLIENT_ID"] = "c"
-        os.environ["KEY_VAULT_URL"] = "https://kv.vault.azure.net/"
-        os.environ["KEY_VAULT_SECRET_NAME"] = "s"
+        os.environ["AZURE_CLIENT_ID"] = "c"
+        os.environ["AZURE_CLIENT_SECRET"] = "s"
 
         assert is_auth_configured() is True
 
@@ -595,8 +593,8 @@ class TestFabricEnvironment:
         from openaivec._fabric import is_partially_configured
 
         os.environ["AZURE_TENANT_ID"] = "t"
-        os.environ["AZURE_APP_CLIENT_ID"] = "c"
-        # KEY_VAULT_URL and KEY_VAULT_SECRET_NAME not set
+        os.environ["AZURE_CLIENT_ID"] = "c"
+        # AZURE_CLIENT_SECRET not set
 
         assert is_partially_configured() is True
 
@@ -605,9 +603,8 @@ class TestFabricEnvironment:
         from openaivec._fabric import is_partially_configured
 
         os.environ["AZURE_TENANT_ID"] = "t"
-        os.environ["AZURE_APP_CLIENT_ID"] = "c"
-        os.environ["KEY_VAULT_URL"] = "https://kv.vault.azure.net/"
-        os.environ["KEY_VAULT_SECRET_NAME"] = "s"
+        os.environ["AZURE_CLIENT_ID"] = "c"
+        os.environ["AZURE_CLIENT_SECRET"] = "s"
 
         assert is_partially_configured() is False
 
@@ -617,107 +614,47 @@ class TestFabricEnvironment:
 
         assert is_partially_configured() is False
 
-    # -- Token provider --
-
-    def test_build_fabric_token_provider_raises_when_vars_missing(self):
-        """Test that build_token_provider raises ValueError with auth flow guidance."""
-        from openaivec._fabric import build_token_provider
-
-        with pytest.raises(ValueError, match="required environment variables are missing") as exc_info:
-            build_token_provider()
-
-        message = str(exc_info.value)
-        assert "Authentication flow" in message
-        assert "Setup steps" in message
-
-    def test_build_fabric_token_provider_calls_key_vault(self):
-        """Test that build_token_provider retrieves secret from Key Vault."""
-        from openaivec._fabric import build_token_provider
-
-        os.environ["AZURE_TENANT_ID"] = "test-tenant"
-        os.environ["AZURE_APP_CLIENT_ID"] = "test-client"
-        os.environ["KEY_VAULT_URL"] = "https://kv.vault.azure.net/"
-        os.environ["KEY_VAULT_SECRET_NAME"] = "my-secret"
-
-        mock_nbu = MagicMock()
-        mock_nbu.credentials.getSecret.return_value = "fake-client-secret"
-        builtins.notebookutils = mock_nbu
-
-        try:
-            with patch("openaivec._fabric.ClientSecretCredential") as mock_cred_cls:
-                mock_cred = MagicMock()
-                mock_cred.get_token.return_value = MagicMock(token="fake-bearer-token")
-                mock_cred_cls.return_value = mock_cred
-
-                provider = build_token_provider()
-                token = provider()
-
-                assert token == "fake-bearer-token"
-                mock_nbu.credentials.getSecret.assert_called_once_with("https://kv.vault.azure.net/", "my-secret")
-                mock_cred_cls.assert_called_once_with(
-                    tenant_id="test-tenant",
-                    client_id="test-client",
-                    client_secret="fake-client-secret",
-                )
-                mock_cred.get_token.assert_called_once_with("https://cognitiveservices.azure.com/.default")
-        finally:
-            del builtins.notebookutils
-
     # -- Client creation (sync) --
 
     @patch("openaivec._fabric.is_fabric_environment", return_value=True)
-    def test_provide_openai_client_uses_fabric_auth(self, _mock_fabric):
-        """Test that provide_openai_client uses Fabric token provider when configured."""
+    def test_provide_openai_client_uses_dac_in_fabric(self, _mock_fabric):
+        """Test that provide_openai_client uses DefaultAzureCredential in Fabric."""
         mock_nbu = MagicMock()
-        mock_nbu.credentials.getSecret.return_value = "fake-secret"
         builtins.notebookutils = mock_nbu
 
         try:
-            with patch("openaivec._fabric.ClientSecretCredential") as mock_cred_cls:
-                mock_cred = MagicMock()
-                mock_cred.get_token.return_value = MagicMock(token="tok")
-                mock_cred_cls.return_value = mock_cred
+            self.set_env_and_reset(
+                AZURE_TENANT_ID="t",
+                AZURE_CLIENT_ID="c",
+                AZURE_CLIENT_SECRET="s",
+                AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
+                AZURE_OPENAI_API_VERSION="v1",
+            )
 
-                self.set_env_and_reset(
-                    AZURE_TENANT_ID="t",
-                    AZURE_APP_CLIENT_ID="c",
-                    KEY_VAULT_URL="https://kv.vault.azure.net/",
-                    KEY_VAULT_SECRET_NAME="s",
-                    AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
-                    AZURE_OPENAI_API_VERSION="v1",
-                )
-
-                client = provide_openai_client()
-                assert isinstance(client, AzureOpenAI)
+            client = provide_openai_client()
+            assert isinstance(client, AzureOpenAI)
         finally:
             del builtins.notebookutils
 
     # -- Client creation (async) --
 
     @patch("openaivec._fabric.is_fabric_environment", return_value=True)
-    def test_provide_async_openai_client_uses_fabric_auth(self, _mock_fabric):
-        """Test that provide_async_openai_client uses Fabric token provider when configured."""
+    def test_provide_async_openai_client_uses_dac_in_fabric(self, _mock_fabric):
+        """Test that provide_async_openai_client uses DefaultAzureCredential in Fabric."""
         mock_nbu = MagicMock()
-        mock_nbu.credentials.getSecret.return_value = "fake-secret"
         builtins.notebookutils = mock_nbu
 
         try:
-            with patch("openaivec._fabric.ClientSecretCredential") as mock_cred_cls:
-                mock_cred = MagicMock()
-                mock_cred.get_token.return_value = MagicMock(token="tok")
-                mock_cred_cls.return_value = mock_cred
+            self.set_env_and_reset(
+                AZURE_TENANT_ID="t",
+                AZURE_CLIENT_ID="c",
+                AZURE_CLIENT_SECRET="s",
+                AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
+                AZURE_OPENAI_API_VERSION="v1",
+            )
 
-                self.set_env_and_reset(
-                    AZURE_TENANT_ID="t",
-                    AZURE_APP_CLIENT_ID="c",
-                    KEY_VAULT_URL="https://kv.vault.azure.net/",
-                    KEY_VAULT_SECRET_NAME="s",
-                    AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
-                    AZURE_OPENAI_API_VERSION="v1",
-                )
-
-                client = provide_async_openai_client()
-                assert isinstance(client, AsyncAzureOpenAI)
+            client = provide_async_openai_client()
+            assert isinstance(client, AsyncAzureOpenAI)
         finally:
             del builtins.notebookutils
 
@@ -727,16 +664,14 @@ class TestFabricEnvironment:
     def test_openai_key_wins_over_fabric(self, _mock_fabric):
         """Test that OPENAI_API_KEY takes priority even in Fabric environment."""
         mock_nbu = MagicMock()
-        mock_nbu.credentials.getSecret.return_value = "fake-secret"
         builtins.notebookutils = mock_nbu
 
         try:
             self.set_env_and_reset(
                 OPENAI_API_KEY="test-key",
                 AZURE_TENANT_ID="t",
-                AZURE_APP_CLIENT_ID="c",
-                KEY_VAULT_URL="https://kv.vault.azure.net/",
-                KEY_VAULT_SECRET_NAME="s",
+                AZURE_CLIENT_ID="c",
+                AZURE_CLIENT_SECRET="s",
                 AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
                 AZURE_OPENAI_API_VERSION="v1",
             )
@@ -747,19 +682,17 @@ class TestFabricEnvironment:
             del builtins.notebookutils
 
     @patch("openaivec._fabric.is_fabric_environment", return_value=True)
-    def test_azure_api_key_wins_over_fabric_token(self, _mock_fabric):
-        """Test that AZURE_OPENAI_API_KEY takes priority over Fabric token provider."""
+    def test_azure_api_key_wins_over_dac(self, _mock_fabric):
+        """Test that AZURE_OPENAI_API_KEY takes priority over DefaultAzureCredential."""
         mock_nbu = MagicMock()
-        mock_nbu.credentials.getSecret.return_value = "fake-secret"
         builtins.notebookutils = mock_nbu
 
         try:
             self.set_env_and_reset(
                 AZURE_OPENAI_API_KEY="azure-key",
                 AZURE_TENANT_ID="t",
-                AZURE_APP_CLIENT_ID="c",
-                KEY_VAULT_URL="https://kv.vault.azure.net/",
-                KEY_VAULT_SECRET_NAME="s",
+                AZURE_CLIENT_ID="c",
+                AZURE_CLIENT_SECRET="s",
                 AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
                 AZURE_OPENAI_API_VERSION="v1",
             )
@@ -772,17 +705,16 @@ class TestFabricEnvironment:
     # -- Fallback to DefaultAzureCredential --
 
     @patch("openaivec._fabric.is_fabric_environment", return_value=True)
-    def test_fabric_falls_back_to_dac_when_vars_missing(self, _mock_fabric):
-        """Test that Fabric without required vars falls back to DefaultAzureCredential."""
+    def test_fabric_uses_dac_when_sp_vars_missing(self, _mock_fabric):
+        """Test that Fabric without SP vars still uses DefaultAzureCredential."""
         mock_nbu = MagicMock()
-        mock_nbu.credentials.getSecret.return_value = "fake-secret"
         builtins.notebookutils = mock_nbu
 
         try:
             self.set_env_and_reset(
                 AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
                 AZURE_OPENAI_API_VERSION="v1",
-                # Fabric vars NOT set → should fall back to DAC
+                # SP vars NOT set → DAC tries other identity sources
             )
 
             client = provide_openai_client()
@@ -804,9 +736,8 @@ class TestFabricEnvironment:
 
         assert "Fabric environment detected" in message
         assert "AZURE_TENANT_ID" in message
-        assert "AZURE_APP_CLIENT_ID" in message
-        assert "KEY_VAULT_URL" in message
-        assert "KEY_VAULT_SECRET_NAME" in message
+        assert "AZURE_CLIENT_ID" in message
+        assert "AZURE_CLIENT_SECRET" in message
         assert "Authentication flow" in message
         assert "Key Vault Secrets User" in message
         assert "AI User" in message
@@ -823,7 +754,7 @@ class TestFabricEnvironment:
         )
 
         assert "Fabric" not in message
-        assert "KEY_VAULT_URL" not in message
+        assert "AZURE_CLIENT_SECRET" not in message
 
     # -- Warning on partial configuration --
 
@@ -831,12 +762,11 @@ class TestFabricEnvironment:
     def test_partial_config_emits_warning_with_guidance(self, _mock_fabric):
         """Test that partial Fabric config emits a UserWarning with detailed setup guidance."""
         mock_nbu = MagicMock()
-        mock_nbu.credentials.getSecret.return_value = "fake-secret"
         builtins.notebookutils = mock_nbu
 
         try:
             os.environ["AZURE_TENANT_ID"] = "t"
-            # Only 1 of 4 vars set → partial config
+            # Only 1 of 3 vars set → partial config
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always")
                 set_default_registrations()
@@ -851,7 +781,7 @@ class TestFabricEnvironment:
             assert "Setup steps" in msg
             assert "Service Principal" in msg
             assert "✓ AZURE_TENANT_ID" in msg
-            assert "✗ AZURE_APP_CLIENT_ID" in msg
+            assert "✗ AZURE_CLIENT_ID" in msg
             assert "AZURE_OPENAI_BASE_URL" in msg
             assert "set_default_registrations()" in msg
         finally:
@@ -859,23 +789,20 @@ class TestFabricEnvironment:
 
     @patch("openaivec._fabric.is_fabric_environment", return_value=True)
     def test_no_warning_when_fully_configured(self, _mock_fabric):
-        """Test that no warning is emitted when all Fabric vars are set."""
+        """Test that no warning is emitted when all SP vars are set."""
         mock_nbu = MagicMock()
-        mock_nbu.credentials.getSecret.return_value = "fake-secret"
         builtins.notebookutils = mock_nbu
 
         try:
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always")
-                with patch("openaivec._fabric.ClientSecretCredential"):
-                    self.set_env_and_reset(
-                        AZURE_TENANT_ID="t",
-                        AZURE_APP_CLIENT_ID="c",
-                        KEY_VAULT_URL="https://kv.vault.azure.net/",
-                        KEY_VAULT_SECRET_NAME="s",
-                        AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
-                        AZURE_OPENAI_API_VERSION="v1",
-                    )
+                self.set_env_and_reset(
+                    AZURE_TENANT_ID="t",
+                    AZURE_CLIENT_ID="c",
+                    AZURE_CLIENT_SECRET="s",
+                    AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
+                    AZURE_OPENAI_API_VERSION="v1",
+                )
 
             fabric_warnings = [x for x in w if "Fabric" in str(x.message)]
             assert len(fabric_warnings) == 0
@@ -909,20 +836,17 @@ class TestFabricEnvironment:
         import logging
 
         mock_nbu = MagicMock()
-        mock_nbu.credentials.getSecret.return_value = "fake-secret"
         builtins.notebookutils = mock_nbu
 
         try:
             with caplog.at_level(logging.INFO, logger="openaivec._fabric"):
-                with patch("openaivec._fabric.ClientSecretCredential"):
-                    self.set_env_and_reset(
-                        AZURE_TENANT_ID="t",
-                        AZURE_APP_CLIENT_ID="c",
-                        KEY_VAULT_URL="https://kv.vault.azure.net/",
-                        KEY_VAULT_SECRET_NAME="s",
-                        AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
-                        AZURE_OPENAI_API_VERSION="v1",
-                    )
+                self.set_env_and_reset(
+                    AZURE_TENANT_ID="t",
+                    AZURE_CLIENT_ID="c",
+                    AZURE_CLIENT_SECRET="s",
+                    AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
+                    AZURE_OPENAI_API_VERSION="v1",
+                )
 
             assert "fully configured" in caplog.text
             assert "✓ AZURE_TENANT_ID" in caplog.text
@@ -946,6 +870,6 @@ class TestFabricEnvironment:
 
             assert "Microsoft Fabric environment detected" in caplog.text
             assert "✓ AZURE_TENANT_ID" in caplog.text
-            assert "✗ AZURE_APP_CLIENT_ID" in caplog.text
+            assert "✗ AZURE_CLIENT_ID" in caplog.text
         finally:
             del builtins.notebookutils
