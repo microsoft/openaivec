@@ -305,7 +305,9 @@ def setup_entra_id(
     base_url: str,
     tenant_id: str,
     client_id: str,
-    client_secret: str,
+    client_secret: str | None = None,
+    kv_url: str | None = None,
+    kv_secret_name: str | None = None,
     api_version: str = "v1",
     responses_model_name: str | None = None,
     embeddings_model_name: str | None = None,
@@ -317,8 +319,9 @@ def setup_entra_id(
     Propagates credentials to both the local process and Spark executors
     via ``sc.environment``.
 
-    This is the recommended setup for Microsoft Fabric when using
-    Key Vault to retrieve the Service Principal's client secret.
+    The client secret can be provided directly via ``client_secret``, or
+    retrieved from Key Vault via ``kv_url`` and ``kv_secret_name`` (requires
+    ``notebookutils`` on the Fabric driver).
 
     Note:
         Any existing ``OPENAI_API_KEY`` or ``AZURE_OPENAI_API_KEY`` is
@@ -330,12 +333,22 @@ def setup_entra_id(
             (e.g. ``"https://YOUR-RESOURCE.services.ai.azure.com/openai/v1/"``).
         tenant_id (str): Azure AD tenant ID.
         client_id (str): Service Principal (App Registration) client ID.
-        client_secret (str): Service Principal client secret.
+        client_secret (str | None): Service Principal client secret.
+            If ``None``, the secret is retrieved from Key Vault using
+            ``kv_url`` and ``kv_secret_name``.
+        kv_url (str | None): Azure Key Vault URL for secret retrieval.
+            Required when ``client_secret`` is ``None``.
+        kv_secret_name (str | None): Secret name in Key Vault.
+            Required when ``client_secret`` is ``None``.
         api_version (str): API version to use. Defaults to ``"v1"``.
         responses_model_name (str | None): Default model name for response generation.
             If provided, registers ``ResponsesModelName`` in the DI container.
         embeddings_model_name (str | None): Default model name for embeddings.
             If provided, registers ``EmbeddingsModelName`` in the DI container.
+
+    Raises:
+        ValueError: If neither ``client_secret`` nor both ``kv_url`` and
+            ``kv_secret_name`` are provided.
 
     Example:
         ```python
@@ -344,19 +357,47 @@ def setup_entra_id(
 
         spark = SparkSession.builder.getOrCreate()
 
-        # In Fabric, retrieve the secret from Key Vault first:
-        # secret = notebookutils.credentials.getSecret(kv_url, secret_name)
-
+        # Option 1: Provide client_secret directly
         setup_entra_id(
             spark,
             base_url="https://YOUR-RESOURCE.services.ai.azure.com/openai/v1/",
             tenant_id="your-tenant-id",
             client_id="your-client-id",
-            client_secret=secret,
-            responses_model_name="gpt-4.1-mini",
+            client_secret="your-secret",
+        )
+
+        # Option 2: Retrieve from Key Vault (Fabric driver only)
+        setup_entra_id(
+            spark,
+            base_url="https://YOUR-RESOURCE.services.ai.azure.com/openai/v1/",
+            tenant_id="your-tenant-id",
+            client_id="your-client-id",
+            kv_url="https://YOUR-KEYVAULT.vault.azure.net/",
+            kv_secret_name="your-secret-name",
         )
         ```
     """
+    if client_secret is None:
+        if not kv_url or not kv_secret_name:
+            raise ValueError(
+                "Either client_secret or both kv_url and kv_secret_name must be provided. "
+                "Use kv_url/kv_secret_name to retrieve the secret from Key Vault on a Fabric driver."
+            )
+        import builtins
+
+        nbu = getattr(builtins, "notebookutils", None)
+        if nbu is None:
+            raise ValueError(
+                "notebookutils is not available. Key Vault retrieval via kv_url/kv_secret_name "
+                "is only supported on the Microsoft Fabric driver."
+            )
+        client_secret = nbu.credentials.getSecret(kv_url, kv_secret_name)
+        if not client_secret:
+            raise ValueError(
+                f"Key Vault returned an empty secret for {kv_secret_name!r} at {kv_url!r}. "
+                "Verify the secret exists and has a non-empty value."
+            )
+
     CONTAINER.register(SparkSession, lambda: spark)
     CONTAINER.register(SparkContext, lambda: CONTAINER.resolve(SparkSession).sparkContext)
 

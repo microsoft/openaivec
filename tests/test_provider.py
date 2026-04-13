@@ -517,6 +517,8 @@ class TestFabricEnvironment:
         "AZURE_TENANT_ID",
         "AZURE_CLIENT_ID",
         "AZURE_CLIENT_SECRET",
+        "KEY_VAULT_URL",
+        "KEY_VAULT_SECRET_NAME",
     ]
 
     @pytest.fixture(autouse=True)
@@ -570,8 +572,19 @@ class TestFabricEnvironment:
 
     # -- Configuration check --
 
-    def test_fabric_auth_configured_true_when_all_vars_set(self):
-        """Test that is_auth_configured returns True when all vars present."""
+    def test_fabric_auth_configured_true_when_kv_vars_set(self):
+        """Test that is_auth_configured returns True when all KV path vars present."""
+        from openaivec._fabric import is_auth_configured
+
+        os.environ["AZURE_TENANT_ID"] = "t"
+        os.environ["AZURE_CLIENT_ID"] = "c"
+        os.environ["KEY_VAULT_URL"] = "https://kv.vault.azure.net/"
+        os.environ["KEY_VAULT_SECRET_NAME"] = "s"
+
+        assert is_auth_configured() is True
+
+    def test_fabric_auth_configured_true_when_direct_vars_set(self):
+        """Test that is_auth_configured returns True when direct path vars present."""
         from openaivec._fabric import is_auth_configured
 
         os.environ["AZURE_TENANT_ID"] = "t"
@@ -581,7 +594,7 @@ class TestFabricEnvironment:
         assert is_auth_configured() is True
 
     def test_fabric_auth_configured_false_when_vars_missing(self):
-        """Test that is_auth_configured returns False when a var is absent."""
+        """Test that is_auth_configured returns False when neither path is complete."""
         from openaivec._fabric import is_auth_configured
 
         os.environ["AZURE_TENANT_ID"] = "t"
@@ -594,12 +607,23 @@ class TestFabricEnvironment:
 
         os.environ["AZURE_TENANT_ID"] = "t"
         os.environ["AZURE_CLIENT_ID"] = "c"
-        # AZURE_CLIENT_SECRET not set
+        # neither KV path nor direct path complete
 
         assert is_partially_configured() is True
 
-    def test_partially_configured_false_when_all_set(self):
-        """Test that is_partially_configured returns False when all vars set."""
+    def test_partially_configured_false_when_kv_path_complete(self):
+        """Test that is_partially_configured returns False when KV path is complete."""
+        from openaivec._fabric import is_partially_configured
+
+        os.environ["AZURE_TENANT_ID"] = "t"
+        os.environ["AZURE_CLIENT_ID"] = "c"
+        os.environ["KEY_VAULT_URL"] = "https://kv.vault.azure.net/"
+        os.environ["KEY_VAULT_SECRET_NAME"] = "s"
+
+        assert is_partially_configured() is False
+
+    def test_partially_configured_false_when_direct_path_complete(self):
+        """Test that is_partially_configured returns False when direct path is complete."""
         from openaivec._fabric import is_partially_configured
 
         os.environ["AZURE_TENANT_ID"] = "t"
@@ -613,6 +637,46 @@ class TestFabricEnvironment:
         from openaivec._fabric import is_partially_configured
 
         assert is_partially_configured() is False
+
+    # -- Key Vault retrieval --
+
+    def test_retrieve_client_secret_from_kv(self):
+        """Test that retrieve_client_secret gets secret from KV and sets env var."""
+        from openaivec._fabric import retrieve_client_secret
+
+        os.environ["KEY_VAULT_URL"] = "https://kv.vault.azure.net/"
+        os.environ["KEY_VAULT_SECRET_NAME"] = "my-secret"
+
+        mock_nbu = MagicMock()
+        mock_nbu.credentials.getSecret.return_value = "fake-client-secret"
+        builtins.notebookutils = mock_nbu
+
+        try:
+            result = retrieve_client_secret()
+            assert result is True
+            assert os.environ["AZURE_CLIENT_SECRET"] == "fake-client-secret"
+            mock_nbu.credentials.getSecret.assert_called_once_with("https://kv.vault.azure.net/", "my-secret")
+        finally:
+            del builtins.notebookutils
+
+    def test_retrieve_client_secret_skips_when_already_set(self):
+        """Test that retrieve_client_secret skips when AZURE_CLIENT_SECRET is already set."""
+        from openaivec._fabric import retrieve_client_secret
+
+        os.environ["AZURE_CLIENT_SECRET"] = "already-set"
+        os.environ["KEY_VAULT_URL"] = "https://kv.vault.azure.net/"
+        os.environ["KEY_VAULT_SECRET_NAME"] = "my-secret"
+
+        result = retrieve_client_secret()
+        assert result is False
+        assert os.environ["AZURE_CLIENT_SECRET"] == "already-set"
+
+    def test_retrieve_client_secret_returns_false_when_kv_vars_missing(self):
+        """Test that retrieve_client_secret returns False when KV vars are absent."""
+        from openaivec._fabric import retrieve_client_secret
+
+        result = retrieve_client_secret()
+        assert result is False
 
     # -- Client creation (sync) --
 
@@ -737,7 +801,8 @@ class TestFabricEnvironment:
         assert "Fabric environment detected" in message
         assert "AZURE_TENANT_ID" in message
         assert "AZURE_CLIENT_ID" in message
-        assert "AZURE_CLIENT_SECRET" in message
+        assert "KEY_VAULT_URL" in message
+        assert "KEY_VAULT_SECRET_NAME" in message
         assert "Authentication flow" in message
         assert "Key Vault Secrets User" in message
         assert "AI User" in message
@@ -754,7 +819,7 @@ class TestFabricEnvironment:
         )
 
         assert "Fabric" not in message
-        assert "AZURE_CLIENT_SECRET" not in message
+        assert "KEY_VAULT_URL" not in message
 
     # -- Warning on partial configuration --
 
@@ -766,7 +831,7 @@ class TestFabricEnvironment:
 
         try:
             os.environ["AZURE_TENANT_ID"] = "t"
-            # Only 1 of 3 vars set → partial config
+            # Only 1 of 4 KV vars set → partial config
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always")
                 set_default_registrations()
@@ -788,8 +853,32 @@ class TestFabricEnvironment:
             del builtins.notebookutils
 
     @patch("openaivec._fabric.is_fabric_environment", return_value=True)
-    def test_no_warning_when_fully_configured(self, _mock_fabric):
-        """Test that no warning is emitted when all SP vars are set."""
+    def test_no_warning_when_kv_path_configured(self, _mock_fabric):
+        """Test that no warning is emitted when all KV path vars are set."""
+        mock_nbu = MagicMock()
+        mock_nbu.credentials.getSecret.return_value = "fake-secret"
+        builtins.notebookutils = mock_nbu
+
+        try:
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                self.set_env_and_reset(
+                    AZURE_TENANT_ID="t",
+                    AZURE_CLIENT_ID="c",
+                    KEY_VAULT_URL="https://kv.vault.azure.net/",
+                    KEY_VAULT_SECRET_NAME="s",
+                    AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
+                    AZURE_OPENAI_API_VERSION="v1",
+                )
+
+            fabric_warnings = [x for x in w if "Fabric" in str(x.message)]
+            assert len(fabric_warnings) == 0
+        finally:
+            del builtins.notebookutils
+
+    @patch("openaivec._fabric.is_fabric_environment", return_value=True)
+    def test_no_warning_when_direct_path_configured(self, _mock_fabric):
+        """Test that no warning is emitted when direct path (AZURE_CLIENT_SECRET) is set."""
         mock_nbu = MagicMock()
         builtins.notebookutils = mock_nbu
 
@@ -836,6 +925,7 @@ class TestFabricEnvironment:
         import logging
 
         mock_nbu = MagicMock()
+        mock_nbu.credentials.getSecret.return_value = "fake-secret"
         builtins.notebookutils = mock_nbu
 
         try:
@@ -843,13 +933,40 @@ class TestFabricEnvironment:
                 self.set_env_and_reset(
                     AZURE_TENANT_ID="t",
                     AZURE_CLIENT_ID="c",
-                    AZURE_CLIENT_SECRET="s",
+                    KEY_VAULT_URL="https://kv.vault.azure.net/",
+                    KEY_VAULT_SECRET_NAME="s",
                     AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
                     AZURE_OPENAI_API_VERSION="v1",
                 )
 
             assert "fully configured" in caplog.text
             assert "✓ AZURE_TENANT_ID" in caplog.text
+        finally:
+            del builtins.notebookutils
+
+    @patch("openaivec._fabric.is_fabric_environment", return_value=True)
+    def test_kv_retrieval_sets_client_secret_during_registration(self, _mock_fabric, caplog):
+        """Test that KV retrieval sets AZURE_CLIENT_SECRET during provider registration."""
+        import logging
+
+        mock_nbu = MagicMock()
+        mock_nbu.credentials.getSecret.return_value = "kv-retrieved-secret"
+        builtins.notebookutils = mock_nbu
+
+        try:
+            with caplog.at_level(logging.INFO, logger="openaivec._fabric"):
+                self.set_env_and_reset(
+                    AZURE_TENANT_ID="t",
+                    AZURE_CLIENT_ID="c",
+                    KEY_VAULT_URL="https://kv.vault.azure.net/",
+                    KEY_VAULT_SECRET_NAME="my-secret",
+                    AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
+                    AZURE_OPENAI_API_VERSION="v1",
+                )
+
+            assert os.environ.get("AZURE_CLIENT_SECRET") == "kv-retrieved-secret"
+            assert "Retrieved client secret from Key Vault" in caplog.text
+            mock_nbu.credentials.getSecret.assert_called_with("https://kv.vault.azure.net/", "my-secret")
         finally:
             del builtins.notebookutils
 

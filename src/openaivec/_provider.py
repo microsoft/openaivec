@@ -212,6 +212,7 @@ def _register_default_providers() -> None:
     CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName("text-embedding-3-small"))
 
     if fabric.is_fabric_environment():
+        fabric.retrieve_client_secret()
         fabric.log_environment_info()
         if fabric.is_partially_configured():
             fabric.warn_incomplete_configuration()
