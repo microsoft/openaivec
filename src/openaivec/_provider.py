@@ -18,6 +18,8 @@ from openaivec._model import (
     AzureTenantID,
     BearerTokenProvider,
     EmbeddingsModelName,
+    KeyVaultSecretName,
+    KeyVaultURL,
     OpenAIAPIKey,
     ResponsesModelName,
 )
@@ -206,13 +208,38 @@ def provide_async_openai_client() -> AsyncOpenAI:
     )
 
 
+def _provide_azure_client_secret() -> AzureClientSecret:
+    """Provide ``AzureClientSecret``, auto-retrieving from Key Vault on Fabric."""
+    secret = os.getenv("AZURE_CLIENT_SECRET")
+    if not secret and fabric.is_fabric_environment():
+        fabric.retrieve_client_secret(
+            kv_url=CONTAINER.resolve(KeyVaultURL).value,
+            secret_name=CONTAINER.resolve(KeyVaultSecretName).value,
+        )
+        secret = os.getenv("AZURE_CLIENT_SECRET")
+    return AzureClientSecret(secret)
+
+
 def _register_default_providers() -> None:
     """Install the library's default provider graph into the shared container."""
     CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName("gpt-4.1-mini"))
     CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName("text-embedding-3-small"))
 
+    CONTAINER.register(OpenAIAPIKey, lambda: OpenAIAPIKey(os.getenv("OPENAI_API_KEY")))
+    CONTAINER.register(AzureOpenAIAPIKey, lambda: AzureOpenAIAPIKey(os.getenv("AZURE_OPENAI_API_KEY")))
+    CONTAINER.register(AzureOpenAIBaseURL, lambda: AzureOpenAIBaseURL(os.getenv("AZURE_OPENAI_BASE_URL")))
+    CONTAINER.register(
+        cls=AzureOpenAIAPIVersion,
+        provider=lambda: AzureOpenAIAPIVersion(os.getenv("AZURE_OPENAI_API_VERSION", "v1")),
+    )
+    CONTAINER.register(AzureTenantID, lambda: AzureTenantID(os.getenv("AZURE_TENANT_ID")))
+    CONTAINER.register(AzureClientID, lambda: AzureClientID(os.getenv("AZURE_CLIENT_ID")))
+    CONTAINER.register(KeyVaultURL, lambda: KeyVaultURL(os.getenv("KEY_VAULT_URL")))
+    CONTAINER.register(KeyVaultSecretName, lambda: KeyVaultSecretName(os.getenv("KEY_VAULT_SECRET_NAME")))
+    CONTAINER.register(AzureClientSecret, _provide_azure_client_secret)
+
     if fabric.is_fabric_environment():
-        fabric.retrieve_client_secret()
+        CONTAINER.resolve(AzureClientSecret)
         fabric.log_environment_info()
         if fabric.is_partially_configured():
             fabric.warn_incomplete_configuration()
@@ -228,16 +255,6 @@ def _register_default_providers() -> None:
         ),
     )
 
-    CONTAINER.register(OpenAIAPIKey, lambda: OpenAIAPIKey(os.getenv("OPENAI_API_KEY")))
-    CONTAINER.register(AzureOpenAIAPIKey, lambda: AzureOpenAIAPIKey(os.getenv("AZURE_OPENAI_API_KEY")))
-    CONTAINER.register(AzureOpenAIBaseURL, lambda: AzureOpenAIBaseURL(os.getenv("AZURE_OPENAI_BASE_URL")))
-    CONTAINER.register(
-        cls=AzureOpenAIAPIVersion,
-        provider=lambda: AzureOpenAIAPIVersion(os.getenv("AZURE_OPENAI_API_VERSION", "v1")),
-    )
-    CONTAINER.register(AzureTenantID, lambda: AzureTenantID(os.getenv("AZURE_TENANT_ID")))
-    CONTAINER.register(AzureClientID, lambda: AzureClientID(os.getenv("AZURE_CLIENT_ID")))
-    CONTAINER.register(AzureClientSecret, lambda: AzureClientSecret(os.getenv("AZURE_CLIENT_SECRET")))
     CONTAINER.register(OpenAI, provide_openai_client)
     CONTAINER.register(AsyncOpenAI, provide_async_openai_client)
     CONTAINER.register(tiktoken.Encoding, lambda: tiktoken.get_encoding("o200k_base"))

@@ -131,7 +131,7 @@ def is_partially_configured() -> bool:
     return any(os.getenv(name) for name in _ALL_AUTH_VARS)
 
 
-def retrieve_client_secret() -> bool:
+def retrieve_client_secret(*, kv_url: str | None = None, secret_name: str | None = None) -> bool:
     """Retrieve the client secret from Key Vault on a Fabric driver.
 
     When ``KEY_VAULT_URL`` and ``KEY_VAULT_SECRET_NAME`` are set and
@@ -139,14 +139,18 @@ def retrieve_client_secret() -> bool:
     ``notebookutils.credentials.getSecret`` and stores the result in
     ``os.environ["AZURE_CLIENT_SECRET"]``.
 
+    Args:
+        kv_url (str | None): Key Vault URL. Falls back to ``os.getenv("KEY_VAULT_URL")``.
+        secret_name (str | None): Secret name. Falls back to ``os.getenv("KEY_VAULT_SECRET_NAME")``.
+
     Returns:
         bool: ``True`` if the secret was successfully retrieved and set.
     """
     if os.getenv("AZURE_CLIENT_SECRET"):
         return False
 
-    kv_url = os.getenv("KEY_VAULT_URL")
-    secret_name = os.getenv("KEY_VAULT_SECRET_NAME")
+    kv_url = kv_url or os.getenv("KEY_VAULT_URL")
+    secret_name = secret_name or os.getenv("KEY_VAULT_SECRET_NAME")
     if not kv_url or not secret_name:
         return False
 
