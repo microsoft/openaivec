@@ -33,26 +33,6 @@ _DEFAULT_REGISTRATIONS_LOCK = threading.RLock()
 _DEFAULT_REGISTRATIONS_READY = False
 _IGNORE_API_KEYS = frozenset(["place_holder_for_fabric_internal"])
 
-_PLACEHOLDER_API_KEYS: frozenset[str] = frozenset({"place_holder_for_fabric_internal"})
-
-
-def _sanitize_api_key(value: str | None) -> str | None:
-    """Return ``None`` when ``value`` is empty or a known placeholder.
-
-    Microsoft Fabric injects ``OPENAI_API_KEY=place_holder_for_fabric_internal``
-    into the environment, which is not a usable key. This helper treats such
-    values as absent so the library can fall through to Azure / Entra ID auth.
-
-    Args:
-        value (str | None): Raw environment-variable value.
-
-    Returns:
-        str | None: The original value, or ``None`` if it is a placeholder.
-    """
-    if not value or value in _PLACEHOLDER_API_KEYS:
-        return None
-    return value
-
 
 def _build_missing_credentials_error(
     openai_api_key: str | None,
@@ -155,7 +135,7 @@ def provide_openai_client() -> OpenAI:
     if azure_base_url.value and azure_api_version.value:
         _check_azure_v1_api_url(azure_base_url.value)
 
-        if azure_api_key.value:
+        if azure_api_key.value and azure_api_key.value not in _IGNORE_API_KEYS:
             return AzureOpenAI(
                 api_key=azure_api_key.value,
                 base_url=azure_base_url.value,
@@ -206,7 +186,7 @@ def provide_async_openai_client() -> AsyncOpenAI:
     if azure_base_url.value and azure_api_version.value:
         _check_azure_v1_api_url(azure_base_url.value)
 
-        if azure_api_key.value:
+        if azure_api_key.value and azure_api_key.value not in _IGNORE_API_KEYS:
             return AsyncAzureOpenAI(
                 api_key=azure_api_key.value,
                 base_url=azure_base_url.value,
@@ -266,7 +246,7 @@ def _register_default_providers() -> None:
     CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName("gpt-4.1-mini"))
     CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName("text-embedding-3-small"))
 
-    CONTAINER.register(OpenAIAPIKey, lambda: OpenAIAPIKey(_sanitize_api_key(os.getenv("OPENAI_API_KEY"))))
+    CONTAINER.register(OpenAIAPIKey, lambda: OpenAIAPIKey(os.getenv("OPENAI_API_KEY")))
     CONTAINER.register(AzureOpenAIAPIKey, lambda: AzureOpenAIAPIKey(os.getenv("AZURE_OPENAI_API_KEY")))
     CONTAINER.register(AzureOpenAIBaseURL, lambda: AzureOpenAIBaseURL(os.getenv("AZURE_OPENAI_BASE_URL")))
     CONTAINER.register(
