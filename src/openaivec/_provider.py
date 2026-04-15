@@ -31,6 +31,7 @@ __all__ = []
 CONTAINER = di.Container()
 _DEFAULT_REGISTRATIONS_LOCK = threading.RLock()
 _DEFAULT_REGISTRATIONS_READY = False
+_IGNORE_API_KEY_LIST = ["place_holder_for_fabric_internal"]
 
 
 def _build_missing_credentials_error(
@@ -124,7 +125,7 @@ def provide_openai_client() -> OpenAI:
     """
     ensure_default_registrations()
     openai_api_key = CONTAINER.resolve(OpenAIAPIKey)
-    if openai_api_key.value:
+    if openai_api_key.value and openai_api_key.value not in _IGNORE_API_KEY_LIST:
         return OpenAI()
 
     azure_api_key = CONTAINER.resolve(AzureOpenAIAPIKey)
@@ -175,7 +176,7 @@ def provide_async_openai_client() -> AsyncOpenAI:
     """
     ensure_default_registrations()
     openai_api_key = CONTAINER.resolve(OpenAIAPIKey)
-    if openai_api_key.value:
+    if openai_api_key.value and openai_api_key.value not in _IGNORE_API_KEY_LIST:
         return AsyncOpenAI()
 
     azure_api_key = CONTAINER.resolve(AzureOpenAIAPIKey)
