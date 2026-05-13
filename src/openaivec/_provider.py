@@ -28,6 +28,8 @@ from openaivec._util import TextChunker
 
 __all__ = []
 
+_ENTRA_ID_API_KEY_PLACEHOLDER = "<azure_ad_token_provider>"
+
 CONTAINER = di.Container()
 _DEFAULT_REGISTRATIONS_LOCK = threading.RLock()
 _DEFAULT_REGISTRATIONS_READY = False
@@ -143,6 +145,7 @@ def provide_openai_client() -> OpenAI:
             )
 
         return AzureOpenAI(
+            api_key=_ENTRA_ID_API_KEY_PLACEHOLDER,
             azure_ad_token_provider=CONTAINER.resolve(BearerTokenProvider).value,
             base_url=azure_base_url.value,
             api_version=azure_api_version.value,
@@ -194,6 +197,7 @@ def provide_async_openai_client() -> AsyncOpenAI:
             )
 
         return AsyncAzureOpenAI(
+            api_key=_ENTRA_ID_API_KEY_PLACEHOLDER,
             azure_ad_token_provider=CONTAINER.resolve(BearerTokenProvider).value,
             base_url=azure_base_url.value,
             api_version=azure_api_version.value,
