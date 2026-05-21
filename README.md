@@ -438,9 +438,23 @@ Inside Fabric notebooks, the recommended way to authenticate against Azure OpenA
 **One-time setup**
 
 1. Create a Service Principal (App Registration) in Microsoft Entra ID and generate a client secret.
-2. Assign the Service Principal a data-plane role on the AI resource (for example, `Cognitive Services OpenAI User` on the Azure OpenAI resource, or `Azure AI User` on the Foundry project).
+2. Assign the Service Principal a data-plane role on the AI resource so it can call inference (see role table below).
 3. Store the client secret in an Azure Key Vault.
 4. Grant the **Fabric Workspace identity** the `Key Vault Secrets User` role on that Key Vault. The workspace identity — not the user — is what authenticates from the notebook to Key Vault.
+
+**Required Azure roles**
+
+| Identity | Role | Scope | Purpose |
+|---|---|---|---|
+| Service Principal | [`Cognitive Services OpenAI User`](https://learn.microsoft.com/azure/ai-foundry/openai/how-to/role-based-access-control#cognitive-services-openai-user) | Azure OpenAI resource (or its resource group / subscription) | Call `responses` / `embeddings` against an Azure OpenAI endpoint. |
+| Service Principal | [`Azure AI User`](https://learn.microsoft.com/azure/ai-foundry/concepts/rbac-azure-ai-foundry#azure-ai-user) | Azure AI Foundry project (Cognitive Services / AI Services account) | Call inference through a Foundry project endpoint (`/api/projects/<name>/openai/v1/`). |
+| Fabric Workspace identity | [`Key Vault Secrets User`](https://learn.microsoft.com/azure/key-vault/general/rbac-guide#azure-built-in-roles-for-key-vault-data-plane-operations) | The Key Vault holding the SP secret | Allow `notebookutils.credentials.getSecret` to read the secret at runtime. |
+
+Notes:
+
+- Use **`Cognitive Services OpenAI User`** when you talk directly to an Azure OpenAI resource endpoint (`https://<resource>.openai.azure.com/` or `https://<resource>.services.ai.azure.com/openai/v1/`). It grants the minimum needed to invoke deployments; do **not** assign `Cognitive Services OpenAI Contributor` unless the SP must also manage deployments.
+- Use **`Azure AI User`** when you call a Foundry project endpoint (Option B below). Foundry data-plane RBAC is documented at [Role-based access control for Azure AI Foundry](https://learn.microsoft.com/azure/ai-foundry/concepts/rbac-azure-ai-foundry).
+- The Key Vault must use [Azure RBAC permission model](https://learn.microsoft.com/azure/key-vault/general/rbac-guide) (not legacy access policies) for `Key Vault Secrets User` to take effect.
 
 References: [NotebookUtils credentials](https://learn.microsoft.com/fabric/data-engineering/notebookutils/notebookutils-credentials), [Fabric Spark security: accessing Key Vault](https://learn.microsoft.com/fabric/data-engineering/spark-best-practices-security#accessing-azure-key-vault-akv-from-notebook), [Azure OpenAI with Microsoft Entra ID](https://learn.microsoft.com/azure/ai-foundry/openai/how-to/managed-identity).
 
