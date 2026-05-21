@@ -307,6 +307,34 @@ class TestProvideAsyncOpenAIClient:
 
         assert isinstance(client, AsyncOpenAI)
 
+    def test_provide_async_openai_client_entra_id_token_provider_is_awaitable(self):
+        """The Entra ID token provider passed to AsyncAzureOpenAI must be an async callable.
+
+        Regression test for ``TypeError: object str can't be used in 'await' expression``
+        raised by ``AsyncAzureOpenAI._refresh_api_key`` when a synchronous
+        ``azure_ad_token_provider`` is supplied.
+        """
+        import asyncio
+        import inspect
+
+        from openaivec._model import BearerTokenProvider
+        from openaivec._provider import CONTAINER
+
+        self.set_env_and_reset(
+            AZURE_OPENAI_BASE_URL="https://test.services.ai.azure.com/openai/v1/",
+            AZURE_OPENAI_API_VERSION="v1",
+        )
+        CONTAINER.register(BearerTokenProvider, lambda: BearerTokenProvider(value=lambda: "fake-token"))
+
+        client = provide_async_openai_client()
+
+        assert isinstance(client, AsyncAzureOpenAI)
+        token_provider = client._azure_ad_token_provider
+        assert token_provider is not None
+        assert inspect.iscoroutinefunction(token_provider)
+        token = asyncio.run(token_provider())
+        assert token == "fake-token"
+
 
 @pytest.mark.integration
 class TestProviderIntegration:

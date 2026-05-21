@@ -196,9 +196,14 @@ def provide_async_openai_client() -> AsyncOpenAI:
                 api_version=azure_api_version.value,
             )
 
+        sync_token_provider = CONTAINER.resolve(BearerTokenProvider).value
+
+        async def _async_token_provider() -> str:
+            return sync_token_provider()
+
         return AsyncAzureOpenAI(
             api_key=_ENTRA_ID_API_KEY_PLACEHOLDER,
-            azure_ad_token_provider=CONTAINER.resolve(BearerTokenProvider).value,
+            azure_ad_token_provider=_async_token_provider,
             base_url=azure_base_url.value,
             api_version=azure_api_version.value,
         )
