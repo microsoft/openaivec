@@ -431,6 +431,79 @@ prompt = (
 
 [Microsoft Fabric](https://www.microsoft.com/en-us/microsoft-fabric/) is a unified, cloud-based analytics platform. Add `openaivec` from PyPI in your Fabric environment, select it in your notebook, and use `openaivec.spark_ext` like standard Spark.
 
+### Recommended authentication: Service Principal + Key Vault
+
+Inside Fabric notebooks, the recommended way to authenticate against Azure OpenAI / Azure AI Foundry is to keep a Service Principal client secret in Azure Key Vault and retrieve it through [`notebookutils.credentials.getSecret`](https://learn.microsoft.com/fabric/data-engineering/notebookutils/notebookutils-credentials#get-secret). Never hard-code secrets in notebooks.
+
+**One-time setup**
+
+1. Create a Service Principal (App Registration) in Microsoft Entra ID and generate a client secret.
+2. Assign the Service Principal a data-plane role on the AI resource (for example, `Cognitive Services OpenAI User` on the Azure OpenAI resource, or `Azure AI User` on the Foundry project).
+3. Store the client secret in an Azure Key Vault.
+4. Grant the **Fabric Workspace identity** the `Key Vault Secrets User` role on that Key Vault. The workspace identity — not the user — is what authenticates from the notebook to Key Vault.
+
+References: [NotebookUtils credentials](https://learn.microsoft.com/fabric/data-engineering/notebookutils/notebookutils-credentials), [Fabric Spark security: accessing Key Vault](https://learn.microsoft.com/fabric/data-engineering/spark-best-practices-security#accessing-azure-key-vault-akv-from-notebook), [Azure OpenAI with Microsoft Entra ID](https://learn.microsoft.com/azure/ai-foundry/openai/how-to/managed-identity).
+
+#### Option A — env-var driven (recommended)
+
+`openaivec` detects Fabric and pulls the client secret from Key Vault automatically when these four env vars are set, then builds the bearer-token provider for you:
+
+```python
+import os
+
+os.environ["AZURE_TENANT_ID"]          = "<your-tenant-id>"          # Service Principal tenant
+os.environ["AZURE_CLIENT_ID"]          = "<your-client-id>"          # Service Principal client ID
+os.environ["KEY_VAULT_URL"]            = "https://<your-keyvault>.vault.azure.net/"
+os.environ["KEY_VAULT_SECRET_NAME"]    = "<your-secret-name>"        # SP client secret in KV
+
+os.environ["AZURE_OPENAI_BASE_URL"]    = "https://<your-resource>.services.ai.azure.com/openai/v1/"
+os.environ["AZURE_OPENAI_API_VERSION"] = "v1"
+
+import pandas as pd
+from openaivec import pandas_ext  # noqa: F401  registers the .ai accessor
+
+pd.Series(["apple", "banana"]).ai.responses("Translate to French.")
+```
+
+Do **not** set `AZURE_OPENAI_API_KEY`; leaving it unset is what triggers the Entra ID code path.
+
+#### Option B — bring your own `OpenAI` client (Foundry project endpoint)
+
+For Azure AI Foundry **project endpoints** (`/api/projects/<name>/openai/v1/`) you can build the `OpenAI` client manually and hand it to `openaivec`:
+
+```python
+import notebookutils
+from azure.identity import ClientSecretCredential, get_bearer_token_provider
+from openai import OpenAI
+
+import openaivec
+
+TENANT_ID = "<your-tenant-id>"           # Service Principal tenant
+CLIENT_ID = "<your-client-id>"           # Service Principal client ID
+KV_URI    = "https://<your-keyvault>.vault.azure.net/"
+SECRET    = "<your-secret-name>"         # SP client secret in KV
+
+client_secret = notebookutils.credentials.getSecret(KV_URI, SECRET)
+
+credential = ClientSecretCredential(
+    tenant_id=TENANT_ID,
+    client_id=CLIENT_ID,
+    client_secret=client_secret,
+)
+token_provider = get_bearer_token_provider(
+    credential,
+    "https://cognitiveservices.azure.com/.default",
+)
+
+openaivec.set_client(OpenAI(
+    base_url="https://<your-resource>.services.ai.azure.com/api/projects/<your-project>/openai/v1/",
+    api_key=token_provider,
+))
+openaivec.set_responses_model("<your-deployment-or-model>")
+```
+
+The `https://cognitiveservices.azure.com/.default` scope is the [documented audience for Azure OpenAI / Azure AI Foundry inference](https://learn.microsoft.com/azure/ai-foundry/openai/reference#authentication).
+
 ## Contributing
 
 We welcome contributions! Please:
