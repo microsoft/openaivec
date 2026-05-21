@@ -240,9 +240,7 @@ def _provide_bearer_token_provider() -> BearerTokenProvider:
     else:
         credential = DefaultAzureCredential()
 
-    return BearerTokenProvider(
-        value=get_bearer_token_provider(credential, "https://cognitiveservices.azure.com/.default")
-    )
+    return BearerTokenProvider(value=get_bearer_token_provider(credential, "https://ai.azure.com/.default"))
 
 
 def _register_default_providers() -> None:
