@@ -506,7 +506,7 @@ credential = ClientSecretCredential(
 )
 token_provider = get_bearer_token_provider(
     credential,
-    "https://cognitiveservices.azure.com/.default",
+    "https://ai.azure.com/.default",
 )
 
 openaivec.set_client(OpenAI(
@@ -516,7 +516,7 @@ openaivec.set_client(OpenAI(
 openaivec.set_responses_model("<your-deployment-or-model>")
 ```
 
-The `https://cognitiveservices.azure.com/.default` scope is the [documented audience for Azure OpenAI / Azure AI Foundry inference](https://learn.microsoft.com/azure/ai-foundry/openai/reference#authentication).
+The `https://ai.azure.com/.default` scope is the [documented audience for Microsoft Foundry Models endpoints](https://learn.microsoft.com/azure/foundry/foundry-models/concepts/endpoints#keyless-authentication) (`*.services.ai.azure.com`). Older classic Azure OpenAI references may show `https://cognitiveservices.azure.com/.default`; for the Foundry endpoint shape recommended above, use `ai.azure.com`.
 
 ## Contributing
 
