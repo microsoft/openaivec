@@ -119,10 +119,9 @@ import os
 
 os.environ["AZURE_OPENAI_API_KEY"] = "your-azure-openai-api-key"
 os.environ["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
-os.environ["AZURE_OPENAI_API_VERSION"] = "v1"
 ```
 
-Use `AZURE_OPENAI_API_VERSION="v1"` together with the `/openai/v1/` base URL.
+The base URL must end with `/openai/v1/`.
 
 #### Azure OpenAI with Entra ID (no API key)
 
@@ -130,7 +129,6 @@ Use `AZURE_OPENAI_API_VERSION="v1"` together with the `/openai/v1/` base URL.
 import os
 
 os.environ["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
-os.environ["AZURE_OPENAI_API_VERSION"] = "v1"
 os.environ.pop("AZURE_OPENAI_API_KEY", None)
 ```
 
@@ -292,13 +290,12 @@ setup_azure(
     spark,
     api_key="your-azure-openai-api-key",
     base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
-    api_version="v1",
     responses_model_name="my-gpt-deployment",
     embeddings_model_name="my-embedding-deployment",
 )
 ```
 
-Use `api_version="v1"` with a base URL that ends in `/openai/v1/`.
+The base URL must end with `/openai/v1/`.
 
 #### Azure OpenAI with Entra ID (no API key)
 
@@ -306,7 +303,6 @@ Use `api_version="v1"` with a base URL that ends in `/openai/v1/`.
 import os
 
 os.environ["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
-os.environ["AZURE_OPENAI_API_VERSION"] = "v1"
 os.environ.pop("AZURE_OPENAI_API_KEY", None)
 ```
 
@@ -471,7 +467,6 @@ os.environ["KEY_VAULT_URL"]            = "https://<your-keyvault>.vault.azure.ne
 os.environ["KEY_VAULT_SECRET_NAME"]    = "<your-secret-name>"        # SP client secret in KV
 
 os.environ["AZURE_OPENAI_BASE_URL"]    = "https://<your-resource>.services.ai.azure.com/openai/v1/"
-os.environ["AZURE_OPENAI_API_VERSION"] = "v1"
 
 import pandas as pd
 from openaivec import pandas_ext  # noqa: F401  registers the .ai accessor
