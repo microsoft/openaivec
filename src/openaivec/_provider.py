@@ -1,11 +1,10 @@
 import os
 import threading
-import warnings
 
 import duckdb
 import tiktoken
 from azure.identity import ClientSecretCredential, DefaultAzureCredential, get_bearer_token_provider
-from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
+from openai import AsyncOpenAI, OpenAI
 
 from openaivec import _di as di
 from openaivec import _fabric as fabric
@@ -13,7 +12,6 @@ from openaivec._model import (
     AzureClientID,
     AzureClientSecret,
     AzureOpenAIAPIKey,
-    AzureOpenAIAPIVersion,
     AzureOpenAIBaseURL,
     AzureTenantID,
     BearerTokenProvider,
@@ -28,7 +26,7 @@ from openaivec._util import TextChunker
 
 __all__ = []
 
-_ENTRA_ID_API_KEY_PLACEHOLDER = "<azure_ad_token_provider>"
+_FOUNDRY_SCOPE = "https://ai.azure.com/.default"
 
 CONTAINER = di.Container()
 _DEFAULT_REGISTRATIONS_LOCK = threading.RLock()
@@ -36,11 +34,86 @@ _DEFAULT_REGISTRATIONS_READY = False
 _IGNORE_API_KEYS = frozenset(["place_holder_for_fabric_internal"])
 
 
+# ---------------------------------------------------------------------------
+# Credential / URL helpers
+# ---------------------------------------------------------------------------
+
+
+def _ensure_v1(base_url: str) -> str:
+    """Normalize an Azure OpenAI base URL to end with ``/openai/v1/``.
+
+    The v1 API is the only supported surface; legacy URLs are silently rewritten.
+
+    Args:
+        base_url (str): A base URL such as ``https://X.services.ai.azure.com``,
+            ``https://X.services.ai.azure.com/openai``, or
+            ``https://X.services.ai.azure.com/openai/v1/``.
+
+    Returns:
+        str: A URL guaranteed to end with ``/openai/v1/``.
+    """
+    trimmed = base_url.rstrip("/")
+    if trimmed.endswith("/openai/v1"):
+        return trimmed + "/"
+    if trimmed.endswith("/openai"):
+        return trimmed + "/v1/"
+    return trimmed + "/openai/v1/"
+
+
+def _is_usable(value: str | None) -> bool:
+    """Return True when ``value`` is a non-empty, non-placeholder credential."""
+    return bool(value) and value not in _IGNORE_API_KEYS
+
+
+def _build_client_kwargs() -> dict:
+    """Resolve credentials from the DI container and build ``OpenAI(**kw)`` kwargs.
+
+    Selection order:
+
+    1. ``OPENAI_API_KEY`` set → OpenAI public API (``{"api_key": key}``).
+    2. ``AZURE_OPENAI_BASE_URL`` set:
+
+       a. ``AZURE_OPENAI_API_KEY`` set → Azure API-key auth
+          (``{"api_key": key, "base_url": url}``).
+       b. Otherwise → Azure Entra ID auth
+          (``{"api_key": token_provider, "base_url": url}``).
+          The bearer-token provider is built from a ``ClientSecretCredential``
+          when Tenant/Client/Secret are present (Fabric retrieves the secret
+          from Key Vault automatically), otherwise from
+          ``DefaultAzureCredential``.
+
+    Returns:
+        dict: Keyword arguments to pass to ``OpenAI`` / ``AsyncOpenAI``.
+
+    Raises:
+        ValueError: When no usable credentials are found.
+    """
+    openai_key = CONTAINER.resolve(OpenAIAPIKey).value
+    if _is_usable(openai_key):
+        return {"api_key": openai_key}
+
+    base_url = CONTAINER.resolve(AzureOpenAIBaseURL).value
+    if base_url:
+        base_url = _ensure_v1(base_url)
+        azure_key = CONTAINER.resolve(AzureOpenAIAPIKey).value
+        if _is_usable(azure_key):
+            return {"api_key": azure_key, "base_url": base_url}
+        token_provider = CONTAINER.resolve(BearerTokenProvider).value
+        return {"api_key": token_provider, "base_url": base_url}
+
+    raise ValueError(
+        _build_missing_credentials_error(
+            openai_api_key=openai_key,
+            azure_api_key=CONTAINER.resolve(AzureOpenAIAPIKey).value,
+            azure_base_url=base_url,
+        )
+    )
+
+
 def _build_missing_credentials_error(
     openai_api_key: str | None,
     azure_api_key: str | None,
     azure_base_url: str | None,
-    azure_api_version: str | None,
 ) -> str:
     """Build a detailed error message for missing credentials.
 
@@ -48,14 +121,12 @@ def _build_missing_credentials_error(
         openai_api_key (str | None): The OpenAI API key value.
         azure_api_key (str | None): The Azure OpenAI API key value.
         azure_base_url (str | None): The Azure OpenAI base URL value.
-        azure_api_version (str | None): The Azure OpenAI API version value.
 
     Returns:
         str: A detailed error message with missing variables and setup instructions.
     """
     lines = ["No valid OpenAI or Azure OpenAI credentials found.", ""]
 
-    # Check OpenAI
     lines.append("Option 1: Set OPENAI_API_KEY for OpenAI")
     if openai_api_key:
         lines.append("  ✓ OPENAI_API_KEY is set")
@@ -64,14 +135,12 @@ def _build_missing_credentials_error(
         lines.append('    Example: export OPENAI_API_KEY="sk-..."')
     lines.append("")
 
-    # Check Azure OpenAI
     lines.append("Option 2: Configure Azure OpenAI endpoint (API key or Entra ID)")
-    lines.append("  Azure requires: AZURE_OPENAI_BASE_URL and AZURE_OPENAI_API_VERSION")
+    lines.append("  Azure requires: AZURE_OPENAI_BASE_URL")
     lines.append("  Authentication: AZURE_OPENAI_API_KEY or Entra ID (DefaultAzureCredential)")
     azure_vars = [
         ("AZURE_OPENAI_API_KEY (optional)", azure_api_key, '"your-azure-api-key"'),
         ("AZURE_OPENAI_BASE_URL", azure_base_url, '"https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"'),
-        ("AZURE_OPENAI_API_VERSION", azure_api_version, '"v1"'),
     ]
     for var_name, var_value, example in azure_vars:
         if var_value:
@@ -86,136 +155,43 @@ def _build_missing_credentials_error(
     return "\n".join(lines)
 
 
-def _check_azure_v1_api_url(base_url: str) -> None:
-    """Check if Azure OpenAI base URL uses the recommended v1 API format.
-
-    Issues a warning if the URL doesn't end with '/openai/v1/' to encourage
-    migration to the v1 API format as recommended by Microsoft.
-
-    Reference: https://learn.microsoft.com/en-us/azure/ai-foundry/openai/api-version-lifecycle
-
-    Args:
-        base_url (str): The Azure OpenAI base URL to check.
-    """
-    if base_url and not base_url.rstrip("/").endswith("/openai/v1"):
-        warnings.warn(
-            "Azure OpenAI v1 API is recommended. Your base URL should end with '/openai/v1/'. "
-            f"Current URL: '{base_url}'. "
-            "Consider updating to: 'https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/' "
-            "for better performance and future compatibility. "
-            "See: https://learn.microsoft.com/en-us/azure/ai-foundry/openai/api-version-lifecycle",
-            UserWarning,
-            stacklevel=3,
-        )
+# ---------------------------------------------------------------------------
+# Provider functions registered in the DI container
+# ---------------------------------------------------------------------------
 
 
 def provide_openai_client() -> OpenAI:
-    """Provide OpenAI client based on environment variables.
+    """Provide an ``OpenAI`` client configured from environment / DI state.
 
-    Automatically detects and prioritizes OpenAI over Azure OpenAI configuration.
-    Checks the following environment variables in order:
-    1. OPENAI_API_KEY - if set, creates standard OpenAI client.
-    2. AZURE_OPENAI_BASE_URL and AZURE_OPENAI_API_VERSION - if set, creates AzureOpenAI.
-       Authentication uses AZURE_OPENAI_API_KEY when present, otherwise Entra ID
-       via bearer token provider.
+    With the v1 API a single ``openai.OpenAI`` class covers all three auth
+    paths (OpenAI direct, Azure API key, Azure Entra ID) by varying
+    ``api_key`` (string or callable) and ``base_url``.
 
     Returns:
-        OpenAI: Configured OpenAI or AzureOpenAI client instance.
+        OpenAI: A configured client.
 
     Raises:
-        ValueError: If no valid environment variables are found for either service.
+        ValueError: When no usable credentials are found.
     """
     ensure_default_registrations()
-    openai_api_key = CONTAINER.resolve(OpenAIAPIKey)
-    if openai_api_key.value and openai_api_key.value not in _IGNORE_API_KEYS:
-        return OpenAI()
-
-    azure_api_key = CONTAINER.resolve(AzureOpenAIAPIKey)
-    azure_base_url = CONTAINER.resolve(AzureOpenAIBaseURL)
-    azure_api_version = CONTAINER.resolve(AzureOpenAIAPIVersion)
-
-    if azure_base_url.value and azure_api_version.value:
-        _check_azure_v1_api_url(azure_base_url.value)
-
-        if azure_api_key.value and azure_api_key.value not in _IGNORE_API_KEYS:
-            return AzureOpenAI(
-                api_key=azure_api_key.value,
-                base_url=azure_base_url.value,
-                api_version=azure_api_version.value,
-            )
-
-        return AzureOpenAI(
-            api_key=_ENTRA_ID_API_KEY_PLACEHOLDER,
-            azure_ad_token_provider=CONTAINER.resolve(BearerTokenProvider).value,
-            base_url=azure_base_url.value,
-            api_version=azure_api_version.value,
-        )
-
-    raise ValueError(
-        _build_missing_credentials_error(
-            openai_api_key=openai_api_key.value,
-            azure_api_key=azure_api_key.value,
-            azure_base_url=azure_base_url.value,
-            azure_api_version=azure_api_version.value,
-        )
-    )
+    return OpenAI(**_build_client_kwargs())
 
 
 def provide_async_openai_client() -> AsyncOpenAI:
-    """Provide asynchronous OpenAI client based on environment variables.
+    """Provide an ``AsyncOpenAI`` client configured from environment / DI state.
 
-    Automatically detects and prioritizes OpenAI over Azure OpenAI configuration.
-    Checks the following environment variables in order:
-    1. OPENAI_API_KEY - if set, creates standard AsyncOpenAI client.
-    2. AZURE_OPENAI_BASE_URL and AZURE_OPENAI_API_VERSION - if set, creates AsyncAzureOpenAI.
-       Authentication uses AZURE_OPENAI_API_KEY when present, otherwise Entra ID
-       via bearer token provider.
+    Mirrors :func:`provide_openai_client` for the async client. The same
+    bearer-token provider (a synchronous callable) is accepted by the SDK as
+    ``api_key`` for both sync and async clients.
 
     Returns:
-        AsyncOpenAI: Configured AsyncOpenAI or AsyncAzureOpenAI client instance.
+        AsyncOpenAI: A configured async client.
 
     Raises:
-        ValueError: If no valid environment variables are found for either service.
+        ValueError: When no usable credentials are found.
     """
     ensure_default_registrations()
-    openai_api_key = CONTAINER.resolve(OpenAIAPIKey)
-    if openai_api_key.value and openai_api_key.value not in _IGNORE_API_KEYS:
-        return AsyncOpenAI()
-
-    azure_api_key = CONTAINER.resolve(AzureOpenAIAPIKey)
-    azure_base_url = CONTAINER.resolve(AzureOpenAIBaseURL)
-    azure_api_version = CONTAINER.resolve(AzureOpenAIAPIVersion)
-
-    if azure_base_url.value and azure_api_version.value:
-        _check_azure_v1_api_url(azure_base_url.value)
-
-        if azure_api_key.value and azure_api_key.value not in _IGNORE_API_KEYS:
-            return AsyncAzureOpenAI(
-                api_key=azure_api_key.value,
-                base_url=azure_base_url.value,
-                api_version=azure_api_version.value,
-            )
-
-        sync_token_provider = CONTAINER.resolve(BearerTokenProvider).value
-
-        async def _async_token_provider() -> str:
-            return sync_token_provider()
-
-        return AsyncAzureOpenAI(
-            api_key=_ENTRA_ID_API_KEY_PLACEHOLDER,
-            azure_ad_token_provider=_async_token_provider,
-            base_url=azure_base_url.value,
-            api_version=azure_api_version.value,
-        )
-
-    raise ValueError(
-        _build_missing_credentials_error(
-            openai_api_key=openai_api_key.value,
-            azure_api_key=azure_api_key.value,
-            azure_base_url=azure_base_url.value,
-            azure_api_version=azure_api_version.value,
-        )
-    )
+    return AsyncOpenAI(**_build_client_kwargs())
 
 
 def _provide_azure_client_secret() -> AzureClientSecret:
@@ -232,9 +208,8 @@ def _provide_azure_client_secret() -> AzureClientSecret:
 def _provide_bearer_token_provider() -> BearerTokenProvider:
     """Provide ``BearerTokenProvider`` using the best available credential.
 
-    When ``AzureTenantID``, ``AzureClientID``, and ``AzureClientSecret`` are all
-    present in the DI container, builds a ``ClientSecretCredential`` directly.
-    Otherwise falls back to ``DefaultAzureCredential``.
+    Uses ``ClientSecretCredential`` when Tenant/Client/Secret are all present
+    in the DI container, otherwise falls back to ``DefaultAzureCredential``.
     """
     tenant_id = CONTAINER.resolve(AzureTenantID).value
     client_id = CONTAINER.resolve(AzureClientID).value
@@ -245,7 +220,12 @@ def _provide_bearer_token_provider() -> BearerTokenProvider:
     else:
         credential = DefaultAzureCredential()
 
-    return BearerTokenProvider(value=get_bearer_token_provider(credential, "https://ai.azure.com/.default"))
+    return BearerTokenProvider(value=get_bearer_token_provider(credential, _FOUNDRY_SCOPE))
+
+
+# ---------------------------------------------------------------------------
+# Default registrations
+# ---------------------------------------------------------------------------
 
 
 def _register_default_providers() -> None:
@@ -256,10 +236,6 @@ def _register_default_providers() -> None:
     CONTAINER.register(OpenAIAPIKey, lambda: OpenAIAPIKey(os.getenv("OPENAI_API_KEY")))
     CONTAINER.register(AzureOpenAIAPIKey, lambda: AzureOpenAIAPIKey(os.getenv("AZURE_OPENAI_API_KEY")))
     CONTAINER.register(AzureOpenAIBaseURL, lambda: AzureOpenAIBaseURL(os.getenv("AZURE_OPENAI_BASE_URL")))
-    CONTAINER.register(
-        cls=AzureOpenAIAPIVersion,
-        provider=lambda: AzureOpenAIAPIVersion(os.getenv("AZURE_OPENAI_API_VERSION", "v1")),
-    )
     CONTAINER.register(AzureTenantID, lambda: AzureTenantID(os.getenv("AZURE_TENANT_ID")))
     CONTAINER.register(AzureClientID, lambda: AzureClientID(os.getenv("AZURE_CLIENT_ID")))
     CONTAINER.register(KeyVaultURL, lambda: KeyVaultURL(os.getenv("KEY_VAULT_URL")))
@@ -295,7 +271,6 @@ def _defaults_installed() -> bool:
         EmbeddingsModelName,
         OpenAIAPIKey,
         AzureOpenAIBaseURL,
-        AzureOpenAIAPIVersion,
         OpenAI,
         AsyncOpenAI,
         tiktoken.Encoding,
@@ -318,9 +293,9 @@ def ensure_default_registrations() -> None:
 def set_default_registrations() -> None:
     """Reset the shared container to the library's default registrations.
 
-    This is primarily useful in tests or when callers intentionally want to
-    discard custom registrations and rebuild the default provider graph from a
-    clean container.
+    Primarily useful in tests or when callers intentionally want to discard
+    custom registrations and rebuild the default provider graph from a clean
+    container.
     """
     global _DEFAULT_REGISTRATIONS_READY
     with _DEFAULT_REGISTRATIONS_LOCK:
@@ -338,19 +313,19 @@ ensure_default_registrations()
 
 
 def set_client(client: OpenAI) -> None:
-    """Register a custom OpenAI-compatible client.
+    """Register a custom ``OpenAI`` client.
 
     Args:
-        client (OpenAI): A pre-configured ``openai.OpenAI`` or
-            ``openai.AzureOpenAI`` instance.
+        client (OpenAI): A pre-configured ``openai.OpenAI`` instance. To target
+            Azure OpenAI, construct it with ``base_url`` ending in ``/openai/v1/``
+            and either an API key or a bearer-token provider callable as
+            ``api_key``.
     """
-    if client.__class__.__name__ == "AzureOpenAI" and hasattr(client, "base_url"):
-        _check_azure_v1_api_url(str(client.base_url))
     CONTAINER.register(OpenAI, lambda: client)
 
 
 def get_client() -> OpenAI:
-    """Get the currently registered OpenAI-compatible client.
+    """Get the currently registered ``OpenAI`` client.
 
     Returns:
         OpenAI: The registered client instance.
@@ -359,19 +334,17 @@ def get_client() -> OpenAI:
 
 
 def set_async_client(client: AsyncOpenAI) -> None:
-    """Register a custom asynchronous OpenAI-compatible client.
+    """Register a custom ``AsyncOpenAI`` client.
 
     Args:
-        client (AsyncOpenAI): A pre-configured ``openai.AsyncOpenAI`` or
-            ``openai.AsyncAzureOpenAI`` instance.
+        client (AsyncOpenAI): A pre-configured ``openai.AsyncOpenAI`` instance.
+            See :func:`set_client` for the Azure configuration pattern.
     """
-    if client.__class__.__name__ == "AsyncAzureOpenAI" and hasattr(client, "base_url"):
-        _check_azure_v1_api_url(str(client.base_url))
     CONTAINER.register(AsyncOpenAI, lambda: client)
 
 
 def get_async_client() -> AsyncOpenAI:
-    """Get the currently registered asynchronous OpenAI-compatible client.
+    """Get the currently registered ``AsyncOpenAI`` client.
 
     Returns:
         AsyncOpenAI: The registered async client instance.

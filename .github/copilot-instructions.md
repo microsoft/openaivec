@@ -20,7 +20,7 @@ uv run mkdocs serve                 # local docs
 uv build                            # validate distribution
 ```
 
-Environment: set `OPENAI_API_KEY`, or for Azure set `AZURE_OPENAI_API_KEY` + `AZURE_OPENAI_BASE_URL` (must end with `/openai/v1/`) + `AZURE_OPENAI_API_VERSION` (`"preview"`). Tests auto-skip when credentials are absent.
+Environment: set `OPENAI_API_KEY`, or for Azure set `AZURE_OPENAI_BASE_URL` (must end with `/openai/v1/`) with optional `AZURE_OPENAI_API_KEY` (omit for Entra ID via `DefaultAzureCredential`). Tests auto-skip when credentials are absent.
 
 ---
 
@@ -28,14 +28,14 @@ Environment: set `OPENAI_API_KEY`, or for Azure set `AZURE_OPENAI_API_KEY` + `AZ
 
 ### Public surface
 
-| Layer | Entry point | Notes |
-|-------|------------|-------|
-| Package exports | `openaivec.__init__` | `BatchResponses`, `AsyncBatchResponses`, `BatchEmbeddings`, `AsyncBatchEmbeddings`, `PreparedTask`, `FewShotPromptBuilder`, `FewShotPrompt`, `SchemaInferer`, `SchemaInferenceInput`, `SchemaInferenceOutput` |
-| pandas accessors | `Series.ai` / `Series.aio` | Sync + async; registered by importing `openaivec.pandas_ext` |
-| Spark UDFs | `openaivec.spark_ext` | `responses_udf`, `task_udf`, `embeddings_udf`, `count_tokens_udf`, `split_to_chunks_udf`, `similarity_udf`, `parse_udf`, `infer_schema` |
-| DuckDB UDFs | `openaivec.duckdb_ext` | `responses_udf`, `embeddings_udf`, `task_udf`, `similarity_search`, `pydantic_to_duckdb_ddl`, `DuckDBCacheBackend` |
-| Task factories | `openaivec.task.nlp`, `.customer_support`, `.table` | Call as functions: `nlp.sentiment_analysis()`, not constants |
-| Schema inference | `openaivec._schema` | `SchemaInferer` infers Pydantic models from sample data; used by `parse` helpers when `response_format=None` |
+| Layer            | Entry point                                         | Notes                                                                                                                                                                                                         |
+| ---------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Package exports  | `openaivec.__init__`                                | `BatchResponses`, `AsyncBatchResponses`, `BatchEmbeddings`, `AsyncBatchEmbeddings`, `PreparedTask`, `FewShotPromptBuilder`, `FewShotPrompt`, `SchemaInferer`, `SchemaInferenceInput`, `SchemaInferenceOutput` |
+| pandas accessors | `Series.ai` / `Series.aio`                          | Sync + async; registered by importing `openaivec.pandas_ext`                                                                                                                                                  |
+| Spark UDFs       | `openaivec.spark_ext`                               | `responses_udf`, `task_udf`, `embeddings_udf`, `count_tokens_udf`, `split_to_chunks_udf`, `similarity_udf`, `parse_udf`, `infer_schema`                                                                       |
+| DuckDB UDFs      | `openaivec.duckdb_ext`                              | `responses_udf`, `embeddings_udf`, `task_udf`, `similarity_search`, `pydantic_to_duckdb_ddl`, `DuckDBCacheBackend`                                                                                            |
+| Task factories   | `openaivec.task.nlp`, `.customer_support`, `.table` | Call as functions: `nlp.sentiment_analysis()`, not constants                                                                                                                                                  |
+| Schema inference | `openaivec._schema`                                 | `SchemaInferer` infers Pydantic models from sample data; used by `parse` helpers when `response_format=None`                                                                                                  |
 
 ### Data flow
 
@@ -112,18 +112,20 @@ Pytest with markers defined in `pytest.ini`: `requires_api`, `slow`, `spark`, `i
 
 ```python
 import openaivec
-from openai import OpenAI, AzureOpenAI, AsyncAzureOpenAI
+from openai import AsyncOpenAI, OpenAI
 from openaivec import pandas_ext
 
 openaivec.set_client(OpenAI(api_key="sk-..."))
 
-# Azure
-openaivec.set_client(AzureOpenAI(
+# Azure (API key)
+openaivec.set_client(OpenAI(
     api_key="...",
     base_url="https://YOUR-RESOURCE.services.ai.azure.com/openai/v1/",
-    api_version="preview",
 ))
-openaivec.set_async_client(AsyncAzureOpenAI(...))
+openaivec.set_async_client(AsyncOpenAI(
+    api_key="...",
+    base_url="https://YOUR-RESOURCE.services.ai.azure.com/openai/v1/",
+))
 
 # Override default models
 openaivec.set_responses_model("gpt-4.1-mini")

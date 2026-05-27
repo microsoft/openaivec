@@ -208,10 +208,7 @@ def warn_incomplete_configuration() -> None:
     lines.append("")
     lines.append(_SETUP_GUIDE)
     lines.append("")
-    lines.append(
-        "Note: AZURE_OPENAI_BASE_URL and AZURE_OPENAI_API_VERSION are also required "
-        "for Azure OpenAI endpoint configuration."
-    )
+    lines.append("Note: AZURE_OPENAI_BASE_URL is also required for Azure OpenAI endpoint configuration.")
     lines.append(
         "If you set these variables after importing openaivec, call "
         "openaivec.set_default_registrations() to re-initialize."

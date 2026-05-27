@@ -14,11 +14,10 @@ from openai import OpenAI
 openaivec.set_client(OpenAI(api_key="your-api-key"))
 
 # Option 3: Register an Azure OpenAI client instance
-from openai import AzureOpenAI
-openaivec.set_client(AzureOpenAI(
+from openai import OpenAI
+openaivec.set_client(OpenAI(
     api_key="your-azure-key",
     base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
-    api_version="v1"
 ))
 
 # Set up model names (optional, defaults shown)

@@ -41,7 +41,7 @@
 - Pull requests explain motivation, outline the solution, link issues, list doc updates, and include the latest `uv run pytest` and `uv run ruff check . --fix` output; attach screenshots for doc or tutorial changes.
 
 ## Environment & Secrets
-- Auth precedence is `OPENAI_API_KEY` first, then Azure (`AZURE_OPENAI_BASE_URL` + `AZURE_OPENAI_API_VERSION`, with optional `AZURE_OPENAI_API_KEY` for API-key auth).
+- Auth precedence is `OPENAI_API_KEY` first, then Azure (`AZURE_OPENAI_BASE_URL` with optional `AZURE_OPENAI_API_KEY` for API-key auth; otherwise Entra ID via `DefaultAzureCredential`).
 - Azure endpoints should end with `/openai/v1/` (legacy paths work but emit warnings).
 - For Spark, call `setup` / `setup_azure` before registering UDFs so local and executor environments stay in sync.
 - Keep local secrets under `artifacts/`, never commit credentials, and rely on CI-managed secrets when extending automation.

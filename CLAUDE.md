@@ -148,13 +148,12 @@ src/openaivec/
 ### Azure OpenAI Standard Configuration
 When using Azure OpenAI, always use the v1 API format:
 - Base URL: `https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/`
-- API Version: `"preview"`
 - Example environment variables:
   ```python
   os.environ["AZURE_OPENAI_API_KEY"] = "your-azure-key"
   os.environ["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/"
-  os.environ["AZURE_OPENAI_API_VERSION"] = "preview"
   ```
+- Omit `AZURE_OPENAI_API_KEY` to authenticate via Entra ID (`DefaultAzureCredential`).
 
 ### Performance Considerations
 - Batch processing reduces API calls by ~90% on typical datasets
