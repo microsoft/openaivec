@@ -28,14 +28,14 @@ Environment: set `OPENAI_API_KEY`, or for Azure set `AZURE_OPENAI_BASE_URL` (mus
 
 ### Public surface
 
-| Layer | Entry point | Notes |
-|-------|------------|-------|
-| Package exports | `openaivec.__init__` | `BatchResponses`, `AsyncBatchResponses`, `BatchEmbeddings`, `AsyncBatchEmbeddings`, `PreparedTask`, `FewShotPromptBuilder`, `FewShotPrompt`, `SchemaInferer`, `SchemaInferenceInput`, `SchemaInferenceOutput` |
-| pandas accessors | `Series.ai` / `Series.aio` | Sync + async; registered by importing `openaivec.pandas_ext` |
-| Spark UDFs | `openaivec.spark_ext` | `responses_udf`, `task_udf`, `embeddings_udf`, `count_tokens_udf`, `split_to_chunks_udf`, `similarity_udf`, `parse_udf`, `infer_schema` |
-| DuckDB UDFs | `openaivec.duckdb_ext` | `responses_udf`, `embeddings_udf`, `task_udf`, `similarity_search`, `pydantic_to_duckdb_ddl`, `DuckDBCacheBackend` |
-| Task factories | `openaivec.task.nlp`, `.customer_support`, `.table` | Call as functions: `nlp.sentiment_analysis()`, not constants |
-| Schema inference | `openaivec._schema` | `SchemaInferer` infers Pydantic models from sample data; used by `parse` helpers when `response_format=None` |
+| Layer            | Entry point                                         | Notes                                                                                                                                                                                                         |
+| ---------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Package exports  | `openaivec.__init__`                                | `BatchResponses`, `AsyncBatchResponses`, `BatchEmbeddings`, `AsyncBatchEmbeddings`, `PreparedTask`, `FewShotPromptBuilder`, `FewShotPrompt`, `SchemaInferer`, `SchemaInferenceInput`, `SchemaInferenceOutput` |
+| pandas accessors | `Series.ai` / `Series.aio`                          | Sync + async; registered by importing `openaivec.pandas_ext`                                                                                                                                                  |
+| Spark UDFs       | `openaivec.spark_ext`                               | `responses_udf`, `task_udf`, `embeddings_udf`, `count_tokens_udf`, `split_to_chunks_udf`, `similarity_udf`, `parse_udf`, `infer_schema`                                                                       |
+| DuckDB UDFs      | `openaivec.duckdb_ext`                              | `responses_udf`, `embeddings_udf`, `task_udf`, `similarity_search`, `pydantic_to_duckdb_ddl`, `DuckDBCacheBackend`                                                                                            |
+| Task factories   | `openaivec.task.nlp`, `.customer_support`, `.table` | Call as functions: `nlp.sentiment_analysis()`, not constants                                                                                                                                                  |
+| Schema inference | `openaivec._schema`                                 | `SchemaInferer` infers Pydantic models from sample data; used by `parse` helpers when `response_format=None`                                                                                                  |
 
 ### Data flow
 
