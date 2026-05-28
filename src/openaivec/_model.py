@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
@@ -161,3 +161,8 @@ class KeyVaultSecretName:
 @dataclass(frozen=True)
 class BearerTokenProvider:
     value: Callable[[], str]
+
+
+@dataclass(frozen=True)
+class AsyncBearerTokenProvider:
+    value: Callable[[], Awaitable[str]]
