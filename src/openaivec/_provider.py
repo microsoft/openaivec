@@ -4,11 +4,15 @@ import threading
 import duckdb
 import tiktoken
 from azure.identity import ClientSecretCredential, DefaultAzureCredential, get_bearer_token_provider
+from azure.identity.aio import ClientSecretCredential as AsyncClientSecretCredential
+from azure.identity.aio import DefaultAzureCredential as AsyncDefaultAzureCredential
+from azure.identity.aio import get_bearer_token_provider as get_async_bearer_token_provider
 from openai import AsyncOpenAI, OpenAI
 
 from openaivec import _di as di
 from openaivec import _fabric as fabric
 from openaivec._model import (
+    AsyncBearerTokenProvider,
     AzureClientID,
     AzureClientSecret,
     AzureOpenAIAPIKey,
@@ -65,7 +69,7 @@ def _is_usable(value: str | None) -> bool:
     return bool(value) and value not in _IGNORE_API_KEYS
 
 
-def _build_client_kwargs() -> dict:
+def _build_client_kwargs(async_client: bool = False) -> dict:
     """Resolve credentials from the DI container and build ``OpenAI(**kw)`` kwargs.
 
     Selection order:
@@ -77,10 +81,17 @@ def _build_client_kwargs() -> dict:
           (``{"api_key": key, "base_url": url}``).
        b. Otherwise → Azure Entra ID auth
           (``{"api_key": token_provider, "base_url": url}``).
-          The bearer-token provider is built from a ``ClientSecretCredential``
-          when Tenant/Client/Secret are present (Fabric retrieves the secret
-          from Key Vault automatically), otherwise from
-          ``DefaultAzureCredential``.
+          For sync clients the provider is a synchronous callable built from
+          ``azure.identity``; for async clients it is an async callable built
+          from ``azure.identity.aio`` so the bearer token is fetched without
+          blocking the event loop. In both cases the underlying credential is
+          a ``ClientSecretCredential`` when Tenant/Client/Secret are present
+          (Fabric retrieves the secret from Key Vault automatically),
+          otherwise ``DefaultAzureCredential``.
+
+    Args:
+        async_client (bool): When ``True``, resolve the async bearer-token
+            provider for use with ``AsyncOpenAI``.
 
     Returns:
         dict: Keyword arguments to pass to ``OpenAI`` / ``AsyncOpenAI``.
@@ -98,7 +109,8 @@ def _build_client_kwargs() -> dict:
         azure_key = CONTAINER.resolve(AzureOpenAIAPIKey).value
         if _is_usable(azure_key):
             return {"api_key": azure_key, "base_url": base_url}
-        token_provider = CONTAINER.resolve(BearerTokenProvider).value
+        provider_cls = AsyncBearerTokenProvider if async_client else BearerTokenProvider
+        token_provider = CONTAINER.resolve(provider_cls).value
         return {"api_key": token_provider, "base_url": base_url}
 
     raise ValueError(
@@ -180,9 +192,10 @@ def provide_openai_client() -> OpenAI:
 def provide_async_openai_client() -> AsyncOpenAI:
     """Provide an ``AsyncOpenAI`` client configured from environment / DI state.
 
-    Mirrors :func:`provide_openai_client` for the async client. The same
-    bearer-token provider (a synchronous callable) is accepted by the SDK as
-    ``api_key`` for both sync and async clients.
+    Mirrors :func:`provide_openai_client` for the async client. When Entra ID
+    is used, the bearer-token provider is an **async** callable built from
+    ``azure.identity.aio`` so the token fetch does not block the event loop
+    (as recommended by the official ``openai-python`` async example).
 
     Returns:
         AsyncOpenAI: A configured async client.
@@ -191,7 +204,7 @@ def provide_async_openai_client() -> AsyncOpenAI:
         ValueError: When no usable credentials are found.
     """
     ensure_default_registrations()
-    return AsyncOpenAI(**_build_client_kwargs())
+    return AsyncOpenAI(**_build_client_kwargs(async_client=True))
 
 
 def _provide_azure_client_secret() -> AzureClientSecret:
@@ -223,6 +236,26 @@ def _provide_bearer_token_provider() -> BearerTokenProvider:
     return BearerTokenProvider(value=get_bearer_token_provider(credential, _FOUNDRY_SCOPE))
 
 
+def _provide_async_bearer_token_provider() -> AsyncBearerTokenProvider:
+    """Provide ``AsyncBearerTokenProvider`` using the best available async credential.
+
+    Mirrors :func:`_provide_bearer_token_provider` but uses
+    ``azure.identity.aio`` so the returned callable is awaitable, matching the
+    ``AsyncAzureADTokenProvider`` contract documented by ``openai-python``
+    (``Callable[[], str | Awaitable[str]]``).
+    """
+    tenant_id = CONTAINER.resolve(AzureTenantID).value
+    client_id = CONTAINER.resolve(AzureClientID).value
+    client_secret = CONTAINER.resolve(AzureClientSecret).value
+
+    if tenant_id and client_id and client_secret:
+        credential = AsyncClientSecretCredential(tenant_id, client_id, client_secret)
+    else:
+        credential = AsyncDefaultAzureCredential()
+
+    return AsyncBearerTokenProvider(value=get_async_bearer_token_provider(credential, _FOUNDRY_SCOPE))
+
+
 # ---------------------------------------------------------------------------
 # Default registrations
 # ---------------------------------------------------------------------------
@@ -249,6 +282,7 @@ def _register_default_providers() -> None:
             fabric.warn_incomplete_configuration()
 
     CONTAINER.register(BearerTokenProvider, _provide_bearer_token_provider)
+    CONTAINER.register(AsyncBearerTokenProvider, _provide_async_bearer_token_provider)
 
     CONTAINER.register(OpenAI, provide_openai_client)
     CONTAINER.register(AsyncOpenAI, provide_async_openai_client)
