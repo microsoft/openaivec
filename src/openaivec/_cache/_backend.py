@@ -143,7 +143,7 @@ _DELETE_ALL_SQL = "DELETE FROM {table}"
 
 
 @dataclass
-class DuckDBCacheBackend:
+class DuckDBCacheBackend(Generic[T]):
     """Persistent cache backend backed by a DuckDB database.
 
     The caller is responsible for creating and injecting the DuckDB connection.

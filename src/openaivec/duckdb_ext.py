@@ -42,6 +42,8 @@ from uuid import UUID
 import duckdb
 import numpy as np
 import pyarrow as pa
+from duckdb.func import PythonUDFType
+from duckdb.sqltypes import DuckDBPyType
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
@@ -69,7 +71,7 @@ _LOGGER = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def _pydantic_to_struct_type(model: type[BaseModel]) -> duckdb.DuckDBPyType:
+def _pydantic_to_struct_type(model: type[BaseModel]) -> DuckDBPyType:
     """Convert a Pydantic model to a DuckDB STRUCT type for UDF return values."""
     fields: dict[str, str] = {}
     for field_name, field_info in model.model_fields.items():
@@ -155,7 +157,7 @@ def responses_udf(
 
         results = run_async(batch_client.parse(non_null_texts))
 
-        out = [None] * len(texts)
+        out: list[Any] = [None] * len(texts)
         for idx, result in zip(non_null_indices, results):
             if is_structured and isinstance(result, BaseModel):
                 out[idx] = _serialize_for_duckdb(result.model_dump())
@@ -164,7 +166,7 @@ def responses_udf(
 
         return pa.array(out)
 
-    conn.create_function(name, _batch_udf, [duckdb.sqltype("VARCHAR")], return_type, type="arrow")
+    conn.create_function(name, _batch_udf, [duckdb.sqltype("VARCHAR")], return_type, type=PythonUDFType.ARROW)
 
 
 def embeddings_udf(
@@ -229,7 +231,9 @@ def embeddings_udf(
 
         return pa.array(out, type=pa.list_(pa.float32()))
 
-    conn.create_function(name, _batch_udf, [duckdb.sqltype("VARCHAR")], duckdb.list_type("FLOAT"), type="arrow")
+    conn.create_function(
+        name, _batch_udf, [duckdb.sqltype("VARCHAR")], duckdb.list_type("FLOAT"), type=PythonUDFType.ARROW
+    )
 
 
 def task_udf(
@@ -352,7 +356,7 @@ _PRIMITIVE_TYPE_MAP: dict[type, str] = {
 }
 
 
-def _python_type_to_duckdb(py_type: type) -> str:
+def _python_type_to_duckdb(py_type: Any) -> str:
     """Map a Python/Pydantic type to its DuckDB column type string."""
     if py_type in _PRIMITIVE_TYPE_MAP:
         return _PRIMITIVE_TYPE_MAP[py_type]

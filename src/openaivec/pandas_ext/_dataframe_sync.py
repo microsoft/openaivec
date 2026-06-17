@@ -1,5 +1,7 @@
 """Synchronous pandas DataFrame accessor (``.ai``)."""
 
+from typing import cast
+
 import numpy as np
 import pandas as pd
 
@@ -544,8 +546,8 @@ class OpenAIVecDataFrameAccessor:
                 from -1 to 1, where 1 indicates identical direction.
         """
         try:
-            left = _embedding_series_to_matrix(self._obj[col1])
-            right = _embedding_series_to_matrix(self._obj[col2])
+            left = _embedding_series_to_matrix(cast(pd.Series, self._obj[col1]))
+            right = _embedding_series_to_matrix(cast(pd.Series, self._obj[col2]))
         except Exception as exc:
             raise TypeError("Both columns must contain numeric vectors with consistent dimensions.") from exc
 

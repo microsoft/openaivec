@@ -1,7 +1,8 @@
 """Shared helpers for the pandas_ext package."""
 
 import logging
-from typing import TypeVar, cast  # noqa: F401 – cast re-exported for sub-modules
+from collections.abc import Hashable
+from typing import Any, TypeVar, cast  # noqa: F401 – cast re-exported for sub-modules
 
 import duckdb
 import numpy as np
@@ -36,7 +37,7 @@ def _df_rows_to_json_series(df: pd.DataFrame) -> pd.Series:
 def _embeddings_to_series(
     embeddings: list[NDArray[np.float32]],
     index: pd.Index,
-    name: str | None = None,
+    name: Hashable = None,
 ) -> pd.Series:
     """Build an Arrow-backed Series from a list of embedding vectors.
 
@@ -46,7 +47,7 @@ def _embeddings_to_series(
     Args:
         embeddings (list[NDArray[np.float32]]): Embedding vectors.
         index (pd.Index): Index to align with.
-        name (str | None): Series name.
+        name (Hashable): Series name.
 
     Returns:
         pandas.Series: Arrow-backed Series of fixed-size float32 lists.
@@ -73,7 +74,7 @@ def _embedding_series_to_matrix(series: pd.Series) -> NDArray[np.float32]:
         NDArray[np.float32]: 2D matrix of shape ``(n_rows, dim)``.
     """
     if hasattr(series, "array") and hasattr(series.array, "_pa_array"):
-        pa_chunked = series.array._pa_array
+        pa_chunked = cast(Any, series.array)._pa_array
         chunk = pa_chunked.combine_chunks()
         flat = chunk.values.to_numpy(zero_copy_only=False)
         return flat.reshape(len(chunk), -1).astype(np.float32, copy=False)

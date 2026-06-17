@@ -5,9 +5,9 @@ import functools
 import re
 import threading
 import time
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable, Coroutine, Iterator
 from dataclasses import dataclass
-from typing import ParamSpec, TypeVar
+from typing import Any, ParamSpec, TypeVar, cast
 
 import numpy as np
 import tiktoken
@@ -53,7 +53,7 @@ class BackgroundLoop:
 
     def run(self, coro: Awaitable[T]) -> T:
         """Submit *coro* to the background loop and block for the result."""
-        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        future = asyncio.run_coroutine_threadsafe(cast(Coroutine[Any, Any, T], coro), self._loop)
         return future.result()
 
 
