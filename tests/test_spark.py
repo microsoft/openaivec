@@ -49,7 +49,7 @@ class TestSparkUDFs:
     def test_responses_udf_string_format(self, test_size):
         """Test responses_udf with string response format."""
         self.spark.udf.register(
-            "repeat",
+            "ai_repeat",
             responses_udf("Repeat twice input string."),
         )
         dummy_df = self.spark.range(test_size)
@@ -57,7 +57,7 @@ class TestSparkUDFs:
 
         df = self.spark.sql(
             """
-            SELECT id, repeat(cast(id as STRING)) as v from dummy
+            SELECT id, ai_repeat(cast(id as STRING)) as v from dummy
             """
         )
 
