@@ -48,12 +48,12 @@ jobs:
           echo "sha=$(python -c 'import json,sys; print(json.load(sys.stdin)[\"head\"][\"sha\"])' <<<\"$JSON\")" >> "$GITHUB_OUTPUT"
 
       - name: Checkout PR head commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.pr.outputs.sha }}
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
 
       - name: Set up Python
         run: uv python install 3.10
