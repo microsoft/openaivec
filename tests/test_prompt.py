@@ -18,6 +18,7 @@ class TestAtomicPromptBuilder:
         self.client = OpenAI()
         self.model_name = "gpt-4.1-nano"
 
+    @pytest.mark.requires_api
     def test_improve(self, setup):
         prompt: str = (
             FewShotPromptBuilder()
@@ -63,6 +64,7 @@ class TestAtomicPromptBuilder:
         # Log the parsed XML result
         logging.info("Parsed XML: %s", prompt)
 
+    @pytest.mark.requires_api
     def test_improve_ja(self, setup):
         prompt: str = (
             FewShotPromptBuilder()
@@ -98,6 +100,7 @@ class TestAtomicPromptBuilder:
 
         logging.info(prompt)
 
+    @pytest.mark.requires_api
     def test_improve_without_args(self):
         """Test improve method using DI container (no explicit client/model_name)."""
         prompt: str = (

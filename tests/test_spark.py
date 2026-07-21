@@ -49,7 +49,7 @@ class TestSparkUDFs:
     def test_responses_udf_string_format(self, test_size):
         """Test responses_udf with string response format."""
         self.spark.udf.register(
-            "repeat",
+            "ai_repeat",
             responses_udf("Repeat twice input string."),
         )
         dummy_df = self.spark.range(test_size)
@@ -57,7 +57,7 @@ class TestSparkUDFs:
 
         df = self.spark.sql(
             """
-            SELECT id, repeat(cast(id as STRING)) as v from dummy
+            SELECT id, ai_repeat(cast(id as STRING)) as v from dummy
             """
         )
 
@@ -548,7 +548,7 @@ class TestSparkNonApiUdfs:
         sample.createOrReplaceTempView("chunk_input")
 
         out = spark_session.sql("SELECT split_chunks(body) AS chunks FROM chunk_input").toPandas()
+        chunks = [list(value) for value in out["chunks"]]
 
-        assert isinstance(out.iloc[0]["chunks"], list)
-        assert len(out.iloc[0]["chunks"]) >= 1
-        assert out.iloc[1]["chunks"] == []
+        assert len(chunks[0]) >= 1
+        assert chunks[1] == []

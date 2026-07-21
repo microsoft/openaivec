@@ -16,10 +16,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
 
       - name: Set up Python
         run: uv python install 3.10
@@ -31,7 +31,7 @@ jobs:
         run: uv build
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Sign artifacts with cosign (OIDC)
         run: |
@@ -42,20 +42,18 @@ jobs:
             if [ -f "$f" ]; then
               base="$(basename "$f")"
               cosign sign-blob --yes \
-                --output-signature "signatures/${base}.sig" \
-                --output-certificate "signatures/${base}.pem" \
+                --bundle "signatures/${base}.bundle.json" \
                 "$f"
             fi
           done
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           files: |
             dist/*.whl
             dist/*.tar.gz
-            signatures/*.sig
-            signatures/*.pem
+            signatures/*.bundle.json
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # v1.14.1

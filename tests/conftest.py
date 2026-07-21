@@ -25,22 +25,23 @@ warnings.filterwarnings("ignore", category=UserWarning, module="openai")
 def pytest_configure(config):
     """Configure custom pytest marks."""
     config.addinivalue_line("markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')")
-    config.addinivalue_line(
-        "markers", "requires_api: marks tests as requiring OPENAI_API_KEY (tests will fail if not set)"
-    )
+    config.addinivalue_line("markers", "requires_api: marks tests requiring OPENAI_API_KEY (skipped if not set)")
     config.addinivalue_line("markers", "asyncio: marks tests as async (handled by pytest-asyncio)")
     config.addinivalue_line("markers", "spark: marks tests as requiring Spark session")
     config.addinivalue_line("markers", "integration: marks tests as integration tests")
 
 
 def pytest_collection_modifyitems(config, items):
-    """Automatically mark async tests."""
+    """Automatically mark async tests and skip live tests without credentials."""
+    skip_requires_api = pytest.mark.skip(reason="OPENAI_API_KEY is not set")
     for item in items:
         # Automatically mark async tests (check if the function is actually async)
         import asyncio
 
         if hasattr(item.function, "__code__") and asyncio.iscoroutinefunction(item.function):
             item.add_marker(pytest.mark.asyncio)
+        if "requires_api" in item.keywords and not os.getenv("OPENAI_API_KEY"):
+            item.add_marker(skip_requires_api)
 
 
 # ===== CLIENT FIXTURES =====
@@ -48,17 +49,15 @@ def pytest_collection_modifyitems(config, items):
 
 @pytest.fixture(scope="session")
 def openai_client() -> Generator[OpenAI, None, None]:
-    """Provide OpenAI client for tests. Will fail if OPENAI_API_KEY not set."""
-    # Let OpenAI client construction fail naturally if no API key
-    client = OpenAI()
+    """Provide an OpenAI client for live and mocked tests."""
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY") or "test")
     yield client
 
 
 @pytest.fixture(scope="session")
 def async_openai_client() -> Generator[AsyncOpenAI, None, None]:
-    """Provide async OpenAI client for tests. Will fail if OPENAI_API_KEY not set."""
-    # Let AsyncOpenAI client construction fail naturally if no API key
-    client = AsyncOpenAI()
+    """Provide an async OpenAI client for live and mocked tests."""
+    client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY") or "test")
     yield client
 
 
