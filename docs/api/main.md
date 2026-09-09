@@ -5,8 +5,11 @@ The main `openaivec` package provides the core classes for AI-powered data proce
 ## Configuration
 
 Client and model configuration helpers. These are the canonical entry point
-for setting up OpenAI / Azure OpenAI credentials and model names. The same
-configuration is shared across `pandas_ext`, `duckdb_ext`, and `spark`.
+for setting up OpenAI / Azure OpenAI credentials, Fabric built-in models, and model
+names. Configuration is shared within the current Python process; Spark executors
+require their own setup. See the [authentication guide](../authentication.md).
+
+::: openaivec.setup_fabric
 
 ::: openaivec.set_client
 

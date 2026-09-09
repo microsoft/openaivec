@@ -211,11 +211,27 @@ def _provide_azure_client_secret() -> AzureClientSecret:
     """Provide ``AzureClientSecret``, auto-retrieving from Key Vault on Fabric."""
     secret = os.getenv("AZURE_CLIENT_SECRET")
     if not secret and fabric.is_fabric_environment():
+        kv_url = CONTAINER.resolve(KeyVaultURL).value
+        secret_name = CONTAINER.resolve(KeyVaultSecretName).value
+        if bool(kv_url) != bool(secret_name):
+            raise ValueError("Key Vault authentication requires both KEY_VAULT_URL and KEY_VAULT_SECRET_NAME.")
         secret = fabric.retrieve_client_secret(
-            kv_url=CONTAINER.resolve(KeyVaultURL).value,
-            secret_name=CONTAINER.resolve(KeyVaultSecretName).value,
+            kv_url=kv_url,
+            secret_name=secret_name,
         )
     return AzureClientSecret(secret)
+
+
+def _service_principal_credentials() -> tuple[str, str, str] | None:
+    """Validate an explicitly configured client secret before selecting an identity."""
+    tenant_id = CONTAINER.resolve(AzureTenantID).value
+    client_id = CONTAINER.resolve(AzureClientID).value
+    client_secret = CONTAINER.resolve(AzureClientSecret).value
+    if client_secret:
+        if not tenant_id or not client_id:
+            raise ValueError("Client secret authentication requires AZURE_TENANT_ID and AZURE_CLIENT_ID.")
+        return tenant_id, client_id, client_secret
+    return None
 
 
 def _provide_bearer_token_provider() -> BearerTokenProvider:
@@ -224,12 +240,9 @@ def _provide_bearer_token_provider() -> BearerTokenProvider:
     Uses ``ClientSecretCredential`` when Tenant/Client/Secret are all present
     in the DI container, otherwise falls back to ``DefaultAzureCredential``.
     """
-    tenant_id = CONTAINER.resolve(AzureTenantID).value
-    client_id = CONTAINER.resolve(AzureClientID).value
-    client_secret = CONTAINER.resolve(AzureClientSecret).value
-
-    if tenant_id and client_id and client_secret:
-        credential = ClientSecretCredential(tenant_id, client_id, client_secret)
+    secret_credentials = _service_principal_credentials()
+    if secret_credentials:
+        credential = ClientSecretCredential(*secret_credentials)
     else:
         credential = DefaultAzureCredential()
 
@@ -244,12 +257,9 @@ def _provide_async_bearer_token_provider() -> AsyncBearerTokenProvider:
     ``AsyncAzureADTokenProvider`` contract documented by ``openai-python``
     (``Callable[[], str | Awaitable[str]]``).
     """
-    tenant_id = CONTAINER.resolve(AzureTenantID).value
-    client_id = CONTAINER.resolve(AzureClientID).value
-    client_secret = CONTAINER.resolve(AzureClientSecret).value
-
-    if tenant_id and client_id and client_secret:
-        credential = AsyncClientSecretCredential(tenant_id, client_id, client_secret)
+    secret_credentials = _service_principal_credentials()
+    if secret_credentials:
+        credential = AsyncClientSecretCredential(*secret_credentials)
     else:
         credential = AsyncDefaultAzureCredential()
 
@@ -276,7 +286,6 @@ def _register_default_providers() -> None:
     CONTAINER.register(AzureClientSecret, _provide_azure_client_secret)
 
     if fabric.is_fabric_environment():
-        CONTAINER.resolve(AzureClientSecret)
         fabric.log_environment_info()
         if fabric.is_partially_configured():
             fabric.warn_incomplete_configuration()
@@ -344,6 +353,53 @@ ensure_default_registrations()
 # ---------------------------------------------------------------------------
 # Public configuration helpers
 # ---------------------------------------------------------------------------
+
+
+def setup_fabric(
+    *,
+    responses_model: str = "gpt-5.1",
+    embeddings_model: str = "text-embedding-ada-002",
+    api_version: str = "2025-04-01-preview",
+) -> None:
+    """Use Fabric's built-in models with runtime-managed authentication.
+
+    Explicitly replaces the default sync and async clients and model names for
+    the current Python process. No Azure OpenAI resource, API key, or service
+    principal secret is required. HTTP clients are created lazily. The async
+    API requires the corresponding helper in the Fabric runtime.
+
+    Args:
+        responses_model (str): Built-in response model. Defaults to ``gpt-5.1``.
+        embeddings_model (str): Built-in embedding model. Defaults to
+            ``text-embedding-ada-002``.
+        api_version (str): Fabric-supported Azure OpenAI API version. Defaults
+            to ``2025-04-01-preview``.
+
+    Raises:
+        RuntimeError: Not running in a supported Fabric notebook runtime.
+        ValueError: A model name or API version is empty.
+
+    Example:
+        >>> import openaivec
+        >>> openaivec.setup_fabric()  # doctest: +SKIP
+
+    Notes:
+        Built-in models are a preview feature billed to Fabric capacity. This
+        configures the notebook driver, not Spark executor authentication.
+        Close resolved clients before replacing them with another setup.
+    """
+    fabric.require_fabric_runtime()
+    if not responses_model or not embeddings_model or not api_version:
+        raise ValueError("Fabric model names and api_version must not be empty.")
+    ensure_default_registrations()
+    CONTAINER.register(OpenAI, lambda: fabric.provide_fabric_client(api_version=api_version))
+    CONTAINER.register(AsyncOpenAI, lambda: fabric.provide_async_fabric_client(api_version=api_version))
+    set_responses_model(responses_model)
+    set_embeddings_model(embeddings_model)
+    CONTAINER.register(
+        SchemaInferer,
+        lambda: SchemaInferer(client=get_client(), model_name=get_responses_model()),
+    )
 
 
 def set_client(client: OpenAI) -> None:
