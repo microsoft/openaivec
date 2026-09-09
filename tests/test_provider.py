@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from openai import AsyncOpenAI, OpenAI
 
+from openaivec._di import ProviderError
 from openaivec._model import AzureClientSecret
 from openaivec._provider import (
     CONTAINER,
@@ -258,6 +259,88 @@ class TestSetClient:
 
 
 class TestFabricEnvironment:
+    @pytest.mark.parametrize("client_factory", [provide_openai_client, provide_async_openai_client])
+    def test_key_vault_failure_does_not_fall_back_to_another_identity(self, monkeypatch, client_factory):
+        notebookutils = MagicMock()
+        notebookutils.credentials.getSecret.side_effect = PermissionError("Key Vault access denied")
+        monkeypatch.setitem(sys.modules, "notebookutils", notebookutils)
+        _set_env(
+            AZURE_TENANT_ID="tenant-id",
+            AZURE_CLIENT_ID="client-id",
+            KEY_VAULT_URL="https://kv.vault.azure.net/",
+            KEY_VAULT_SECRET_NAME="client-secret",
+            AZURE_OPENAI_BASE_URL="https://x.services.ai.azure.com/openai/v1/",
+        )
+
+        with (
+            patch("openaivec._provider.DefaultAzureCredential") as sync_credential,
+            patch("openaivec._provider.AsyncDefaultAzureCredential") as async_credential,
+        ):
+            with pytest.raises(ProviderError, match="Key Vault access denied") as caught:
+                client_factory()
+            assert isinstance(caught.value.__cause__, ProviderError)
+            assert isinstance(caught.value.__cause__.__cause__, PermissionError)
+            sync_credential.assert_not_called()
+            async_credential.assert_not_called()
+
+    @pytest.mark.parametrize("client_factory", [provide_openai_client, provide_async_openai_client])
+    def test_incomplete_service_principal_is_rejected(self, client_factory):
+        _set_env(
+            AZURE_CLIENT_SECRET="client-secret",
+            AZURE_OPENAI_BASE_URL="https://x.services.ai.azure.com/openai/v1/",
+        )
+
+        with pytest.raises(ProviderError, match="AZURE_TENANT_ID.*AZURE_CLIENT_ID") as caught:
+            client_factory()
+        assert isinstance(caught.value.__cause__, ValueError)
+
+    @pytest.mark.parametrize("client_factory", [provide_openai_client, provide_async_openai_client])
+    @pytest.mark.parametrize(
+        "key_vault_config",
+        [{"KEY_VAULT_URL": "https://kv.vault.azure.net/"}, {"KEY_VAULT_SECRET_NAME": "client-secret"}],
+    )
+    def test_incomplete_key_vault_config_is_rejected(self, monkeypatch, client_factory, key_vault_config):
+        notebookutils = MagicMock()
+        monkeypatch.setitem(sys.modules, "notebookutils", notebookutils)
+        with pytest.warns(UserWarning, match="not fully configured"):
+            _set_env(
+                AZURE_TENANT_ID="tenant-id",
+                AZURE_CLIENT_ID="client-id",
+                AZURE_OPENAI_BASE_URL="https://x.services.ai.azure.com/openai/v1/",
+                **key_vault_config,
+            )
+
+        with pytest.raises(ProviderError, match="KEY_VAULT_URL.*KEY_VAULT_SECRET_NAME"):
+            client_factory()
+
+        notebookutils.credentials.getSecret.assert_not_called()
+
+    @pytest.mark.parametrize("client_factory", [provide_openai_client, provide_async_openai_client])
+    @pytest.mark.parametrize(
+        "credentials",
+        [
+            {"OPENAI_API_KEY": "sk-test"},
+            {
+                "AZURE_OPENAI_API_KEY": "azure-key",
+                "AZURE_OPENAI_BASE_URL": "https://x.services.ai.azure.com/openai/v1/",
+            },
+        ],
+    )
+    def test_api_key_auth_does_not_read_key_vault(self, monkeypatch, client_factory, credentials):
+        notebookutils = MagicMock()
+        monkeypatch.setitem(sys.modules, "notebookutils", notebookutils)
+        _set_env(
+            AZURE_TENANT_ID="tenant-id",
+            AZURE_CLIENT_ID="client-id",
+            KEY_VAULT_URL="https://kv.vault.azure.net/",
+            KEY_VAULT_SECRET_NAME="client-secret",
+            **credentials,
+        )
+
+        client_factory()
+
+        notebookutils.credentials.getSecret.assert_not_called()
+
     def test_is_fabric_environment_returns_false_by_default(self):
         from openaivec._fabric import is_fabric_environment
 

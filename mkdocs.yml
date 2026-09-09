@@ -51,6 +51,7 @@ theme:
 
 nav:
   - Home: index.md
+  - Authentication: authentication.md
   - PyPI: https://pypi.org/project/openaivec/
   - GitHub: https://github.com/microsoft/openaivec
   - Contributor Guidelines: contributor-guide.md

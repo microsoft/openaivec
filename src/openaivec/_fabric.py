@@ -19,10 +19,111 @@ client secret from Key Vault automatically and builds a
 import logging
 import os
 import warnings
+from collections.abc import Mapping
+from dataclasses import dataclass
+from importlib import import_module
+from typing import Any, cast
+from urllib.parse import urlsplit
+
+from openai import AsyncAzureOpenAI, AzureOpenAI
+from openai._models import FinalRequestOptions
 
 __all__ = []
 
 _LOGGER = logging.getLogger(__name__)
+_FABRIC_PLACEHOLDER = "place_holder_for_fabric_internal"
+
+
+@dataclass(init=False, eq=False)
+class _FabricOpenAI(AzureOpenAI):
+    """Azure SDK client using Fabric's stateless built-in model endpoint."""
+
+    def _prepare_options(self, options: FinalRequestOptions) -> FinalRequestOptions:
+        return super()._prepare_options(_stateless_response_options(options))
+
+
+@dataclass(init=False, eq=False)
+class _AsyncFabricOpenAI(AsyncAzureOpenAI):
+    """Async Azure SDK client using Fabric's stateless built-in model endpoint."""
+
+    async def _prepare_options(self, options: FinalRequestOptions) -> FinalRequestOptions:
+        return await super()._prepare_options(_stateless_response_options(options))
+
+
+def _stateless_response_options(options: FinalRequestOptions) -> FinalRequestOptions:
+    if options.method.lower() != "post" or not urlsplit(options.url).path.rstrip("/").endswith("/responses"):
+        return options
+    json_data: object = options.json_data
+    if not isinstance(json_data, Mapping):
+        raise TypeError("Fabric Responses requests require a JSON object.")
+    body = dict(cast(Mapping[str, object], json_data))
+    extra: Mapping[str, object] = options.extra_json if isinstance(options.extra_json, Mapping) else {}
+    store = extra.get("store", body.get("store"))
+    if store is not None and store is not False:
+        raise ValueError("Fabric built-in models require store=False.")
+    if extra.get("previous_response_id", body.get("previous_response_id")) is not None:
+        raise ValueError("Fabric built-in models do not support previous_response_id.")
+    prepared = options.model_copy()
+    body["store"] = False
+    body.pop("previous_response_id", None)
+    prepared.json_data = body
+    if "store" in extra or "previous_response_id" in extra:
+        extra = dict(extra)
+        if "store" in extra:
+            extra["store"] = False
+        extra.pop("previous_response_id", None)
+        prepared.extra_json = extra
+    return prepared
+
+
+def require_fabric_runtime() -> None:
+    """Require the notebook runtime before replacing any configured clients."""
+    if not is_fabric_environment():
+        raise RuntimeError("setup_fabric() requires a Microsoft Fabric notebook runtime.")
+    try:
+        credentials = import_module("synapse.ml.fabric.credentials")
+    except ImportError as exc:
+        raise RuntimeError("The Fabric notebook runtime is missing the SynapseML authentication helpers.") from exc
+    if not callable(getattr(credentials, "get_openai_httpx_sync_client", None)):
+        raise RuntimeError("The Fabric notebook runtime is missing get_openai_httpx_sync_client().")
+
+
+def _fabric_client_kwargs(*, api_version: str, async_client: bool = False) -> dict[str, Any]:
+    require_fabric_runtime()
+    credentials = import_module("synapse.ml.fabric.credentials")
+    helper_name = "get_openai_httpx_async_client" if async_client else "get_openai_httpx_sync_client"
+    http_client_factory = getattr(credentials, helper_name, None)
+    if not callable(http_client_factory):
+        raise RuntimeError(
+            "The async OpenAI HTTP client helper is unavailable in this Fabric runtime. "
+            "Use the synchronous API or a Fabric runtime that provides get_openai_httpx_async_client()."
+        )
+    discovery = import_module("synapse.ml.fabric.service_discovery")
+    endpoint = discovery.get_fabric_env_config().fabric_env_config.ml_workload_endpoint
+    if not isinstance(endpoint, str) or urlsplit(endpoint).scheme != "https" or not urlsplit(endpoint).hostname:
+        raise ValueError("Fabric service discovery must return an HTTPS workload endpoint.")
+    return {
+        "api_version": api_version,
+        "azure_endpoint": endpoint.rstrip("/") + "/cognitive/openai",
+        "api_key": _FABRIC_PLACEHOLDER,
+        "azure_ad_token": _FABRIC_PLACEHOLDER,
+        "default_headers": {
+            "Authorization": f"Bearer {_FABRIC_PLACEHOLDER}",
+            "api-key": _FABRIC_PLACEHOLDER,
+        },
+        "http_client": http_client_factory(),
+    }
+
+
+def provide_fabric_client(*, api_version: str) -> AzureOpenAI:
+    """Build a sync client with runtime-managed Fabric authentication."""
+    return _FabricOpenAI(**_fabric_client_kwargs(api_version=api_version))
+
+
+def provide_async_fabric_client(*, api_version: str) -> AsyncAzureOpenAI:
+    """Build an async client only when the Fabric runtime supports it."""
+    return _AsyncFabricOpenAI(**_fabric_client_kwargs(api_version=api_version, async_client=True))
+
 
 REQUIRED_VARS: list[str] = [
     "AZURE_TENANT_ID",
@@ -36,7 +137,7 @@ _ALL_AUTH_VARS: list[str] = [*REQUIRED_VARS, "AZURE_CLIENT_SECRET"]
 _ENV_DESCRIPTIONS: dict[str, str] = {
     "AZURE_TENANT_ID": "Entra ID tenant ID (directory containing the Service Principal)",
     "AZURE_CLIENT_ID": "Service Principal (App Registration) client ID",
-    "KEY_VAULT_URL": "Key Vault URL (Workspace must have 'Key Vault Secrets User' role)",
+    "KEY_VAULT_URL": "Key Vault URL (the secret reader needs 'Key Vault Secrets User' or equivalent access)",
     "KEY_VAULT_SECRET_NAME": "Secret name in Key Vault (stores the SP client secret)",
 }
 
@@ -48,29 +149,29 @@ _ENV_EXAMPLES: dict[str, str] = {
 }
 
 _AUTH_FLOW_GUIDE = (
-    "Authentication flow in Microsoft Fabric:\n"
-    "  1. Fabric Workspace identity accesses Azure Key Vault\n"
-    '     (Workspace must have "Key Vault Secrets User" role on the Key Vault)\n'
+    "Authentication to your own Azure OpenAI resource from Microsoft Fabric:\n"
+    "  1. notebookutils.credentials.getSecret() reads Key Vault using the current user credentials\n"
+    "     (verify the execution identity for scheduled notebooks; Workspace Identity is not automatic)\n"
     "  2. Key Vault stores the client secret of a Service Principal (App Registration)\n"
-    '  3. The Service Principal must have the "AI User" role on the Azure AI Foundry resource\n'
-    "  4. openaivec retrieves the secret via notebookutils.credentials.getSecret()\n"
-    "     and builds a ClientSecretCredential through the DI container\n"
-    "  5. The credential authenticates as the Service Principal"
+    '  3. Assign "Cognitive Services OpenAI User" to the Service Principal on the Azure OpenAI resource\n'
+    "  4. openaivec retrieves the secret only when the Entra authentication route is selected\n"
+    "     and builds a ClientSecretCredential; retrieval failures stop authentication\n"
+    "  5. The credential authenticates as the Service Principal with a refreshable token provider"
 )
 
 _SETUP_GUIDE = (
     "Setup steps:\n"
     "  1. Create a Service Principal (App Registration) in Entra ID\n"
-    '  2. Assign "AI User" role to the Service Principal on your Azure AI Foundry resource\n'
+    '  2. Assign "Cognitive Services OpenAI User" on your Azure OpenAI resource\n'
     "  3. Store the Service Principal's client secret in Azure Key Vault\n"
-    '  4. Grant Fabric Workspace identity "Key Vault Secrets User" role on the Key Vault\n'
-    "  5. Set the following environment variables in your Fabric notebook:\n"
+    '  4. Grant the identity reading the secret "Key Vault Secrets User" or equivalent access\n'
+    "  5. Set these environment variables before importing openaivec in your Fabric notebook:\n"
     '     os.environ["AZURE_TENANT_ID"] = "<your-tenant-id>"\n'
     '     os.environ["AZURE_CLIENT_ID"] = "<your-client-id>"\n'
     '     os.environ["KEY_VAULT_URL"] = "<your-keyvault-url>"\n'
     '     os.environ["KEY_VAULT_SECRET_NAME"] = "<your-secret-name>"\n'
-    "  6. openaivec automatically retrieves the secret from Key Vault on import\n"
-    "  7. For Spark executors, propagate credentials via setup_entra_id() or sc.environment"
+    "  6. Set AZURE_OPENAI_BASE_URL to https://YOUR-RESOURCE.openai.azure.com/openai/v1/\n"
+    "  7. Configure Spark executor authentication separately; driver identity is not propagated automatically"
 )
 
 
@@ -86,15 +187,15 @@ def is_fabric_environment() -> bool:
             support, ``False`` otherwise.
     """
     try:
-        import notebookutils as nbu  # type: ignore[import-not-found]
+        nbu = import_module("notebookutils")
 
         return hasattr(nbu, "credentials") and callable(getattr(nbu.credentials, "getSecret", None))
-    except Exception:
+    except ImportError:
         return False
 
 
 def is_auth_configured() -> bool:
-    """Check whether Fabric authentication is fully configured.
+    """Check whether service-principal authentication is fully configured.
 
     Returns ``True`` when either path is ready:
 
@@ -138,20 +239,21 @@ def retrieve_client_secret(*, kv_url: str | None = None, secret_name: str | None
         secret_name (str | None): Secret name in Key Vault.
 
     Returns:
-        str | None: The secret value, or ``None`` when retrieval is skipped or fails.
+        str | None: The secret value, or ``None`` when retrieval is skipped.
+
+    Raises:
+        ValueError: Key Vault returns an empty secret. Retrieval errors propagate
+            to the caller without falling back to another identity.
     """
     if not kv_url or not secret_name:
         return None
 
-    try:
-        import notebookutils as nbu  # type: ignore[import-not-found]
+    nbu = import_module("notebookutils")
 
-        client_secret: str = nbu.credentials.getSecret(kv_url, secret_name)
-        _LOGGER.info("Retrieved client secret from Key Vault (%s).", kv_url)
-        return client_secret
-    except Exception as exc:
-        _LOGGER.warning("Failed to retrieve client secret from Key Vault: %s", exc)
-        return None
+    client_secret: str = nbu.credentials.getSecret(kv_url, secret_name)
+    if not client_secret:
+        raise ValueError("Key Vault returned an empty client secret.")
+    return client_secret
 
 
 def log_environment_info() -> None:
@@ -190,7 +292,8 @@ def warn_incomplete_configuration() -> None:
     """
     lines = [
         "Microsoft Fabric environment detected but authentication is not fully configured.",
-        "Falling back to DefaultAzureCredential (managed identity, Azure CLI, etc.).",
+        "DefaultAzureCredential does not automatically use the Fabric notebook or workspace identity.",
+        "For Fabric built-in models, call openaivec.setup_fabric() instead of configuring a service principal.",
         "",
         _AUTH_FLOW_GUIDE,
         "",
@@ -210,8 +313,8 @@ def warn_incomplete_configuration() -> None:
     lines.append("")
     lines.append("Note: AZURE_OPENAI_BASE_URL is also required for Azure OpenAI endpoint configuration.")
     lines.append(
-        "If you set these variables after importing openaivec, call "
-        "openaivec.set_default_registrations() to re-initialize."
+        "If you change these variables after importing openaivec, configure explicit clients with "
+        "openaivec.set_client()/set_async_client(), or restart the session."
     )
     warnings.warn("\n".join(lines), UserWarning, stacklevel=3)
 
@@ -227,7 +330,12 @@ def build_credentials_error_section() -> list[str]:
     """
     lines: list[str] = [
         "",
-        "Option 3: Configure Fabric Key Vault authentication (Fabric environment detected)",
+        "Option 3: Use Fabric built-in models (Fabric environment detected)",
+        "  import openaivec",
+        "  openaivec.setup_fabric()",
+        "  No API key or Azure OpenAI resource required; usage is billed to Fabric capacity.",
+        "",
+        "Option 4: Configure a service principal for your own Azure OpenAI resource using Key Vault",
         "",
         _AUTH_FLOW_GUIDE,
         "",

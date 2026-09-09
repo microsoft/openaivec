@@ -132,7 +132,11 @@ os.environ["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.az
 os.environ.pop("AZURE_OPENAI_API_KEY", None)
 ```
 
-`openaivec` uses `DefaultAzureCredential` when `AZURE_OPENAI_API_KEY` is not set.
+Unset `OPENAI_API_KEY` as well when choosing Azure. Without either API key,
+`openaivec` uses a configured service principal, or otherwise `DefaultAzureCredential`,
+with a refreshable token provider. `DefaultAzureCredential` does not automatically
+discover a Fabric notebook or workspace identity. See the
+[authentication guide](https://microsoft.github.io/openaivec/authentication/).
 
 #### Custom clients (optional)
 
@@ -306,7 +310,10 @@ os.environ["AZURE_OPENAI_BASE_URL"] = "https://YOUR-RESOURCE-NAME.services.ai.az
 os.environ.pop("AZURE_OPENAI_API_KEY", None)
 ```
 
-`openaivec` uses `DefaultAzureCredential` when `AZURE_OPENAI_API_KEY` is not set.
+Unset `OPENAI_API_KEY` as well when choosing Azure. Configure credentials on the
+Spark executors before registering UDFs; setting the driver's environment alone
+does not grant executor access. `openaivec` uses a configured service principal or
+`DefaultAzureCredential`, neither of which automatically inherits Fabric identity.
 
 Create and register UDFs using the provided helpers:
 
@@ -425,93 +432,48 @@ prompt = (
 
 ## Using with Microsoft Fabric
 
-[Microsoft Fabric](https://www.microsoft.com/en-us/microsoft-fabric/) is a unified, cloud-based analytics platform. Add `openaivec` from PyPI in your Fabric environment, select it in your notebook, and use `openaivec.spark_ext` like standard Spark.
+Install `openaivec` from PyPI in your Fabric notebook or attached environment.
+Choose between Fabric's built-in models and your own Azure OpenAI deployment.
 
-### Recommended authentication: Service Principal + Key Vault
-
-Inside Fabric notebooks, the recommended way to authenticate against Azure OpenAI / Azure AI Foundry is to keep a Service Principal client secret in Azure Key Vault and retrieve it through [`notebookutils.credentials.getSecret`](https://learn.microsoft.com/fabric/data-engineering/notebookutils/notebookutils-credentials#get-secret). Never hard-code secrets in notebooks.
-
-**One-time setup**
-
-1. Create a Service Principal (App Registration) in Microsoft Entra ID and generate a client secret.
-2. Assign the Service Principal a data-plane role on the AI resource so it can call inference (see role table below).
-3. Store the client secret in an Azure Key Vault.
-4. Grant the **Fabric Workspace identity** the `Key Vault Secrets User` role on that Key Vault. The workspace identity — not the user — is what authenticates from the notebook to Key Vault.
-
-**Required Azure roles**
-
-| Identity | Role | Scope | Purpose |
-|---|---|---|---|
-| Service Principal | [`Cognitive Services OpenAI User`](https://learn.microsoft.com/azure/ai-foundry/openai/how-to/role-based-access-control#cognitive-services-openai-user) | Azure OpenAI resource (or its resource group / subscription) | Call `responses` / `embeddings` against an Azure OpenAI endpoint. |
-| Service Principal | [`Azure AI User`](https://learn.microsoft.com/azure/ai-foundry/concepts/rbac-azure-ai-foundry#azure-ai-user) | Azure AI Foundry project (Cognitive Services / AI Services account) | Call inference through a Foundry project endpoint (`/api/projects/<name>/openai/v1/`). |
-| Fabric Workspace identity | [`Key Vault Secrets User`](https://learn.microsoft.com/azure/key-vault/general/rbac-guide#azure-built-in-roles-for-key-vault-data-plane-operations) | The Key Vault holding the SP secret | Allow `notebookutils.credentials.getSecret` to read the secret at runtime. |
-
-Notes:
-
-- Use **`Cognitive Services OpenAI User`** when you talk directly to an Azure OpenAI resource endpoint (`https://<resource>.openai.azure.com/` or `https://<resource>.services.ai.azure.com/openai/v1/`). It grants the minimum needed to invoke deployments; do **not** assign `Cognitive Services OpenAI Contributor` unless the SP must also manage deployments.
-- Use **`Azure AI User`** when you call a Foundry project endpoint (Option B below). Foundry data-plane RBAC is documented at [Role-based access control for Azure AI Foundry](https://learn.microsoft.com/azure/ai-foundry/concepts/rbac-azure-ai-foundry).
-- The Key Vault must use [Azure RBAC permission model](https://learn.microsoft.com/azure/key-vault/general/rbac-guide) (not legacy access policies) for `Key Vault Secrets User` to take effect.
-
-References: [NotebookUtils credentials](https://learn.microsoft.com/fabric/data-engineering/notebookutils/notebookutils-credentials), [Fabric Spark security: accessing Key Vault](https://learn.microsoft.com/fabric/data-engineering/spark-best-practices-security#accessing-azure-key-vault-akv-from-notebook), [Azure OpenAI with Microsoft Entra ID](https://learn.microsoft.com/azure/ai-foundry/openai/how-to/managed-identity).
-
-#### Option A — env-var driven (recommended)
-
-`openaivec` detects Fabric and pulls the client secret from Key Vault automatically when these four env vars are set, then builds the bearer-token provider for you:
+### Fabric built-in models
 
 ```python
-import os
-
-os.environ["AZURE_TENANT_ID"]          = "<your-tenant-id>"          # Service Principal tenant
-os.environ["AZURE_CLIENT_ID"]          = "<your-client-id>"          # Service Principal client ID
-os.environ["KEY_VAULT_URL"]            = "https://<your-keyvault>.vault.azure.net/"
-os.environ["KEY_VAULT_SECRET_NAME"]    = "<your-secret-name>"        # SP client secret in KV
-
-os.environ["AZURE_OPENAI_BASE_URL"]    = "https://<your-resource>.services.ai.azure.com/openai/v1/"
-
 import pandas as pd
-from openaivec import pandas_ext  # noqa: F401  registers the .ai accessor
+import openaivec
+from openaivec import pandas_ext
+
+openaivec.setup_fabric()
 
 pd.Series(["apple", "banana"]).ai.responses("Translate to French.")
 ```
 
-Do **not** set `AZURE_OPENAI_API_KEY`; leaving it unset is what triggers the Entra ID code path.
+`setup_fabric()` uses the Fabric runtime's authentication and routing helpers.
+No API key, Azure OpenAI resource, or service-principal secret is required.
+The defaults are `gpt-5.1` for Responses and `text-embedding-ada-002` for embeddings;
+override them with `responses_model` and `embeddings_model`.
 
-#### Option B — bring your own `OpenAI` client (Foundry project endpoint)
+- Built-in models are in preview, billed to Fabric capacity, and subject to tenant,
+    capacity, and regional availability.
+- Responses are sent with `store=False`; `store=True` and `previous_response_id`
+    are rejected before sending, including when supplied through `extra_body`.
+- Async access requires `get_openai_httpx_async_client()` in the Fabric runtime.
+    Otherwise use the synchronous API.
+- Configuration applies to the notebook driver, including local pandas and DuckDB
+    operations. It does not configure Spark executor authentication.
 
-For Azure AI Foundry **project endpoints** (`/api/projects/<name>/openai/v1/`) you can build the `OpenAI` client manually and hand it to `openaivec`:
+### Your own Azure OpenAI deployment
 
-```python
-import notebookutils
-from azure.identity import ClientSecretCredential, get_bearer_token_provider
-from openai import OpenAI
+Use an identity with `Cognitive Services OpenAI User` on your Azure OpenAI resource,
+an `/openai/v1/` base URL, and a refreshable bearer-token provider. This route is billed
+to Azure OpenAI, not to Fabric's built-in model meter.
 
-import openaivec
+`DefaultAzureCredential` does not automatically discover the Fabric user or workspace
+identity. If using a service-principal secret, store it in Key Vault. The identity
+reading that secret needs Key Vault access; do not assume it is the workspace identity.
+Secret retrieval is lazy and failures stop authentication instead of switching identities.
 
-TENANT_ID = "<your-tenant-id>"           # Service Principal tenant
-CLIENT_ID = "<your-client-id>"           # Service Principal client ID
-KV_URI    = "https://<your-keyvault>.vault.azure.net/"
-SECRET    = "<your-secret-name>"         # SP client secret in KV
-
-client_secret = notebookutils.credentials.getSecret(KV_URI, SECRET)
-
-credential = ClientSecretCredential(
-    tenant_id=TENANT_ID,
-    client_id=CLIENT_ID,
-    client_secret=client_secret,
-)
-token_provider = get_bearer_token_provider(
-    credential,
-    "https://ai.azure.com/.default",
-)
-
-openaivec.set_client(OpenAI(
-    base_url="https://<your-resource>.services.ai.azure.com/api/projects/<your-project>/openai/v1/",
-    api_key=token_provider,
-))
-openaivec.set_responses_model("<your-deployment-or-model>")
-```
-
-The `https://ai.azure.com/.default` scope is the [documented audience for Microsoft Foundry Models endpoints](https://learn.microsoft.com/azure/foundry/foundry-models/concepts/endpoints#keyless-authentication) (`*.services.ai.azure.com`). Older classic Azure OpenAI references may show `https://cognitiveservices.azure.com/.default`; for the Foundry endpoint shape recommended above, use `ai.azure.com`.
+See the [authentication guide](https://microsoft.github.io/openaivec/authentication/)
+for setup examples, identity requirements, lifecycle guidance, and official references.
 
 ## Contributing
 

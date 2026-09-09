@@ -10,6 +10,7 @@ from ._provider import (
     set_client,
     set_embeddings_model,
     set_responses_model,
+    setup_fabric,
 )
 from ._responses import AsyncBatchResponses, BatchResponses
 from ._schema import SchemaInferenceInput, SchemaInferenceOutput, SchemaInferer
@@ -33,4 +34,5 @@ __all__ = [
     "set_client",
     "set_embeddings_model",
     "set_responses_model",
+    "setup_fabric",
 ]
