@@ -2867,13 +2867,19 @@ dependencies = [
     { name = "aiohttp" },
     { name = "azure-identity" },
     { name = "duckdb" },
+    { name = "httpx" },
     { name = "ipywidgets" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
+    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "openai" },
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pandas", version = "3.0.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pyarrow" },
+    { name = "pydantic" },
     { name = "tiktoken" },
     { name = "tqdm" },
+    { name = "typing-extensions" },
 ]
 
 [package.optional-dependencies]
@@ -2910,16 +2916,20 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiohttp", specifier = ">=3.9.0" },
+    { name = "aiohttp", specifier = ">=3.10.0" },
     { name = "azure-identity", specifier = ">=1.25.1" },
     { name = "duckdb", specifier = ">=1.0.0" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "ipywidgets", specifier = ">=8.1.7" },
+    { name = "numpy", specifier = ">=1.23.2" },
     { name = "openai", specifier = ">=2.0.0" },
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "pyarrow", specifier = ">=19.0.0" },
+    { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pyspark", marker = "extra == 'spark'", specifier = ">=4.0.0" },
     { name = "tiktoken", specifier = ">=0.9.0" },
     { name = "tqdm", specifier = ">=4.67.1" },
+    { name = "typing-extensions", specifier = ">=4.11.0" },
 ]
 provides-extras = ["spark"]
 
