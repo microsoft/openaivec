@@ -59,7 +59,7 @@ from dataclasses import dataclass
 
 from openai import OpenAI
 from openai.types.responses import ParsedResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from openaivec._model import PreparedTask
 from openaivec._schema.spec import ObjectSpec, _build_model
@@ -314,14 +314,23 @@ class SchemaInferer:
                 )
                 instructions = _INFER_INSTRUCTIONS + "\n\n" + "\n".join(feedback_lines)
 
-            response: ParsedResponse[SchemaInferenceOutput] = self.client.responses.parse(
-                model=self.model_name,
-                instructions=instructions,
-                input=data.model_dump_json(),
-                text_format=SchemaInferenceOutput,
-                *args,
-                **kwargs,
-            )
+            try:
+                response: ParsedResponse[SchemaInferenceOutput] = self.client.responses.parse(
+                    model=self.model_name,
+                    instructions=instructions,
+                    input=data.model_dump_json(),
+                    text_format=SchemaInferenceOutput,
+                    *args,
+                    **kwargs,
+                )
+            except ValidationError as error:
+                last_err = error
+                previous_errors.append(str(error))
+                if attempt == max_retries - 1:
+                    raise ValueError(
+                        f"Schema validation failed after {max_retries} attempts. Last error: {last_err}"
+                    ) from last_err
+                continue
             parsed = response.output_parsed
             if parsed is None:
                 last_err = ValueError("Schema inference returned no parsed output.")

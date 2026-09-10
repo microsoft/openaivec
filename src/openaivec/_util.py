@@ -101,8 +101,10 @@ def run_partition_async(
         for part in parts:
             yield loop.run_until_complete(runner(part))
     finally:
-        loop.run_until_complete(cleanup())
-        close_event_loop(loop)
+        try:
+            loop.run_until_complete(cleanup())
+        finally:
+            close_event_loop(loop)
 
 
 def get_exponential_with_cutoff(scale: float) -> float:

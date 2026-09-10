@@ -129,14 +129,17 @@ use partition-local caches to avoid duplicate remote calls inside a partition.
 
 import logging
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from enum import Enum
+from functools import partial
 from typing import Annotated, TypeVar, Union, cast, get_args, get_origin
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 import tiktoken
+from openai import AsyncOpenAI, OpenAI
 from pydantic import BaseModel
 from pyspark import SparkContext
 from pyspark.sql import SparkSession
@@ -148,8 +151,10 @@ from typing_extensions import Literal
 from openaivec._cache import AsyncBatchCache
 from openaivec._cache.proxy import DEFAULT_MANAGED_CACHE_SIZE
 from openaivec._embeddings import AsyncBatchEmbeddings
+from openaivec._fabric import provide_async_fabric_client
 from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
-from openaivec._provider import CONTAINER, get_async_client
+from openaivec._provider import CONTAINER, get_async_client, provide_async_openai_client, provide_openai_client
+from openaivec._provider import setup_fabric as _setup_fabric
 from openaivec._responses import AsyncBatchResponses
 from openaivec._schema import SchemaInferenceInput, SchemaInferenceOutput, SchemaInferer
 from openaivec._serialize import deserialize_base_model, serialize_base_model
@@ -164,6 +169,7 @@ __all__ = [
     "setup",
     "setup_azure",
     "setup_entra_id",
+    "setup_fabric",
     "similarity_udf",
     "split_to_chunks_udf",
     "task_udf",
@@ -172,6 +178,87 @@ __all__ = [
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 PartitionResult = TypeVar("PartitionResult")
+
+
+@dataclass(frozen=True)
+class _FabricSparkConfig:
+    api_version: str
+
+
+@dataclass
+class _PartitionClient:
+    factory: Callable[[], AsyncOpenAI]
+    owned: bool
+    client: AsyncOpenAI | None = None
+
+    @classmethod
+    def of(cls, fabric_config: _FabricSparkConfig | None) -> "_PartitionClient":
+        if fabric_config is None:
+            return cls(factory=get_async_client, owned=False)
+        return cls(factory=partial(provide_async_fabric_client, api_version=fabric_config.api_version), owned=True)
+
+    def get(self) -> AsyncOpenAI:
+        if self.client is None:
+            self.client = self.factory()
+        return self.client
+
+    async def close(self) -> None:
+        if self.owned and self.client is not None:
+            await self.client.close()
+
+
+def _clear_fabric_setup() -> None:
+    if CONTAINER.is_registered(_FabricSparkConfig):
+        CONTAINER.unregister(_FabricSparkConfig)
+        CONTAINER.register(OpenAI, provide_openai_client)
+        CONTAINER.register(AsyncOpenAI, provide_async_openai_client)
+
+
+def setup_fabric(
+    spark: SparkSession,
+    *,
+    responses_model_name: str = "gpt-5.1",
+    embeddings_model_name: str = "text-embedding-ada-002",
+    api_version: str = "2025-04-01-preview",
+) -> None:
+    """Use Fabric built-in models on the notebook driver and Spark workers.
+
+    Call before constructing AI UDFs. Each UDF captures only non-secret
+    configuration. Workers create their own runtime-authenticated HTTP client
+    inside the partition event loop and close it when the partition finishes.
+    No driver tokens, HTTP clients, or service-principal secrets are serialized.
+
+    Args:
+        spark (SparkSession): The Fabric notebook Spark session.
+        responses_model_name (str): Built-in response model, default ``gpt-5.1``.
+        embeddings_model_name (str): Built-in embedding model, default
+            ``text-embedding-ada-002``.
+        api_version (str): Fabric-supported Azure OpenAI API version.
+
+    Raises:
+        RuntimeError: The Fabric notebook authentication helpers are unavailable.
+        ValueError: A model name or API version is empty.
+
+    Example:
+        >>> from openaivec.spark_ext import embeddings_udf, setup_fabric
+        >>> setup_fabric(spark)  # doctest: +SKIP
+        >>> embed = embeddings_udf(batch_size=2, max_concurrency=1)  # doctest: +SKIP
+        >>> result = df.withColumn("embedding", embed("text"))  # doctest: +SKIP
+
+    Notes:
+        Install compatible dependencies in a published Fabric Environment
+        attached to the notebook. Do not install the ``spark`` extra over
+        Fabric's managed PySpark. Built-in models are a capacity-billed preview.
+        Close resolved driver clients before replacing their configuration.
+    """
+    _setup_fabric(
+        responses_model=responses_model_name,
+        embeddings_model=embeddings_model_name,
+        api_version=api_version,
+    )
+    CONTAINER.register(SparkSession, lambda: spark)
+    CONTAINER.register(SparkContext, lambda: CONTAINER.resolve(SparkSession).sparkContext)
+    CONTAINER.register(_FabricSparkConfig, lambda: _FabricSparkConfig(api_version=api_version))
 
 
 def setup(
@@ -205,6 +292,7 @@ def setup(
         ```
     """
 
+    _clear_fabric_setup()
     CONTAINER.register(SparkSession, lambda: spark)
     CONTAINER.register(SparkContext, lambda: CONTAINER.resolve(SparkSession).sparkContext)
 
@@ -269,6 +357,7 @@ def setup_azure(
     if base_url is None:
         raise ValueError("base_url is required")
 
+    _clear_fabric_setup()
     CONTAINER.register(SparkSession, lambda: spark)
     CONTAINER.register(SparkContext, lambda: CONTAINER.resolve(SparkSession).sparkContext)
 
@@ -389,6 +478,7 @@ def setup_entra_id(
                 "Verify the secret exists and has a non-empty value."
             )
 
+    _clear_fabric_setup()
     CONTAINER.register(SparkSession, lambda: spark)
     CONTAINER.register(SparkContext, lambda: CONTAINER.resolve(SparkSession).sparkContext)
 
@@ -581,6 +671,7 @@ def responses_udf(
           Use HTTP(S) URLs or pre-encoded data URIs when ``multimodal=True``.
     """
     _model_name = model_name or CONTAINER.resolve(ResponsesModelName).value
+    fabric_config = CONTAINER.resolve(_FabricSparkConfig) if CONTAINER.is_registered(_FabricSparkConfig) else None
 
     if issubclass(response_format, BaseModel):
         spark_schema = _pydantic_to_spark_schema(response_format)
@@ -588,29 +679,32 @@ def responses_udf(
 
         @pandas_udf(returnType=spark_schema)  # type: ignore[call-overload]
         def structure_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
-            async_client = get_async_client()
+            partition_client = _PartitionClient.of(fabric_config)
             response_model = deserialize_base_model(json_schema_string)
             cache = AsyncBatchCache[str, response_model](
                 batch_size=batch_size,
                 max_concurrency=max_concurrency,
                 max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
             )
-            batch_client = AsyncBatchResponses(
-                client=async_client,
-                model_name=_model_name,
-                system_message=instructions,
-                response_format=response_model,
-                cache=cache,
-                api_kwargs=api_kwargs,
-                multimodal=multimodal,
-            )
 
             async def run_part(part: pd.Series) -> pd.DataFrame:
+                batch_client = AsyncBatchResponses(
+                    client=partition_client.get(),
+                    model_name=_model_name,
+                    system_message=instructions,
+                    response_format=response_model,
+                    cache=cache,
+                    api_kwargs=api_kwargs,
+                    multimodal=multimodal,
+                )
                 predictions = await batch_client.parse(part.tolist())
                 return pd.DataFrame(pd.Series(predictions, index=part.index, name=part.name).map(_safe_dump).tolist())
 
             async def cleanup() -> None:
-                await cache.clear()
+                try:
+                    await cache.clear()
+                finally:
+                    await partition_client.close()
 
             yield from run_partition_async(col, run_part, cleanup)
 
@@ -620,28 +714,31 @@ def responses_udf(
 
         @pandas_udf(returnType=StringType())  # type: ignore[call-overload]
         def string_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
-            async_client = get_async_client()
+            partition_client = _PartitionClient.of(fabric_config)
             cache = AsyncBatchCache[str, str](
                 batch_size=batch_size,
                 max_concurrency=max_concurrency,
                 max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
             )
-            batch_client = AsyncBatchResponses(
-                client=async_client,
-                model_name=_model_name,
-                system_message=instructions,
-                response_format=str,
-                cache=cache,
-                api_kwargs=api_kwargs,
-                multimodal=multimodal,
-            )
 
             async def run_part(part: pd.Series) -> pd.Series:
+                batch_client = AsyncBatchResponses(
+                    client=partition_client.get(),
+                    model_name=_model_name,
+                    system_message=instructions,
+                    response_format=str,
+                    cache=cache,
+                    api_kwargs=api_kwargs,
+                    multimodal=multimodal,
+                )
                 predictions = await batch_client.parse(part.tolist())
                 return pd.Series(predictions, index=part.index, name=part.name).map(_safe_cast_str)
 
             async def cleanup() -> None:
-                await cache.clear()
+                try:
+                    await cache.clear()
+                finally:
+                    await partition_client.close()
 
             yield from run_partition_async(col, run_part, cleanup)
 
@@ -931,23 +1028,24 @@ def embeddings_udf(
     """
 
     _model_name = model_name or CONTAINER.resolve(EmbeddingsModelName).value
+    fabric_config = CONTAINER.resolve(_FabricSparkConfig) if CONTAINER.is_registered(_FabricSparkConfig) else None
 
     @pandas_udf(returnType=ArrayType(FloatType()))  # type: ignore[call-overload,misc]
     def _embeddings_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
-        async_client = get_async_client()
+        partition_client = _PartitionClient.of(fabric_config)
         cache = AsyncBatchCache[str, np.ndarray](
             batch_size=batch_size,
             max_concurrency=max_concurrency,
             max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
         )
-        batch_client = AsyncBatchEmbeddings(
-            client=async_client,
-            model_name=_model_name,
-            cache=cache,
-            api_kwargs=api_kwargs,
-        )
 
         async def run_part(part: pd.Series) -> pd.Series:
+            batch_client = AsyncBatchEmbeddings(
+                client=partition_client.get(),
+                model_name=_model_name,
+                cache=cache,
+                api_kwargs=api_kwargs,
+            )
             embeddings = await batch_client.create(part.tolist())
             if embeddings:
                 flat = np.concatenate(embeddings)
@@ -959,7 +1057,10 @@ def embeddings_udf(
             return pd.Series([], index=part.index, name=part.name, dtype=object)
 
         async def cleanup() -> None:
-            await cache.clear()
+            try:
+                await cache.clear()
+            finally:
+                await partition_client.close()
 
         yield from run_partition_async(col, run_part, cleanup)
 

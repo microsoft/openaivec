@@ -457,9 +457,25 @@ override them with `responses_model` and `embeddings_model`.
 - Responses are sent with `store=False`; `store=True` and `previous_response_id`
     are rejected before sending, including when supplied through `extra_body`.
 - Async access requires `get_openai_httpx_async_client()` in the Fabric runtime.
-    Otherwise use the synchronous API.
+    Spark UDFs require this helper on Python workers.
 - Configuration applies to the notebook driver, including local pandas and DuckDB
-    operations. It does not configure Spark executor authentication.
+    operations. Use the Spark-specific setup below for executor authentication.
+
+For Spark UDFs, install the package in a published **Fabric Environment** attached
+to the notebook, without the `spark` extra. Then configure it before creating UDFs:
+
+```python
+from openaivec.spark_ext import embeddings_udf, setup_fabric
+
+setup_fabric(spark)
+embed = embeddings_udf(batch_size=2, max_concurrency=1)
+df.withColumn("embedding", embed("text")).show()
+```
+
+Each partition creates and closes its own runtime-authenticated client. No driver
+tokens or HTTP clients are sent to workers. `responses_udf`, `task_udf`, and
+`parse_udf` use the same route. See the
+[Spark authentication guide](https://microsoft.github.io/openaivec/authentication/#spark-udfs).
 
 ### Your own Azure OpenAI deployment
 

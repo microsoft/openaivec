@@ -68,6 +68,7 @@ nav:
       - FAQ Generation: examples/generate_faq.ipynb
       - Receipt Parsing (Multimodal): examples/receipt_parsing.ipynb
       - Fabric + DuckDB (Multimodal PDF): examples/fabric_duckdb.ipynb
+      - Fabric Built-in Models (Spark): examples/fabric_spark.ipynb
       - Token Count and Processing Time: examples/batch_size.ipynb
       - Request Batching Benchmark: examples/benchmark.ipynb
   - API Reference:
