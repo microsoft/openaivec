@@ -4,7 +4,7 @@ from typing import get_args, get_origin
 from unittest.mock import Mock
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from openaivec._schema import SchemaInferenceInput, SchemaInferenceOutput, SchemaInferer  # type: ignore
 from openaivec._schema.spec import EnumSpec, FieldSpec, ObjectSpec  # internal types for constructing test schemas
@@ -431,6 +431,62 @@ def test_infer_schema_raises_after_all_none_output_parsed_retries():
             max_retries=2,
         )
     assert parse.call_count == 2
+
+
+@pytest.fixture
+def schema_parse_validation_error() -> ValidationError:
+    with pytest.raises(ValidationError) as error_info:
+        SchemaInferenceOutput.model_validate_json('{"instructions":"Extract sentiment"')
+    return error_info.value
+
+
+def test_infer_schema_retries_parse_validation_error(schema_parse_validation_error):
+    output = _minimal_schema_output()
+    parse = Mock(side_effect=[schema_parse_validation_error, SimpleNamespace(output_parsed=output)])
+    client = SimpleNamespace(responses=SimpleNamespace(parse=parse))
+    inferer = SchemaInferer(client=client, model_name="gpt-4.1-mini")  # type: ignore[arg-type]
+
+    result = inferer.infer_schema(
+        SchemaInferenceInput(examples=["payment received"], instructions="Extract payment state"),
+        max_retries=2,
+    )
+
+    assert result is output
+    assert parse.call_count == 2
+    assert "PRIOR VALIDATION FEEDBACK" in parse.call_args_list[1].kwargs["instructions"]
+    assert "json_invalid" in parse.call_args_list[1].kwargs["instructions"]
+
+
+@pytest.mark.parametrize("max_retries", [1, 2])
+def test_infer_schema_bounds_parse_validation_retries(schema_parse_validation_error, max_retries):
+    parse = Mock(side_effect=schema_parse_validation_error)
+    client = SimpleNamespace(responses=SimpleNamespace(parse=parse))
+    inferer = SchemaInferer(client=client, model_name="gpt-4.1-mini")  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match=f"Schema validation failed after {max_retries} attempts") as error_info:
+        inferer.infer_schema(
+            SchemaInferenceInput(examples=["payment received"], instructions="Extract payment state"),
+            max_retries=max_retries,
+        )
+
+    assert parse.call_count == max_retries
+    assert error_info.value.__cause__ is schema_parse_validation_error
+
+
+@pytest.mark.parametrize("parse_error", [ValueError("Invalid client configuration"), TypeError("Invalid argument")])
+def test_infer_schema_does_not_retry_non_validation_parse_errors(parse_error):
+    parse = Mock(side_effect=parse_error)
+    client = SimpleNamespace(responses=SimpleNamespace(parse=parse))
+    inferer = SchemaInferer(client=client, model_name="gpt-4.1-mini")  # type: ignore[arg-type]
+
+    with pytest.raises(type(parse_error)) as error_info:
+        inferer.infer_schema(
+            SchemaInferenceInput(examples=["payment received"], instructions="Extract payment state"),
+            max_retries=2,
+        )
+
+    assert error_info.value is parse_error
+    assert parse.call_count == 1
 
 
 def test_schema_inference_output_save_load_roundtrip(tmp_path):
