@@ -12,6 +12,7 @@ CLAUDE.md
 
 ### Jupyter
 *.ipynb
+!docs/examples/fabric_spark.ipynb
 
 ### deps
 *.dot
