@@ -22,8 +22,8 @@ def test_batch_embeddings_embed_chunk_uses_shared_float32_conversion():
             embeddings=SimpleNamespace(
                 create=lambda **_: SimpleNamespace(
                     data=[
-                        SimpleNamespace(embedding=[1.0, 2.0]),
-                        SimpleNamespace(embedding=[3.0, 4.0]),
+                        SimpleNamespace(index=0, embedding=[1.0, 2.0]),
+                        SimpleNamespace(index=1, embedding=[3.0, 4.0]),
                     ]
                 )
             )

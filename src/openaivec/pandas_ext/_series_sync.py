@@ -9,7 +9,7 @@ from openai import OpenAI
 
 from openaivec._cache import BatchCache
 from openaivec._cache.proxy import DEFAULT_MANAGED_CACHE_SIZE
-from openaivec._embeddings import BatchEmbeddings
+from openaivec._embeddings import BatchEmbeddings, EmbeddingLimits
 from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
 from openaivec._provider import CONTAINER
 from openaivec._responses import BatchResponses
@@ -144,6 +144,8 @@ class OpenAIVecSeriesAccessor:
     def embeddings_with_cache(
         self,
         cache: BatchCache[str, np.ndarray],
+        *,
+        limits: EmbeddingLimits | None = None,
         **api_kwargs,
     ) -> pd.Series:
         """Compute OpenAI embeddings for every Series element using a provided cache.
@@ -168,6 +170,7 @@ class OpenAIVecSeriesAccessor:
             cache (BatchCache[str, np.ndarray]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
+            limits (EmbeddingLimits | None): Hard provider limits; None uses OpenAI defaults.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -181,6 +184,7 @@ class OpenAIVecSeriesAccessor:
             model_name=CONTAINER.resolve(EmbeddingsModelName).value,
             cache=cache,
             api_kwargs=api_kwargs,
+            limits=limits if limits is not None else EmbeddingLimits(),
         )
 
         return _embeddings_to_series(
@@ -189,7 +193,14 @@ class OpenAIVecSeriesAccessor:
             name=self._obj.name,
         )
 
-    def embeddings(self, batch_size: int | None = None, show_progress: bool = True, **api_kwargs) -> pd.Series:
+    def embeddings(
+        self,
+        batch_size: int | None = None,
+        show_progress: bool = True,
+        *,
+        limits: EmbeddingLimits | None = None,
+        **api_kwargs,
+    ) -> pd.Series:
         """Compute OpenAI embeddings for every Series element.
 
         Example:
@@ -211,6 +222,7 @@ class OpenAIVecSeriesAccessor:
                 single request. Defaults to ``None`` (automatic batch size optimization
                 based on execution time). Set to a positive integer for fixed batch size.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
+            limits (EmbeddingLimits | None): Hard provider limits; None uses OpenAI defaults.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -225,6 +237,7 @@ class OpenAIVecSeriesAccessor:
                 max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
                 show_progress=show_progress,
             ),
+            limits=limits,
             **api_kwargs,
         )
 

@@ -8,7 +8,7 @@ from openai import AsyncOpenAI
 
 from openaivec._cache import AsyncBatchCache
 from openaivec._cache.proxy import DEFAULT_MANAGED_CACHE_SIZE
-from openaivec._embeddings import AsyncBatchEmbeddings
+from openaivec._embeddings import AsyncBatchEmbeddings, EmbeddingLimits
 from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
 from openaivec._provider import CONTAINER
 from openaivec._responses import AsyncBatchResponses
@@ -152,6 +152,8 @@ class AsyncOpenAIVecSeriesAccessor:
     async def embeddings_with_cache(
         self,
         cache: AsyncBatchCache[str, np.ndarray],
+        *,
+        limits: EmbeddingLimits | None = None,
         **api_kwargs,
     ) -> pd.Series:
         """Compute OpenAI embeddings for every Series element using a provided cache (asynchronously).
@@ -180,6 +182,7 @@ class AsyncOpenAIVecSeriesAccessor:
             cache (AsyncBatchCache[str, np.ndarray]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
+            limits (EmbeddingLimits | None): Hard provider limits; None uses OpenAI defaults.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -196,6 +199,7 @@ class AsyncOpenAIVecSeriesAccessor:
             model_name=CONTAINER.resolve(EmbeddingsModelName).value,
             cache=cache,
             api_kwargs=api_kwargs,
+            limits=limits if limits is not None else EmbeddingLimits(),
         )
 
         # Await the async operation
@@ -208,7 +212,13 @@ class AsyncOpenAIVecSeriesAccessor:
         )
 
     async def embeddings(
-        self, batch_size: int | None = None, max_concurrency: int = 8, show_progress: bool = True, **api_kwargs
+        self,
+        batch_size: int | None = None,
+        max_concurrency: int = 8,
+        show_progress: bool = True,
+        *,
+        limits: EmbeddingLimits | None = None,
+        **api_kwargs,
     ) -> pd.Series:
         """Compute OpenAI embeddings for every Series element (asynchronously).
 
@@ -234,6 +244,7 @@ class AsyncOpenAIVecSeriesAccessor:
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to ``8``.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
+            limits (EmbeddingLimits | None): Hard provider limits; None uses OpenAI defaults.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -252,6 +263,7 @@ class AsyncOpenAIVecSeriesAccessor:
                 max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
                 show_progress=show_progress,
             ),
+            limits=limits,
             **api_kwargs,
         )
 

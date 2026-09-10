@@ -150,7 +150,7 @@ from typing_extensions import Literal
 
 from openaivec._cache import AsyncBatchCache
 from openaivec._cache.proxy import DEFAULT_MANAGED_CACHE_SIZE
-from openaivec._embeddings import AsyncBatchEmbeddings
+from openaivec._embeddings import AsyncBatchEmbeddings, EmbeddingLimits
 from openaivec._fabric import provide_async_fabric_client
 from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
 from openaivec._provider import CONTAINER, get_async_client, provide_async_openai_client, provide_openai_client
@@ -1006,6 +1006,8 @@ def embeddings_udf(
     model_name: str | None = None,
     batch_size: int | None = None,
     max_concurrency: int = 8,
+    *,
+    limits: EmbeddingLimits | None = None,
     **api_kwargs,
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF for generating embeddings.
@@ -1044,6 +1046,7 @@ def embeddings_udf(
             Total cluster concurrency = max_concurrency × number_of_executors.
             Higher values increase throughput but may hit OpenAI rate limits.
             Recommended: 4-12 per executor. Defaults to 8.
+        limits (EmbeddingLimits | None): Hard provider limits; None uses OpenAI defaults.
         **api_kwargs: Additional OpenAI API parameters (e.g., dimensions for text-embedding-3 models).
 
     Returns:
@@ -1079,6 +1082,7 @@ def embeddings_udf(
                 model_name=_model_name,
                 cache=cache,
                 api_kwargs=api_kwargs,
+                limits=limits if limits is not None else EmbeddingLimits(),
             )
             embeddings = await batch_client.create(part.tolist())
             if embeddings:

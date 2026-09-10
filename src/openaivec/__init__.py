@@ -1,4 +1,4 @@
-from ._embeddings import AsyncBatchEmbeddings, BatchEmbeddings
+from ._embeddings import AsyncBatchEmbeddings, BatchEmbeddings, EmbeddingLimits
 from ._model import PreparedTask
 from ._prompt import FewShotPrompt, FewShotPromptBuilder
 from ._provider import (
@@ -21,6 +21,7 @@ __all__ = [
     "AsyncSchemaInferer",
     "BatchEmbeddings",
     "BatchResponses",
+    "EmbeddingLimits",
     "FewShotPrompt",
     "FewShotPromptBuilder",
     "PreparedTask",

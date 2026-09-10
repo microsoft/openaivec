@@ -49,7 +49,7 @@ from pydantic import BaseModel
 
 from openaivec._cache import AsyncBatchCache
 from openaivec._cache.proxy import DEFAULT_MANAGED_CACHE_SIZE
-from openaivec._embeddings import AsyncBatchEmbeddings
+from openaivec._embeddings import AsyncBatchEmbeddings, EmbeddingLimits
 from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
 from openaivec._provider import CONTAINER
 from openaivec._responses import AsyncBatchResponses
@@ -201,6 +201,7 @@ def embeddings_udf(
     model_name: str | None = None,
     batch_size: int = 128,
     max_concurrency: int = 8,
+    limits: EmbeddingLimits | None = None,
     **api_kwargs: Any,
 ) -> None:
     """Register a DuckDB Arrow-based UDF that returns embedding vectors.
@@ -214,6 +215,7 @@ def embeddings_udf(
         model_name (str | None): Embeddings model or deployment name.
         batch_size (int): Rows per API batch. Defaults to 128.
         max_concurrency (int): Maximum concurrent API requests. Defaults to 8.
+        limits (EmbeddingLimits | None): Hard provider limits; None uses OpenAI defaults.
         **api_kwargs: Extra parameters forwarded to the OpenAI API.
 
     Example:
@@ -238,6 +240,7 @@ def embeddings_udf(
         model_name=_model_name,
         cache=cache,
         api_kwargs=api_kwargs,
+        limits=limits if limits is not None else EmbeddingLimits(),
     )
 
     def _batch_udf(arrow_batch: pa.Array) -> pa.Array:
