@@ -25,6 +25,8 @@ class OpenAIVecDataFrameAccessor:
         instructions: str,
         cache: BatchCache[str, ResponseFormat],
         response_format: type[ResponseFormat] = str,
+        *,
+        max_validation_retries: int = 3,
         **api_kwargs,
     ) -> pd.Series:
         """Call an LLM once for every DataFrame row using a provided cache.
@@ -58,6 +60,8 @@ class OpenAIVecDataFrameAccessor:
                 Set cache.batch_size=None to enable automatic batch size optimization.
             response_format (type[ResponseFormat], optional): Pydantic model or built‑in
                 type the assistant should return. Defaults to ``str``.
+            max_validation_retries (int): Additional schema/ID correction attempts.
+                Defaults to 3; 0 disables correction. Must be nonnegative.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -69,6 +73,7 @@ class OpenAIVecDataFrameAccessor:
             instructions=instructions,
             cache=cache,
             response_format=response_format,
+            max_validation_retries=max_validation_retries,
             **api_kwargs,
         )
 
@@ -78,6 +83,8 @@ class OpenAIVecDataFrameAccessor:
         response_format: type[ResponseFormat] = str,
         batch_size: int | None = None,
         show_progress: bool = True,
+        *,
+        max_validation_retries: int = 3,
         **api_kwargs,
     ) -> pd.Series:
         """Call an LLM once for every DataFrame row.
@@ -109,6 +116,8 @@ class OpenAIVecDataFrameAccessor:
                 request. Defaults to ``None`` (automatic batch size optimization
                 based on execution time). Set to a positive integer for fixed batch size.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
+            max_validation_retries (int): Additional schema/ID correction attempts.
+                Defaults to 3; 0 disables correction. Must be nonnegative.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -124,6 +133,7 @@ class OpenAIVecDataFrameAccessor:
                 show_progress=show_progress,
             ),
             response_format=response_format,
+            max_validation_retries=max_validation_retries,
             **api_kwargs,
         )
 
@@ -131,6 +141,8 @@ class OpenAIVecDataFrameAccessor:
         self,
         task: PreparedTask[ResponseFormat],
         cache: BatchCache[str, ResponseFormat],
+        *,
+        max_validation_retries: int = 3,
         **api_kwargs,
     ) -> pd.Series:
         """Execute a prepared task on every DataFrame row using a provided cache.
@@ -156,6 +168,8 @@ class OpenAIVecDataFrameAccessor:
             cache (BatchCache[str, ResponseFormat]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
+            max_validation_retries (int): Additional schema/ID correction attempts.
+                Defaults to 3; 0 disables correction. Must be nonnegative.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -170,6 +184,7 @@ class OpenAIVecDataFrameAccessor:
         return _df_rows_to_json_series(self._obj).ai.task_with_cache(
             task=task,
             cache=cache,
+            max_validation_retries=max_validation_retries,
             **api_kwargs,
         )
 
@@ -178,6 +193,8 @@ class OpenAIVecDataFrameAccessor:
         task: PreparedTask,
         batch_size: int | None = None,
         show_progress: bool = True,
+        *,
+        max_validation_retries: int = 3,
         **api_kwargs,
     ) -> pd.Series:
         """Execute a prepared task on every DataFrame row.
@@ -213,6 +230,8 @@ class OpenAIVecDataFrameAccessor:
                 to optimize API usage. Defaults to ``None`` (automatic batch size
                 optimization based on execution time). Set to a positive integer for fixed batch size.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
+            max_validation_retries (int): Additional schema/ID correction attempts.
+                Defaults to 3; 0 disables correction. Must be nonnegative.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -229,6 +248,7 @@ class OpenAIVecDataFrameAccessor:
             task=task,
             batch_size=batch_size,
             show_progress=show_progress,
+            max_validation_retries=max_validation_retries,
             **api_kwargs,
         )
 
@@ -238,6 +258,8 @@ class OpenAIVecDataFrameAccessor:
         cache: BatchCache[str, ResponseFormat],
         response_format: type[ResponseFormat] | None = None,
         max_examples: int = 100,
+        *,
+        max_validation_retries: int = 3,
         **api_kwargs,
     ) -> pd.Series:
         """Parse DataFrame rows into structured data using an LLM with a provided cache.
@@ -270,6 +292,9 @@ class OpenAIVecDataFrameAccessor:
                 type, or None for automatic schema inference. Defaults to None.
             max_examples (int, optional): Maximum rows to analyze when inferring
                 schema (only used when response_format is None). Defaults to 100.
+            max_validation_retries (int): Additional extraction corrections,
+                separate from inference and transport retries. Defaults to 3;
+                0 disables correction. Must be nonnegative.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -284,6 +309,7 @@ class OpenAIVecDataFrameAccessor:
             cache=cache,
             response_format=response_format,
             max_examples=max_examples,
+            max_validation_retries=max_validation_retries,
             **api_kwargs,
         )
 
@@ -294,6 +320,8 @@ class OpenAIVecDataFrameAccessor:
         max_examples: int = 100,
         batch_size: int | None = None,
         show_progress: bool = True,
+        *,
+        max_validation_retries: int = 3,
         **api_kwargs,
     ) -> pd.Series:
         """Parse DataFrame rows into structured data using an LLM.
@@ -315,6 +343,9 @@ class OpenAIVecDataFrameAccessor:
                 enables automatic optimization. Defaults to None.
             show_progress (bool, optional): Show progress bar in Jupyter
                 notebooks. Defaults to True.
+            max_validation_retries (int): Additional extraction corrections,
+                separate from inference and transport retries. Defaults to 3;
+                0 disables correction. Must be nonnegative.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -347,6 +378,7 @@ class OpenAIVecDataFrameAccessor:
             ),
             response_format=response_format,
             max_examples=max_examples,
+            max_validation_retries=max_validation_retries,
             **api_kwargs,
         )
 

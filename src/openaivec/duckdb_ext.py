@@ -89,6 +89,7 @@ def responses_udf(
     batch_size: int = 64,
     max_concurrency: int = 8,
     multimodal: bool = False,
+    max_validation_retries: int = 3,
     **api_kwargs: Any,
 ) -> None:
     """Register a DuckDB Arrow-based UDF that calls the OpenAI Responses API.
@@ -111,6 +112,8 @@ def responses_udf(
             container-registered ``ResponsesModelName``.
         batch_size (int): Rows per API batch. Defaults to 64.
         max_concurrency (int): Maximum concurrent API requests. Defaults to 8.
+        max_validation_retries (int): Additional schema/ID corrections per batch.
+            Defaults to 3; 0 disables correction. Must be nonnegative.
         **api_kwargs: Extra parameters forwarded to the OpenAI API.
 
     Example:
@@ -140,6 +143,7 @@ def responses_udf(
         system_message=instructions,
         response_format=response_format,
         cache=cache,
+        max_validation_retries=max_validation_retries,
         api_kwargs=api_kwargs,
         multimodal=multimodal,
     )
@@ -245,6 +249,7 @@ def task_udf(
     batch_size: int = 64,
     max_concurrency: int = 8,
     multimodal: bool = False,
+    max_validation_retries: int = 3,
     **api_kwargs: Any,
 ) -> None:
     """Register a DuckDB UDF backed by a ``PreparedTask``.
@@ -256,6 +261,8 @@ def task_udf(
         model_name (str | None): Model or deployment name.
         batch_size (int): Rows per API batch. Defaults to 64.
         max_concurrency (int): Maximum concurrent API requests. Defaults to 8.
+        max_validation_retries (int): Additional schema/ID corrections per batch.
+            Defaults to 3; 0 disables correction. Must be nonnegative.
         multimodal (bool): When ``True``, file paths and URLs are sent as
             multimodal content. Defaults to ``False``.
         **api_kwargs: Extra parameters forwarded to the OpenAI API.
@@ -269,6 +276,7 @@ def task_udf(
         batch_size=batch_size,
         max_concurrency=max_concurrency,
         multimodal=multimodal,
+        max_validation_retries=max_validation_retries,
         **api_kwargs,
     )
 

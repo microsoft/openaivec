@@ -29,6 +29,8 @@ class AsyncOpenAIVecSeriesAccessor:
         cache: AsyncBatchCache[str, ResponseFormat],
         response_format: type[ResponseFormat] = str,
         multimodal: bool = False,
+        *,
+        max_validation_retries: int = 3,
         **api_kwargs,
     ) -> pd.Series:
         """Call an LLM once for every Series element using a provided cache (asynchronously).
@@ -55,6 +57,8 @@ class AsyncOpenAIVecSeriesAccessor:
                 Set cache.batch_size=None to enable automatic batch size optimization.
             response_format (type[ResponseFormat], optional): Pydantic model or built‑in
                 type the assistant should return. Defaults to ``str``.
+            max_validation_retries (int): Additional schema/ID correction attempts.
+                Defaults to 3; 0 disables correction. Must be nonnegative.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -71,6 +75,7 @@ class AsyncOpenAIVecSeriesAccessor:
             system_message=instructions,
             response_format=response_format,
             cache=cache,
+            max_validation_retries=max_validation_retries,
             api_kwargs=api_kwargs,
             multimodal=multimodal,
         )
@@ -86,6 +91,8 @@ class AsyncOpenAIVecSeriesAccessor:
         max_concurrency: int = 8,
         show_progress: bool = True,
         multimodal: bool = False,
+        *,
+        max_validation_retries: int = 3,
         **api_kwargs,
     ) -> pd.Series:
         """Call an LLM once for every Series element (asynchronously).
@@ -116,6 +123,8 @@ class AsyncOpenAIVecSeriesAccessor:
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to ``8``.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
+            max_validation_retries (int): Additional schema/ID correction attempts.
+                Defaults to 3; 0 disables correction. Must be nonnegative.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -136,6 +145,7 @@ class AsyncOpenAIVecSeriesAccessor:
             ),
             response_format=response_format,
             multimodal=multimodal,
+            max_validation_retries=max_validation_retries,
             **api_kwargs,
         )
 
@@ -250,6 +260,8 @@ class AsyncOpenAIVecSeriesAccessor:
         task: PreparedTask[ResponseFormat],
         cache: AsyncBatchCache[str, ResponseFormat],
         multimodal: bool = False,
+        *,
+        max_validation_retries: int = 3,
         **api_kwargs,
     ) -> pd.Series:
         """Execute a prepared task on every Series element using a provided cache (asynchronously).
@@ -276,6 +288,8 @@ class AsyncOpenAIVecSeriesAccessor:
             cache (AsyncBatchCache[str, ResponseFormat]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
+            max_validation_retries (int): Additional schema/ID correction attempts.
+                Defaults to 3; 0 disables correction. Must be nonnegative.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -293,6 +307,7 @@ class AsyncOpenAIVecSeriesAccessor:
             system_message=task.instructions,
             response_format=task.response_format,
             cache=cache,
+            max_validation_retries=max_validation_retries,
             api_kwargs=api_kwargs,
             multimodal=multimodal,
         )
@@ -307,6 +322,8 @@ class AsyncOpenAIVecSeriesAccessor:
         max_concurrency: int = 8,
         show_progress: bool = True,
         multimodal: bool = False,
+        *,
+        max_validation_retries: int = 3,
         **api_kwargs,
     ) -> pd.Series:
         """Execute a prepared task on every Series element (asynchronously).
@@ -341,6 +358,8 @@ class AsyncOpenAIVecSeriesAccessor:
             max_concurrency (int, optional): Maximum number of concurrent
                 requests. Defaults to 8.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
+            max_validation_retries (int): Additional schema/ID correction attempts.
+                Defaults to 3; 0 disables correction. Must be nonnegative.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -361,6 +380,7 @@ class AsyncOpenAIVecSeriesAccessor:
                 show_progress=show_progress,
             ),
             multimodal=multimodal,
+            max_validation_retries=max_validation_retries,
             **api_kwargs,
         )
 
@@ -371,6 +391,8 @@ class AsyncOpenAIVecSeriesAccessor:
         response_format: type[ResponseFormat] | None = None,
         max_examples: int = 100,
         multimodal: bool = False,
+        *,
+        max_validation_retries: int = 3,
         **api_kwargs,
     ) -> pd.Series:
         """Parse Series values into structured data using an LLM with a provided cache (asynchronously).
@@ -403,6 +425,9 @@ class AsyncOpenAIVecSeriesAccessor:
                 type, or None for automatic inference. Defaults to None.
             max_examples (int, optional): Maximum values to analyze for schema
                 inference (when response_format is None). Defaults to 100.
+            max_validation_retries (int): Additional extraction corrections,
+                separate from inference and transport retries. Defaults to 3;
+                0 disables correction. Must be nonnegative.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -414,6 +439,8 @@ class AsyncOpenAIVecSeriesAccessor:
         Note:
             This is an asynchronous method and must be awaited.
         """
+        if max_validation_retries < 0:
+            raise ValueError("max_validation_retries must be >= 0")
         schema: SchemaInferenceOutput | None = None
         if response_format is None:
             inferred_schema = await self.infer_schema(
@@ -431,6 +458,7 @@ class AsyncOpenAIVecSeriesAccessor:
             cache=cache,
             response_format=resolved_response_format,
             multimodal=multimodal,
+            max_validation_retries=max_validation_retries,
             **api_kwargs,
         )
 
@@ -471,6 +499,8 @@ class AsyncOpenAIVecSeriesAccessor:
         max_concurrency: int = 8,
         show_progress: bool = True,
         multimodal: bool = False,
+        *,
+        max_validation_retries: int = 3,
         **api_kwargs,
     ) -> pd.Series:
         """Parse Series values into structured data using an LLM (asynchronously).
@@ -490,6 +520,9 @@ class AsyncOpenAIVecSeriesAccessor:
             max_concurrency (int, optional): Maximum concurrent API requests.
                 Defaults to 8.
             show_progress (bool, optional): Show progress bar. Defaults to True.
+            max_validation_retries (int): Additional extraction corrections,
+                separate from inference and transport retries. Defaults to 3;
+                0 disables correction. Must be nonnegative.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -524,5 +557,6 @@ class AsyncOpenAIVecSeriesAccessor:
             response_format=response_format,
             max_examples=max_examples,
             multimodal=multimodal,
+            max_validation_retries=max_validation_retries,
             **api_kwargs,
         )

@@ -595,6 +595,8 @@ def responses_udf(
     batch_size: int | None = None,
     max_concurrency: int = 8,
     multimodal: bool = False,
+    *,
+    max_validation_retries: int = 3,
     **api_kwargs,
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF for generating responses.
@@ -635,6 +637,9 @@ def responses_udf(
             Total cluster concurrency = max_concurrency × number_of_executors.
             Higher values increase throughput but may hit OpenAI rate limits.
             Recommended: 4-12 per executor. Defaults to 8.
+        max_validation_retries (int): Additional schema/ID corrections per batch,
+            separate from transport retries. Defaults to 3; 0 disables correction.
+            Must be nonnegative.
         **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``, ``top_p``,
             ``frequency_penalty``, ``presence_penalty``, ``seed``, ``max_output_tokens``, etc.)
             forwarded verbatim to the underlying API calls. These parameters are applied to
@@ -670,6 +675,8 @@ def responses_udf(
         - **Multimodal**: Local file paths are not accessible from executors.
           Use HTTP(S) URLs or pre-encoded data URIs when ``multimodal=True``.
     """
+    if max_validation_retries < 0:
+        raise ValueError("max_validation_retries must be >= 0")
     _model_name = model_name or CONTAINER.resolve(ResponsesModelName).value
     fabric_config = CONTAINER.resolve(_FabricSparkConfig) if CONTAINER.is_registered(_FabricSparkConfig) else None
 
@@ -694,6 +701,7 @@ def responses_udf(
                     system_message=instructions,
                     response_format=response_model,
                     cache=cache,
+                    max_validation_retries=max_validation_retries,
                     api_kwargs=api_kwargs,
                     multimodal=multimodal,
                 )
@@ -728,6 +736,7 @@ def responses_udf(
                     system_message=instructions,
                     response_format=str,
                     cache=cache,
+                    max_validation_retries=max_validation_retries,
                     api_kwargs=api_kwargs,
                     multimodal=multimodal,
                 )
@@ -754,6 +763,8 @@ def task_udf(
     batch_size: int | None = None,
     max_concurrency: int = 8,
     multimodal: bool = False,
+    *,
+    max_validation_retries: int = 3,
     **api_kwargs,
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF from a predefined task.
@@ -780,7 +791,11 @@ def task_udf(
             Higher values increase throughput but may hit OpenAI rate limits.
             Recommended: 4-12 per executor. Defaults to 8.
 
-    Additional Keyword Args:
+        max_validation_retries (int): Additional schema/ID corrections per batch,
+            separate from transport retries. Defaults to 3; 0 disables correction.
+            Must be nonnegative.
+
+        Additional Keyword Args:
         Arbitrary OpenAI Responses API parameters (e.g. ``temperature``, ``top_p``,
         ``frequency_penalty``, ``presence_penalty``, ``seed``, ``max_output_tokens``, etc.)
         are forwarded verbatim to the underlying API calls. These parameters are applied to
@@ -812,6 +827,7 @@ def task_udf(
         batch_size=batch_size,
         max_concurrency=max_concurrency,
         multimodal=multimodal,
+        max_validation_retries=max_validation_retries,
         **api_kwargs,
     )
 
@@ -875,6 +891,8 @@ def parse_udf(
     batch_size: int | None = None,
     max_concurrency: int = 8,
     multimodal: bool = False,
+    *,
+    max_validation_retries: int = 3,
     **api_kwargs,
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF for parsing responses.
@@ -908,6 +926,9 @@ def parse_udf(
             Total cluster concurrency = max_concurrency × number_of_executors.
             Higher values increase throughput but may hit OpenAI rate limits.
             Recommended: 4-12 per executor. Defaults to 8.
+        max_validation_retries (int): Additional extraction corrections, separate
+            from inference and transport retries. Defaults to 3; 0 disables
+            correction. Must be nonnegative.
         **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``, ``top_p``,
             ``frequency_penalty``, ``presence_penalty``, ``seed``, ``max_output_tokens``, etc.)
             forwarded verbatim to the underlying API calls. These parameters are applied to
@@ -938,6 +959,8 @@ def parse_udf(
         ValueError: If neither `response_format` nor `example_table_name` and `example_field_name` are provided.
     """
 
+    if max_validation_retries < 0:
+        raise ValueError("max_validation_retries must be >= 0")
     if not response_format and not (example_field_name and example_table_name):
         raise ValueError("Either response_format or example_table_name and example_field_name must be provided.")
 
@@ -964,6 +987,7 @@ def parse_udf(
         batch_size=batch_size,
         max_concurrency=max_concurrency,
         multimodal=multimodal,
+        max_validation_retries=max_validation_retries,
         **api_kwargs,
     )
 
