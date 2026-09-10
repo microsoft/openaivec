@@ -73,6 +73,9 @@ nav:
       - Request Batching Benchmark: examples/benchmark.ipynb
   - API Reference:
       - Main Package: api/main.md
+      - Embedding Request Limits: api/embeddings.md
+      - Schema Inference: api/schema.md
+      - Transport Retries: api/retries.md
       - pandas_ext: api/pandas_ext.md
       - duckdb_ext: api/duckdb_ext.md
       - spark_ext: api/spark_ext.md

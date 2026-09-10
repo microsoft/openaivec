@@ -60,9 +60,8 @@ the name of a deployment in your own Azure resource.
 
 ### Spark UDFs
 
-Install only `openaivec==2.5.1` in a **Fabric Environment** and let the package's runtime
-dependencies resolve during Full publication. Version 2.5.1 includes the dependency
-fixes for this setup; 2.5.0 does not. Use the [Environment setup below](#validated-environment),
+Install only `openaivec==2.6.0` in a **Fabric Environment** and let the package's runtime
+dependencies resolve during Full publication. Use the [Environment setup below](#validated-environment),
 publish, attach the Environment to the notebook, and start a new
 session. Fabric's `%pip` installs on the driver and executors, but is session-scoped
 and disabled in pipeline runs by default; `!pip` installs only on the driver.
@@ -107,20 +106,21 @@ across two partitions and writes its validation report to the attached Lakehouse
 ### Validated Environment
 
 Use a dedicated Runtime 1.3 Environment. Import
-[fabric_environment.yml](examples/fabric_environment.yml) to set `openaivec==2.5.1`
+[fabric_environment.yml](examples/fabric_environment.yml) to set `openaivec==2.6.0`
 as its sole External library entry. Remove any older openaivec wheel from Custom
 libraries when switching to the PyPI release. Do not replace a shared Environment's
 library list. Publish in **Full** mode, attach the Environment, and start a **new
 session**. The package supplies its own dependency declarations; no individual
 dependency pins or custom wheel are required for the release.
 
-Before release, the dependency-complete candidate `2.5.1.dev1` was validated on
-September 10, 2026 with **one custom wheel and zero external library entries**,
-replacing the previous 15-entry definition. Version 2.5.1 has the same package code
-and runtime dependency declarations as that candidate. The verified publication
-resolved the wheel's dependencies for both the driver and workers without individual
+Before release, the stability candidate `2.6.0rc1` was validated on September 10,
+2026 with **one custom wheel and zero external library entries**. This candidate
+contains the package source for 2.6.0 and retains the runtime dependency declarations
+from 2.5.1. All 48 package source files matched the candidate wheel on the driver and
+both tested workers. The verified publication resolved dependencies without individual
 package pins. Model availability and resolved dependencies can differ between tenants
-and publication dates; the results below describe that candidate run.
+and publication dates; the results below describe that candidate run, not a separate
+run of the final PyPI package.
 
 | Component | Tested value |
 |---|---|
@@ -132,7 +132,7 @@ and publication dates; the results below describe that candidate run.
 | Loaded NumPy / pandas / PyArrow | 1.26.4 / 3.0.5 / 25.0.1 |
 | Loaded Pydantic | 2.13.5 |
 
-The package now declares its direct `httpx`, `numpy`, `pydantic`, and
+The package declares its direct `httpx`, `numpy`, `pydantic`, and
 `typing-extensions` imports as runtime dependencies. The other runtime dependencies,
 including pandas and PyArrow for vectorized UDFs, were already declared. The
 `aiohttp>=3.10.0` requirement excludes the older transport missing
@@ -141,8 +141,8 @@ but passed this validation with the resolved aiohttp 3.14.3. A global SDK 2.0.0 
 is no longer needed for the tested workflow. One library entry still installs
 transitive dependencies; it does not mean that only one Python package is present.
 
-Driver and worker imports matched for the seven libraries listed above. Fabric
-still retained older distribution metadata: pandas reported 2.1.4 through
+Driver and worker imports matched for the seven libraries listed above. The earlier
+2.5.1 validation retained older distribution metadata: pandas reported 2.1.4 through
 `importlib.metadata` while importing 3.0.5, and aiohttp reported 3.9.3 while importing
 3.14.3 with the timeout exception available. PyArrow showed the same kind of
 discrepancy. A successful run does not certify a clean platform-wide `pip check`.
@@ -152,8 +152,19 @@ The live test registered all five paths and invoked them through `spark.sql`:
 string Responses, structured Responses, Embeddings, `task_udf`, and `parse_udf`.
 Each returned six rows in two partitions with two-row Arrow batches. Row-ID
 correspondence, partition-local duplicate results, nonzero 1,536-dimensional
-embeddings, and a repeated SQL action passed. The fresh report is written to
+embeddings, and a repeated SQL action passed. The candidate report was written to
+`Files/openaivec-validation/stability-7921a7a-20260910T0650Z/report.json` during the
+completed job. The public example writes its own report to
 `Files/openaivec-example/spark-sql-udfs.json`. No driver token or client was broadcast.
+
+Eleven synthetic regression probes also passed on the driver and both workers,
+covering issues #182 through #191: response IDs, schema options and async inference,
+cancellation cleanup, embedding limits, transport and validation retries, DuckDB
+NULLs, Spark invocation-local concurrency, and notebook detection. Five UDF paths
+each reached four overlapping synthetic calls with two invocations limited to two
+calls each in one Python process. This verifies independent invocation limits, not
+a shared executor limiter or live quota behavior. Kernel detection was true on the
+driver and false on both workers. The temporary validation notebook was restored.
 
 ### Requirements and limitations
 

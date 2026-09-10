@@ -65,7 +65,7 @@ spark.udf.register(
         response_format=Translation,
         model_name="gpt-4.1-mini",  # For Azure: deployment name, for OpenAI: model name
         batch_size=64,              # Rows per API request within partition
-        max_concurrency=8           # Concurrent requests PER EXECUTOR
+        max_concurrency=1           # Concurrent requests per partition invocation
     ),
 )
 
@@ -82,7 +82,7 @@ spark.udf.register(
     embeddings_udf(
         model_name="text-embedding-3-small",  # For Azure: deployment name, for OpenAI: model name
         batch_size=128,                       # Larger batches for embeddings
-        max_concurrency=8                     # Concurrent requests PER EXECUTOR
+        max_concurrency=1                     # Concurrent requests per partition invocation
     ),
 )
 
@@ -113,18 +113,19 @@ When using these UDFs in distributed Spark environments:
 - **`batch_size`**: Controls rows processed per API request within each partition.
   Recommended: 32-128 for responses, 64-256 for embeddings.
 
-- **`max_concurrency`**: Sets concurrent API requests **PER EXECUTOR**, not per cluster.
-  Total cluster concurrency = max_concurrency × number_of_executors.
-  Recommended: 4-12 per executor to avoid overwhelming OpenAI rate limits.
+- **`max_concurrency`**: Sets concurrent API requests per partition invocation (default 8).
+    Each invocation has an independent limiter; no executor-wide or cluster-wide limiter is shared.
+    Start with 1 and size it using available task slots and model quota.
 
-- **Rate Limit Management**: Monitor OpenAI API usage when scaling executors.
-  Consider your OpenAI tier limits and adjust max_concurrency accordingly.
+- **Rate Limit Management**: Monitor OpenAI API usage when scaling concurrent Spark tasks.
+    This limits in-flight requests, not requests per second.
 
-Example for a 5-executor cluster with max_concurrency=8:
-Total concurrent requests = 8 × 5 = 40 simultaneous API calls.
+With P simultaneous partition invocations, the combined bound is max_concurrency * P.
+For example, 5 simultaneous invocations with max_concurrency=8 can issue up to 40 requests.
 
-Note: AI-powered UDFs run one reusable asyncio event loop per invocation and
-use partition-local caches to avoid duplicate remote calls inside a partition.
+Note: AI-powered UDFs reuse one asyncio event loop and cache across Arrow batches within an
+invocation. Caches are not shared across invocations. Repeated actions, task retries, speculation,
+and multiple UDFs can send requests again; exactly-once API execution is not guaranteed.
 """
 
 import logging
@@ -150,12 +151,13 @@ from typing_extensions import Literal
 
 from openaivec._cache import AsyncBatchCache
 from openaivec._cache.proxy import DEFAULT_MANAGED_CACHE_SIZE
-from openaivec._embeddings import AsyncBatchEmbeddings
+from openaivec._embeddings import AsyncBatchEmbeddings, EmbeddingLimits
 from openaivec._fabric import provide_async_fabric_client
 from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
 from openaivec._provider import CONTAINER, get_async_client, provide_async_openai_client, provide_openai_client
 from openaivec._provider import setup_fabric as _setup_fabric
 from openaivec._responses import AsyncBatchResponses
+from openaivec._retry import RetryPolicy
 from openaivec._schema import SchemaInferenceInput, SchemaInferenceOutput, SchemaInferer
 from openaivec._serialize import deserialize_base_model, serialize_base_model
 from openaivec._util import TextChunker, run_partition_async
@@ -595,6 +597,9 @@ def responses_udf(
     batch_size: int | None = None,
     max_concurrency: int = 8,
     multimodal: bool = False,
+    *,
+    max_validation_retries: int = 3,
+    retry_policy: RetryPolicy | None = None,
     **api_kwargs,
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF for generating responses.
@@ -631,10 +636,14 @@ def responses_udf(
             Defaults to None (automatic batch size optimization that dynamically
             adjusts based on execution time, targeting 30-60 seconds per batch).
             Set to a positive integer (e.g., 32-128) for fixed batch size.
-        max_concurrency (int): Maximum number of concurrent API requests **PER EXECUTOR**.
-            Total cluster concurrency = max_concurrency × number_of_executors.
-            Higher values increase throughput but may hit OpenAI rate limits.
-            Recommended: 4-12 per executor. Defaults to 8.
+        max_concurrency (int): Maximum concurrent batch requests per partition invocation.
+            Defaults to 8. Each invocation has an independent limiter; there is
+            no shared executor-wide or cluster-wide limit. With P simultaneous
+            invocations, the aggregate upper bound is max_concurrency * P.
+        max_validation_retries (int): Additional schema/ID corrections per batch,
+            separate from transport retries. Defaults to 3; 0 disables correction.
+            Must be nonnegative.
+        retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
         **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``, ``top_p``,
             ``frequency_penalty``, ``presence_penalty``, ``seed``, ``max_output_tokens``, etc.)
             forwarded verbatim to the underlying API calls. These parameters are applied to
@@ -664,12 +673,14 @@ def responses_udf(
         For optimal performance in distributed environments:
         - **Automatic Caching**: Duplicate inputs within each partition are cached,
           reducing API calls and costs significantly on datasets with repeated content
-        - Monitor OpenAI API rate limits when scaling executor count
-        - Consider your OpenAI tier limits: total_requests = max_concurrency × executors
+        - Monitor provider limits when scaling simultaneous partition invocations
+        - Size max_concurrency against active task slots, not executor count alone
         - Use Spark UI to optimize partition sizes relative to batch_size
         - **Multimodal**: Local file paths are not accessible from executors.
           Use HTTP(S) URLs or pre-encoded data URIs when ``multimodal=True``.
     """
+    if max_validation_retries < 0:
+        raise ValueError("max_validation_retries must be >= 0")
     _model_name = model_name or CONTAINER.resolve(ResponsesModelName).value
     fabric_config = CONTAINER.resolve(_FabricSparkConfig) if CONTAINER.is_registered(_FabricSparkConfig) else None
 
@@ -694,6 +705,8 @@ def responses_udf(
                     system_message=instructions,
                     response_format=response_model,
                     cache=cache,
+                    max_validation_retries=max_validation_retries,
+                    retry_policy=retry_policy,
                     api_kwargs=api_kwargs,
                     multimodal=multimodal,
                 )
@@ -728,6 +741,8 @@ def responses_udf(
                     system_message=instructions,
                     response_format=str,
                     cache=cache,
+                    max_validation_retries=max_validation_retries,
+                    retry_policy=retry_policy,
                     api_kwargs=api_kwargs,
                     multimodal=multimodal,
                 )
@@ -754,6 +769,9 @@ def task_udf(
     batch_size: int | None = None,
     max_concurrency: int = 8,
     multimodal: bool = False,
+    *,
+    max_validation_retries: int = 3,
+    retry_policy: RetryPolicy | None = None,
     **api_kwargs,
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF from a predefined task.
@@ -775,12 +793,17 @@ def task_udf(
             Defaults to None (automatic batch size optimization that dynamically
             adjusts based on execution time, targeting 30-60 seconds per batch).
             Set to a positive integer (e.g., 32-128) for fixed batch size.
-        max_concurrency (int): Maximum number of concurrent API requests **PER EXECUTOR**.
-            Total cluster concurrency = max_concurrency × number_of_executors.
-            Higher values increase throughput but may hit OpenAI rate limits.
-            Recommended: 4-12 per executor. Defaults to 8.
+        max_concurrency (int): Maximum concurrent batch requests per partition invocation.
+            Defaults to 8. Each invocation has an independent limiter; there is
+            no shared executor-wide or cluster-wide limit. With P simultaneous
+            invocations, the aggregate upper bound is max_concurrency * P.
 
-    Additional Keyword Args:
+        max_validation_retries (int): Additional schema/ID corrections per batch,
+            separate from transport retries. Defaults to 3; 0 disables correction.
+            Must be nonnegative.
+        retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
+
+        Additional Keyword Args:
         Arbitrary OpenAI Responses API parameters (e.g. ``temperature``, ``top_p``,
         ``frequency_penalty``, ``presence_penalty``, ``seed``, ``max_output_tokens``, etc.)
         are forwarded verbatim to the underlying API calls. These parameters are applied to
@@ -812,6 +835,8 @@ def task_udf(
         batch_size=batch_size,
         max_concurrency=max_concurrency,
         multimodal=multimodal,
+        max_validation_retries=max_validation_retries,
+        retry_policy=retry_policy,
         **api_kwargs,
     )
 
@@ -821,6 +846,10 @@ def infer_schema(
     example_table_name: str,
     example_field_name: str,
     max_examples: int = 100,
+    *,
+    max_retries: int = 8,
+    retry_policy: RetryPolicy | None = None,
+    **api_kwargs,
 ) -> SchemaInferenceOutput:
     """Infer the schema for a response format based on example data.
 
@@ -833,6 +862,9 @@ def infer_schema(
         example_table_name (str | None): Name of the Spark table containing example data.
         example_field_name (str | None): Name of the field in the table to use as examples.
         max_examples (int): Maximum number of examples to retrieve for schema inference.
+        max_retries (int): Total schema inference attempts. Defaults to 8; at least 1.
+        retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
+        **api_kwargs: Parameters forwarded to the schema inference Responses API.
 
     Returns:
         InferredSchema: An object containing the inferred schema and response format.
@@ -862,7 +894,7 @@ def infer_schema(
         examples=examples,
     )
     inferer = CONTAINER.resolve(SchemaInferer)
-    return inferer.infer_schema(input)
+    return inferer.infer_schema(input, max_retries=max_retries, retry_policy=retry_policy, **api_kwargs)
 
 
 def parse_udf(
@@ -875,6 +907,10 @@ def parse_udf(
     batch_size: int | None = None,
     max_concurrency: int = 8,
     multimodal: bool = False,
+    *,
+    max_retries: int = 8,
+    max_validation_retries: int = 3,
+    retry_policy: RetryPolicy | None = None,
     **api_kwargs,
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF for parsing responses.
@@ -904,10 +940,16 @@ def parse_udf(
             Defaults to None (automatic batch size optimization that dynamically
             adjusts based on execution time, targeting 30-60 seconds per batch).
             Set to a positive integer (e.g., 32-128) for fixed batch size
-        max_concurrency (int): Maximum number of concurrent API requests **PER EXECUTOR**.
-            Total cluster concurrency = max_concurrency × number_of_executors.
-            Higher values increase throughput but may hit OpenAI rate limits.
-            Recommended: 4-12 per executor. Defaults to 8.
+        max_concurrency (int): Maximum concurrent batch requests per partition invocation.
+            Defaults to 8. Each invocation has an independent limiter; there is
+            no shared executor-wide or cluster-wide limit. With P simultaneous
+            invocations, the aggregate upper bound is max_concurrency * P.
+        max_retries (int): Total schema inference attempts. Defaults to 8.
+            Used only when response_format is None; must be at least 1.
+        max_validation_retries (int): Additional extraction corrections, separate
+            from inference and transport retries. Defaults to 3; 0 disables
+            correction. Must be nonnegative.
+        retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
         **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``, ``top_p``,
             ``frequency_penalty``, ``presence_penalty``, ``seed``, ``max_output_tokens``, etc.)
             forwarded verbatim to the underlying API calls. These parameters are applied to
@@ -938,6 +980,8 @@ def parse_udf(
         ValueError: If neither `response_format` nor `example_table_name` and `example_field_name` are provided.
     """
 
+    if max_validation_retries < 0:
+        raise ValueError("max_validation_retries must be >= 0")
     if not response_format and not (example_field_name and example_table_name):
         raise ValueError("Either response_format or example_table_name and example_field_name must be provided.")
 
@@ -950,6 +994,9 @@ def parse_udf(
             example_table_name=example_table_name,
             example_field_name=example_field_name,
             max_examples=max_examples,
+            max_retries=max_retries,
+            retry_policy=retry_policy,
+            **api_kwargs,
         )
         resolved_instructions = schema.inference_prompt
         resolved_response_format = cast(type[ResponseFormat], schema.model)
@@ -964,6 +1011,8 @@ def parse_udf(
         batch_size=batch_size,
         max_concurrency=max_concurrency,
         multimodal=multimodal,
+        max_validation_retries=max_validation_retries,
+        retry_policy=retry_policy,
         **api_kwargs,
     )
 
@@ -972,6 +1021,9 @@ def embeddings_udf(
     model_name: str | None = None,
     batch_size: int | None = None,
     max_concurrency: int = 8,
+    *,
+    limits: EmbeddingLimits | None = None,
+    retry_policy: RetryPolicy | None = None,
     **api_kwargs,
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF for generating embeddings.
@@ -1006,10 +1058,12 @@ def embeddings_udf(
             adjusts based on execution time, targeting 30-60 seconds per batch).
             Set to a positive integer (e.g., 64-256) for fixed batch size.
             Embeddings typically handle larger batches efficiently.
-        max_concurrency (int): Maximum number of concurrent API requests **PER EXECUTOR**.
-            Total cluster concurrency = max_concurrency × number_of_executors.
-            Higher values increase throughput but may hit OpenAI rate limits.
-            Recommended: 4-12 per executor. Defaults to 8.
+        max_concurrency (int): Maximum concurrent batch requests per partition invocation.
+            Defaults to 8. Each invocation has an independent limiter; there is
+            no shared executor-wide or cluster-wide limit. With P simultaneous
+            invocations, the aggregate upper bound is max_concurrency * P.
+        limits (EmbeddingLimits | None): Hard provider limits; None uses OpenAI defaults.
+        retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
         **api_kwargs: Additional OpenAI API parameters (e.g., dimensions for text-embedding-3 models).
 
     Returns:
@@ -1021,8 +1075,8 @@ def embeddings_udf(
         For optimal performance in distributed environments:
         - **Automatic Caching**: Duplicate inputs within each partition are cached,
           reducing API calls and costs significantly on datasets with repeated content
-        - Monitor OpenAI API rate limits when scaling executor count
-        - Consider your OpenAI tier limits: total_requests = max_concurrency × executors
+        - Monitor provider limits when scaling simultaneous partition invocations
+        - Size max_concurrency against active task slots, not executor count alone
         - Embeddings API typically has higher throughput than chat completions
         - Use larger batch_size for embeddings compared to response generation
     """
@@ -1045,6 +1099,8 @@ def embeddings_udf(
                 model_name=_model_name,
                 cache=cache,
                 api_kwargs=api_kwargs,
+                limits=limits if limits is not None else EmbeddingLimits(),
+                retry_policy=retry_policy,
             )
             embeddings = await batch_client.create(part.tolist())
             if embeddings:

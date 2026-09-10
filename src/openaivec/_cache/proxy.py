@@ -55,74 +55,21 @@ class BatchCacheBase(Generic[S, T]):
             cache.pop_oldest()
 
     def _is_notebook_environment(self) -> bool:
-        """Check if running in a Jupyter notebook environment.
+        """Check whether the active IPython shell owns a notebook kernel.
 
         Returns:
-            bool: True if running in a notebook, False otherwise.
+            bool: True only with a kernel-backed shell. Installed packages and
+                inherited notebook environment variables are not sufficient.
         """
-        import os
-        import sys
+        import importlib
 
         try:
-            # Resolve via importlib to keep compatibility across IPython versions
-            # without relying on private module paths.
-            import importlib
-
             ipython_module = importlib.import_module("IPython")
-            get_ipython = getattr(ipython_module, "get_ipython", None)
-            ipython = get_ipython() if callable(get_ipython) else None
-            if ipython is not None:
-                # Kernel-backed shells (Jupyter, VS Code notebook, Colab, etc.)
-                # expose a kernel object.
-                if getattr(ipython, "kernel", None) is not None:
-                    return True
-
-                # Check for different notebook environments
-                class_name = ipython.__class__.__name__
-                module_name = ipython.__class__.__module__
-
-                # Standard Jupyter notebook/lab
-                if class_name == "ZMQInteractiveShell":
-                    return True
-
-                # JupyterLab and newer environments
-                if "zmq" in module_name.lower() or "jupyter" in module_name.lower():
-                    return True
-
-                # Google Colab
-                if "google.colab" in module_name:
-                    return True
-
         except ImportError:
-            pass
-
-        # Check for other notebook indicators
-        # Check for common notebook environment variables
-        notebook_vars = [
-            "JPY_PARENT_PID",
-            "JPY_SESSION_NAME",
-            "JUPYTER_CONFIG_DIR",
-            "JUPYTERLAB_DIR",
-            "COLAB_GPU",
-            "VSCODE_PID",  # VS Code
-        ]
-
-        for var in notebook_vars:
-            if var in os.environ:
-                return True
-
-        # Check if running in IPython without terminal
-        if "IPython" in sys.modules:
-            try:
-                # If we can import display from IPython, likely in notebook
-                import importlib.util
-
-                if importlib.util.find_spec("IPython.display") is not None:
-                    return True
-            except ImportError:
-                pass
-
-        return False
+            return False
+        get_ipython = getattr(ipython_module, "get_ipython", None)
+        ipython = get_ipython() if callable(get_ipython) else None
+        return getattr(ipython, "kernel", None) is not None
 
     def _create_progress_bar(self, total: int, desc: str = "Processing batches") -> Any:
         """Create a progress bar if conditions are met.
@@ -658,18 +605,17 @@ class AsyncBatchCache(BatchCacheBase[S, T], Generic[S, T]):
             self._touch_keys_unlocked(self.cache, items)
             return values
 
-    async def __acquire_ownership(self, items: list[S]) -> tuple[list[S], list[S]]:
+    async def __acquire_ownership(self, items: list[S]) -> tuple[dict[S, asyncio.Event], list[S]]:
         """Acquire ownership for missing keys and identify keys to wait for.
 
         Args:
             items (list[S]): Unique items (order-preserving) to be processed.
 
         Returns:
-            tuple[list[S], list[S]]: A tuple ``(owned, wait_for)`` where owned are
-            keys this coroutine should compute, and wait_for are keys currently
-            being computed elsewhere.
+            tuple[dict[S, asyncio.Event], list[S]]: Ownership events for keys this
+            coroutine should compute, and keys currently computed elsewhere.
         """
-        owned: list[S] = []
+        owned: dict[S, asyncio.Event] = {}
         wait_for: list[S] = []
         async with self._lock:
             for x in items:
@@ -679,40 +625,38 @@ class AsyncBatchCache(BatchCacheBase[S, T], Generic[S, T]):
                     wait_for.append(x)
                 else:
                     self._inflight[x] = asyncio.Event()
-                    owned.append(x)
+                    owned[x] = self._inflight[x]
         return owned, wait_for
 
-    async def __finalize_success(self, to_call: list[S], results: list[T]) -> None:
+    async def __finalize_success(self, owned: dict[S, asyncio.Event], results: list[T]) -> None:
         """Populate cache and signal completion for successfully computed keys.
 
         Args:
-            to_call (list[S]): Items that were computed in the recent batch.
-            results (list[T]): Results corresponding to ``to_call`` in order.
+            owned (dict[S, asyncio.Event]): Ownership events for the recent batch.
+            results (list[T]): Results corresponding to ``owned`` in order.
         """
-        if len(results) != len(to_call):
-            # Prevent deadlocks if map_func violates the contract.
-            await self.__finalize_failure(to_call)
+        if len(results) != len(owned):
             raise ValueError("map_func must return a list of results with the same length and order as inputs")
         async with self._lock:
-            for x, y in zip(to_call, results):
-                self.cache[x] = y
-                self.cache.move_to_end(x)
-                ev = self._inflight.pop(x, None)
-                if ev:
-                    ev.set()
+            for (key, event), result in zip(owned.items(), results):
+                if self._inflight.get(key) is event:
+                    self.cache[key] = result
+                    self.cache.move_to_end(key)
+                    del self._inflight[key]
+                event.set()
 
-    async def __finalize_failure(self, to_call: list[S]) -> None:
+    async def __finalize_failure(self, owned: dict[S, asyncio.Event]) -> None:
         """Release in-flight events on failure to avoid deadlocks.
 
         Args:
-            to_call (list[S]): Items whose computation failed; their waiters will
-            be released.
+            owned (dict[S, asyncio.Event]): Ownership events whose waiters must
+                be released without disturbing newer ownership.
         """
         async with self._lock:
-            for x in to_call:
-                ev = self._inflight.pop(x, None)
-                if ev:
-                    ev.set()
+            for key, event in owned.items():
+                if self._inflight.get(key) is event:
+                    del self._inflight[key]
+                event.set()
 
     async def clear(self) -> None:
         """Clear all cached results and release any in-flight waiters.
@@ -733,11 +677,13 @@ class AsyncBatchCache(BatchCacheBase[S, T], Generic[S, T]):
         """Alias for clear()."""
         await self.clear()
 
-    async def __process_owned(self, owned: list[S], map_func: Callable[[list[S]], Awaitable[list[T]]]) -> None:
+    async def __process_owned(
+        self, owned: dict[S, asyncio.Event], map_func: Callable[[list[S]], Awaitable[list[T]]]
+    ) -> None:
         """Process owned keys using Producer-Consumer pattern with dynamic batch sizing.
 
         Args:
-            owned (list[S]): Items for which this coroutine holds computation ownership.
+            owned (dict[S, asyncio.Event]): Keys and their computation ownership events.
 
         Raises:
             Exception: Propagates any exception raised by ``map_func``.
@@ -745,23 +691,22 @@ class AsyncBatchCache(BatchCacheBase[S, T], Generic[S, T]):
         if not owned:
             return
 
+        owned_keys = list(owned)
         progress_bar = self._create_progress_bar(len(owned))
-        batch_queue: asyncio.Queue = asyncio.Queue(maxsize=self.max_concurrency)
+        batch_queue: asyncio.Queue[dict[S, asyncio.Event] | None] = asyncio.Queue(maxsize=self.max_concurrency)
 
-        async def producer():
+        async def producer() -> None:
             index = 0
-            try:
-                while index < len(owned):
-                    remaining = len(owned) - index
-                    batch_size = self._normalized_batch_size(remaining)
-                    batch = owned[index : index + batch_size]
-                    await batch_queue.put(batch)
-                    index += batch_size
-            finally:
-                for _ in range(self.max_concurrency):
-                    await batch_queue.put(None)
+            while index < len(owned_keys):
+                remaining = len(owned_keys) - index
+                batch_size = self._normalized_batch_size(remaining)
+                batch = {key: owned[key] for key in owned_keys[index : index + batch_size]}
+                await batch_queue.put(batch)
+                index += batch_size
+            for _ in range(self.max_concurrency):
+                await batch_queue.put(None)
 
-        async def consumer():
+        async def consumer() -> None:
             while True:
                 batch = await batch_queue.get()
                 try:
@@ -771,31 +716,29 @@ class AsyncBatchCache(BatchCacheBase[S, T], Generic[S, T]):
                 finally:
                     batch_queue.task_done()
 
+        tasks = [asyncio.create_task(producer())]
+        tasks.extend(asyncio.create_task(consumer()) for _ in range(self.max_concurrency))
         try:
-            await asyncio.gather(producer(), *[consumer() for _ in range(self.max_concurrency)])
+            await asyncio.gather(*tasks)
         finally:
-            self._close_progress_bar(progress_bar)
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            try:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            finally:
+                self._close_progress_bar(progress_bar)
 
     async def __process_single_batch(
-        self, to_call: list[S], map_func: Callable[[list[S]], Awaitable[list[T]]], progress_bar
+        self, owned: dict[S, asyncio.Event], map_func: Callable[[list[S]], Awaitable[list[T]]], progress_bar
     ) -> None:
         """Process a single batch with semaphore control."""
-        acquired = False
-        try:
-            await self.__sema.acquire()
-            acquired = True
-            # Measure async map_func execution using suggester
+        to_call = list(owned)
+        async with self.__sema:
             with self.suggester.record(len(to_call)):
                 results = await map_func(to_call)
-        except Exception:
-            await self.__finalize_failure(to_call)
-            raise
-        finally:
-            if acquired:
-                self.__sema.release()
-        await self.__finalize_success(to_call, results)
+            await self.__finalize_success(owned, results)
 
-        # Update progress bar
         self._update_progress_bar(progress_bar, len(to_call))
 
     async def __wait_for(self, keys: list[S], map_func: Callable[[list[S]], Awaitable[list[T]]]) -> None:
@@ -810,28 +753,23 @@ class AsyncBatchCache(BatchCacheBase[S, T], Generic[S, T]):
         Args:
             keys (list[S]): Items whose computations are owned by other coroutines.
         """
-        rescued: list[S] = []  # keys we claim to batch-process
-        for x in keys:
-            while True:
-                waiter: asyncio.Event | None = None
-                async with self._lock:
-                    if x in self.cache:
-                        break
-                    waiter = self._inflight.get(x)
-                    if waiter is None:
-                        # Not cached and no one computing; claim ownership to batch later.
-                        self._inflight[x] = asyncio.Event()
-                        rescued.append(x)
-                        break
-                # Someone else is computing; wait for completion.
-                await waiter.wait()
-        # Batch-process rescued keys, if any
-        if rescued:
-            try:
+        rescued: dict[S, asyncio.Event] = {}
+        try:
+            for key in keys:
+                while True:
+                    async with self._lock:
+                        if key in self.cache:
+                            break
+                        waiter = self._inflight.get(key)
+                        if waiter is None:
+                            self._inflight[key] = asyncio.Event()
+                            rescued[key] = self._inflight[key]
+                            break
+                    await waiter.wait()
+            if rescued:
                 await self.__process_owned(rescued, map_func)
-            except Exception:
-                await self.__finalize_failure(rescued)
-                raise
+        finally:
+            await self.__finalize_failure(rescued)
 
     async def __enter_map(self) -> None:
         """Track active map calls so cache pruning happens only after quiescence."""
@@ -880,10 +818,8 @@ class AsyncBatchCache(BatchCacheBase[S, T], Generic[S, T]):
 
             try:
                 await self.__process_owned(owned, map_func)
-            except Exception:
-                # Ensure unresolved owned keys never remain in-flight after failures.
+            finally:
                 await self.__finalize_failure(owned)
-                raise
             await self.__wait_for(wait_for, map_func)
             return await self.__values(items)
         finally:

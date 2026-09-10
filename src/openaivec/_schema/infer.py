@@ -56,12 +56,14 @@ authoritative contract is the recursive ``ObjectSpec`` tree.
 """
 
 from dataclasses import dataclass
+from typing import Any
 
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAI
 from openai.types.responses import ParsedResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from openaivec._model import PreparedTask
+from openaivec._retry import RetryPolicy, call_with_retry, call_with_retry_async, retry_deadline
 from openaivec._schema.spec import ObjectSpec, _build_model
 
 # Internal module: explicitly not part of public API
@@ -242,6 +244,30 @@ enum / enum_array), optional object_spec (for object / object_array).
 """.strip()
 
 
+def _schema_instructions(previous_errors: list[str]) -> str:
+    if not previous_errors:
+        return _INFER_INSTRUCTIONS
+    feedback_lines = ["--- PRIOR VALIDATION FEEDBACK ---"]
+    feedback_lines.extend(f"{index}. {error}" for index, error in enumerate(previous_errors[-5:], 1))
+    feedback_lines.extend(
+        [
+            "Adjust ONLY listed issues; avoid adding brand-new fields unless essential.",
+            "Don't hallucinate or broaden enum_values unless enum rule caused failure.",
+            "Duplicate names: minimally rename; keep semantics.",
+            "Unsupported type: change to string|integer|float|boolean (no new facts).",
+            "Bad enum length: drop enum or constrain to 2–24 evidenced tokens.",
+        ]
+    )
+    return _INFER_INSTRUCTIONS + "\n\n" + "\n".join(feedback_lines)
+
+
+def _validated_schema(parsed: SchemaInferenceOutput | None) -> SchemaInferenceOutput:
+    if parsed is None:
+        raise ValueError("Schema inference returned no parsed output.")
+    parsed.build_model()
+    return parsed
+
+
 @dataclass(frozen=True)
 class SchemaInferer:
     """High-level orchestrator for schema inference against the Responses API.
@@ -264,7 +290,14 @@ class SchemaInferer:
     client: OpenAI
     model_name: str
 
-    def infer_schema(self, data: SchemaInferenceInput, *args, max_retries: int = 8, **kwargs) -> SchemaInferenceOutput:
+    def infer_schema(
+        self,
+        data: SchemaInferenceInput,
+        *args: Any,
+        max_retries: int = 8,
+        retry_policy: RetryPolicy | None = None,
+        **kwargs: Any,
+    ) -> SchemaInferenceOutput:
         """Infer a validated schema from representative examples.
 
           Workflow:
@@ -278,7 +311,8 @@ class SchemaInferer:
             data (SchemaInferenceInput): Representative examples + instructions.
             *args: Positional passthrough to ``client.responses.parse``.
             max_retries (int, optional): Attempts before surfacing the last validation error
-                (must be >= 1). Defaults to 3.
+                (must be >= 1). Defaults to 8.
+            retry_policy (RetryPolicy | None): Transport policy. None preserves SDK settings.
             **kwargs: Keyword passthrough to ``client.responses.parse``.
 
         Returns:
@@ -291,67 +325,101 @@ class SchemaInferer:
         if max_retries < 1:
             raise ValueError("max_retries must be >= 1")
 
-        last_err: Exception | None = None
+        last_err: ValueError | None = None
         previous_errors: list[str] = []
-        for attempt in range(max_retries):
-            if attempt == 0:
-                instructions = _INFER_INSTRUCTIONS
-            else:
-                # Provide structured feedback for correction. Keep concise and prohibit speculative expansion.
-                feedback_lines = [
-                    "--- PRIOR VALIDATION FEEDBACK ---",
-                ]
-                for i, err in enumerate(previous_errors[-5:], 1):  # include last up to 5 errors
-                    feedback_lines.append(f"{i}. {err}")
-                feedback_lines.extend(
-                    [
-                        "Adjust ONLY listed issues; avoid adding brand-new fields unless essential.",
-                        "Don't hallucinate or broaden enum_values unless enum rule caused failure.",
-                        "Duplicate names: minimally rename; keep semantics.",
-                        "Unsupported type: change to string|integer|float|boolean (no new facts).",
-                        "Bad enum length: drop enum or constrain to 2–24 evidenced tokens.",
-                    ]
-                )
-                instructions = _INFER_INSTRUCTIONS + "\n\n" + "\n".join(feedback_lines)
-
+        input_json = data.model_dump_json()
+        deadline = retry_deadline(retry_policy)
+        for _ in range(max_retries):
             try:
-                response: ParsedResponse[SchemaInferenceOutput] = self.client.responses.parse(
-                    model=self.model_name,
-                    instructions=instructions,
-                    input=data.model_dump_json(),
-                    text_format=SchemaInferenceOutput,
-                    *args,
-                    **kwargs,
+                response: ParsedResponse[SchemaInferenceOutput] = call_with_retry(
+                    self.client,
+                    retry_policy,
+                    lambda client, options: client.responses.parse(
+                        model=self.model_name,
+                        instructions=_schema_instructions(previous_errors),
+                        input=input_json,
+                        text_format=SchemaInferenceOutput,
+                        *args,
+                        **options,
+                    ),
+                    kwargs,
+                    deadline=deadline,
                 )
             except ValidationError as error:
                 last_err = error
-                previous_errors.append(str(error))
-                if attempt == max_retries - 1:
-                    raise ValueError(
-                        f"Schema validation failed after {max_retries} attempts. Last error: {last_err}"
-                    ) from last_err
-                continue
-            parsed = response.output_parsed
-            if parsed is None:
-                last_err = ValueError("Schema inference returned no parsed output.")
-                previous_errors.append(str(last_err))
-                if attempt == max_retries - 1:
-                    raise ValueError(
-                        f"Schema validation failed after {max_retries} attempts. Last error: {last_err}"
-                    ) from last_err
-                continue
-            try:
-                # Validate the field list structure
-                parsed.build_model()
-                return parsed
-            except ValueError as e:
-                last_err = e
-                previous_errors.append(str(e))
-                if attempt == max_retries - 1:
-                    raise ValueError(
-                        f"Schema validation failed after {max_retries} attempts. Last error: {last_err}"
-                    ) from last_err
+            else:
+                try:
+                    return _validated_schema(response.output_parsed)
+                except ValueError as error:
+                    last_err = error
+            previous_errors.append(str(last_err))
+        raise ValueError(f"Schema validation failed after {max_retries} attempts. Last error: {last_err}") from last_err
 
-        if last_err:
-            raise last_err
-        raise RuntimeError("unreachable retry loop state")
+
+@dataclass(frozen=True)
+class AsyncSchemaInferer:
+    """Infer schemas using a configured asynchronous Responses client.
+
+    Attributes:
+        client (AsyncOpenAI): Client used for every inference attempt.
+        model_name (str): Model or deployment identifier.
+    """
+
+    client: AsyncOpenAI
+    model_name: str
+
+    async def infer_schema(
+        self,
+        data: SchemaInferenceInput,
+        *args: Any,
+        max_retries: int = 8,
+        retry_policy: RetryPolicy | None = None,
+        **kwargs: Any,
+    ) -> SchemaInferenceOutput:
+        """Infer and validate a schema without resolving a synchronous client.
+
+        Args:
+            data (SchemaInferenceInput): Representative examples and instructions.
+            *args: Positional passthrough to ``client.responses.parse``.
+            max_retries (int, optional): Maximum inference attempts, at least 1.
+                Defaults to 8, matching ``SchemaInferer``.
+            retry_policy (RetryPolicy | None): Transport policy. None preserves SDK settings.
+            **kwargs: Keyword passthrough to ``client.responses.parse``.
+
+        Returns:
+            SchemaInferenceOutput: Validated schema and extraction prompt.
+
+        Raises:
+            ValueError: Invalid attempt limit or exhausted schema validation.
+        """
+        if max_retries < 1:
+            raise ValueError("max_retries must be >= 1")
+        last_err: ValueError | None = None
+        previous_errors: list[str] = []
+        input_json = data.model_dump_json()
+        deadline = retry_deadline(retry_policy)
+        for _ in range(max_retries):
+            try:
+                response: ParsedResponse[SchemaInferenceOutput] = await call_with_retry_async(
+                    self.client,
+                    retry_policy,
+                    lambda client, options: client.responses.parse(
+                        model=self.model_name,
+                        instructions=_schema_instructions(previous_errors),
+                        input=input_json,
+                        text_format=SchemaInferenceOutput,
+                        *args,
+                        **options,
+                    ),
+                    kwargs,
+                    deadline=deadline,
+                )
+            except ValidationError as error:
+                last_err = error
+            else:
+                try:
+                    return _validated_schema(response.output_parsed)
+                except ValueError as error:
+                    last_err = error
+            previous_errors.append(str(last_err))
+        raise ValueError(f"Schema validation failed after {max_retries} attempts. Last error: {last_err}") from last_err

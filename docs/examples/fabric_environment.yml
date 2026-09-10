@@ -1,3 +1,2 @@
 dependencies:
-  - pip:
-      - openaivec==2.5.1
+  - pip: [openaivec==2.6.0]

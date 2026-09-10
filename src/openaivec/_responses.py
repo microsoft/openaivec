@@ -1,8 +1,9 @@
+from collections import Counter
 from dataclasses import dataclass, field
 from logging import Logger, getLogger
 from typing import Any, Generic, cast
 
-from openai import AsyncOpenAI, InternalServerError, OpenAI, RateLimitError
+from openai import AsyncOpenAI, OpenAI
 from openai.types.responses import ParsedResponse
 from openai.types.responses import Response as OAIResponse
 from openai.types.responses.response_input_param import ResponseInputParam
@@ -19,7 +20,7 @@ from openaivec._multimodal import (
     is_readable_text_file,
     read_text_file,
 )
-from openaivec._util import backoff, backoff_async
+from openaivec._retry import RetryPolicy, call_with_retry, call_with_retry_async, retry_deadline
 
 __all__ = [
     "BatchResponses",
@@ -28,6 +29,31 @@ __all__ = [
 
 _LOGGER: Logger = getLogger(__name__)
 _MAX_VALIDATION_FEEDBACK_ITEMS = 8
+
+
+def _validate_response_ids(expected_ids: list[int], response_ids: list[int]) -> None:
+    expected = set(expected_ids)
+    received = set(response_ids)
+    if len(response_ids) == len(expected_ids) and received == expected:
+        return
+    duplicates = [identity for identity, count in Counter(response_ids).items() if count > 1]
+    message = (
+        "Response IDs must match every input ID exactly once. "
+        f"Missing IDs: {sorted(expected - received)[:_MAX_VALIDATION_FEEDBACK_ITEMS]}; "
+        f"unknown IDs: {sorted(received - expected)[:_MAX_VALIDATION_FEEDBACK_ITEMS]}; "
+        f"duplicate IDs: {duplicates[:_MAX_VALIDATION_FEEDBACK_ITEMS]}."
+    )
+    raise ValidationError.from_exception_data(
+        "Response",
+        [
+            {
+                "type": "value_error",
+                "loc": ("assistant_messages",),
+                "input": response_ids,
+                "ctx": {"error": ValueError(message)},
+            }
+        ],
+    )
 
 
 def _format_validation_error_location(loc: tuple[Any, ...]) -> str:
@@ -184,6 +210,7 @@ class BatchResponses(Generic[ResponseFormat]):
             bounded retention by default.
         max_validation_retries (int): Number of retries when structured output fails
             local schema validation.
+        retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
 
     Notes:
         Internally the work is delegated to two helpers:
@@ -202,6 +229,7 @@ class BatchResponses(Generic[ResponseFormat]):
     api_kwargs: dict[str, Any] = field(default_factory=dict)
     max_validation_retries: int = 3
     multimodal: bool = False
+    retry_policy: RetryPolicy | None = None
     _vectorized_system_message: str = field(init=False)
     _model_json_schema: dict = field(init=False)
 
@@ -215,6 +243,8 @@ class BatchResponses(Generic[ResponseFormat]):
         batch_size: int | None = None,
         max_validation_retries: int = 3,
         multimodal: bool = False,
+        *,
+        retry_policy: RetryPolicy | None = None,
         **api_kwargs,
     ) -> "BatchResponses":
         """Factory constructor.
@@ -230,6 +260,7 @@ class BatchResponses(Generic[ResponseFormat]):
                 schema validation. Defaults to 3.
             multimodal (bool, optional): When ``True``, file paths and URLs in
                 inputs are sent as multimodal content. Defaults to ``False``.
+            retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
             **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
 
         Returns:
@@ -244,6 +275,7 @@ class BatchResponses(Generic[ResponseFormat]):
             api_kwargs=api_kwargs,
             max_validation_retries=max_validation_retries,
             multimodal=multimodal,
+            retry_policy=retry_policy,
         )
 
     @classmethod
@@ -255,6 +287,8 @@ class BatchResponses(Generic[ResponseFormat]):
         batch_size: int | None = None,
         max_validation_retries: int = 3,
         multimodal: bool = False,
+        *,
+        retry_policy: RetryPolicy | None = None,
         **api_kwargs,
     ) -> "BatchResponses":
         """Factory from a PreparedTask.
@@ -269,6 +303,7 @@ class BatchResponses(Generic[ResponseFormat]):
                 schema validation. Defaults to 3.
             multimodal (bool, optional): When ``True``, file paths and URLs in
                 inputs are sent as multimodal content. Defaults to ``False``.
+            retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
             **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
 
         Returns:
@@ -283,6 +318,7 @@ class BatchResponses(Generic[ResponseFormat]):
             api_kwargs=api_kwargs,
             max_validation_retries=max_validation_retries,
             multimodal=multimodal,
+            retry_policy=retry_policy,
         )
 
     def __post_init__(self):
@@ -295,7 +331,6 @@ class BatchResponses(Generic[ResponseFormat]):
         )
 
     @observe(_LOGGER)
-    @backoff(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
     def _request_llm(self, user_messages: list[Message[str]]) -> ParsedResponse[Response[ResponseFormat]]:
         """Call the OpenAI JSON‑mode endpoint, retrying on schema validation failures.
 
@@ -308,8 +343,8 @@ class BatchResponses(Generic[ResponseFormat]):
             ParsedResponse[Response[ResponseFormat]]: Parsed response containing assistant messages (arbitrary order).
 
         Raises:
-            openai.RateLimitError: Transparently re‑raised after the
-                exponential back‑off decorator exhausts all retries.
+            openai.RateLimitError: Re-raised after transport retries are exhausted.
+            TimeoutError: The explicit transport deadline was exceeded.
             pydantic.ValidationError: Re‑raised when validation still fails after
                 ``max_validation_retries`` correction attempts.
         """
@@ -324,15 +359,27 @@ class BatchResponses(Generic[ResponseFormat]):
 
         instructions = self._vectorized_system_message
         input_json = Request(user_messages=user_messages).model_dump_json()
+        deadline = retry_deadline(self.retry_policy)
         for attempt in range(self.max_validation_retries + 1):
             try:
-                response: ParsedResponse[ResponseT] = self.client.responses.parse(
-                    instructions=instructions,
-                    model=self.model_name,
-                    input=input_json,
-                    text_format=ResponseT,
-                    **self.api_kwargs,
+                response: ParsedResponse[ResponseT] = call_with_retry(
+                    self.client,
+                    self.retry_policy,
+                    lambda client, options: client.responses.parse(
+                        instructions=instructions,
+                        model=self.model_name,
+                        input=input_json,
+                        text_format=ResponseT,
+                        **options,
+                    ),
+                    self.api_kwargs,
+                    deadline=deadline,
                 )
+                if response.output_parsed is not None:
+                    _validate_response_ids(
+                        [message.id for message in user_messages],
+                        [message.id for message in response.output_parsed.assistant_messages],
+                    )
                 return cast(ParsedResponse[Response[ResponseFormat]], response)
             except ValidationError as e:
                 if attempt >= self.max_validation_retries:
@@ -342,7 +389,6 @@ class BatchResponses(Generic[ResponseFormat]):
         raise RuntimeError("unreachable validation retry loop state")
 
     @observe(_LOGGER)
-    @backoff(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
     def _request_multimodal(self, input_messages: ResponseInputParam) -> ResponseFormat | None:
         """Send a single multimodal request.
 
@@ -356,20 +402,30 @@ class BatchResponses(Generic[ResponseFormat]):
         response_format: type[ResponseFormat] = self.response_format
 
         if response_format is str:
-            response: OAIResponse = self.client.responses.create(
-                instructions=self.system_message,
-                model=self.model_name,
-                input=input_messages,
-                **self.api_kwargs,
+            response: OAIResponse = call_with_retry(
+                self.client,
+                self.retry_policy,
+                lambda client, options: client.responses.create(
+                    instructions=self.system_message,
+                    model=self.model_name,
+                    input=input_messages,
+                    **options,
+                ),
+                self.api_kwargs,
             )
             return cast(ResponseFormat, response.output_text)
 
-        parsed_response: ParsedResponse[ResponseFormat] = self.client.responses.parse(
-            instructions=self.system_message,
-            model=self.model_name,
-            input=input_messages,
-            text_format=response_format,
-            **self.api_kwargs,
+        parsed_response: ParsedResponse[ResponseFormat] = call_with_retry(
+            self.client,
+            self.retry_policy,
+            lambda client, options: client.responses.parse(
+                instructions=self.system_message,
+                model=self.model_name,
+                input=input_messages,
+                text_format=response_format,
+                **options,
+            ),
+            self.api_kwargs,
         )
         return parsed_response.output_parsed
 
@@ -490,6 +546,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             instances use bounded retention by default.
         max_validation_retries (int): Number of retries when structured output fails
             local schema validation.
+        retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
     """
 
     client: AsyncOpenAI
@@ -506,6 +563,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
     api_kwargs: dict[str, Any] = field(default_factory=dict)
     max_validation_retries: int = 3
     multimodal: bool = False
+    retry_policy: RetryPolicy | None = None
     _vectorized_system_message: str = field(init=False)
     _model_json_schema: dict = field(init=False)
 
@@ -520,6 +578,8 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         max_concurrency: int = 8,
         max_validation_retries: int = 3,
         multimodal: bool = False,
+        *,
+        retry_policy: RetryPolicy | None = None,
         **api_kwargs,
     ) -> "AsyncBatchResponses":
         """Factory constructor.
@@ -536,6 +596,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
                 schema validation. Defaults to 3.
             multimodal (bool, optional): When ``True``, file paths and URLs in
                 inputs are sent as multimodal content. Defaults to ``False``.
+            retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
             **api_kwargs: Additional OpenAI API parameters (temperature, top_p, etc.).
 
         Returns:
@@ -554,6 +615,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             api_kwargs=api_kwargs,
             max_validation_retries=max_validation_retries,
             multimodal=multimodal,
+            retry_policy=retry_policy,
         )
 
     @classmethod
@@ -566,6 +628,8 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         max_concurrency: int = 8,
         max_validation_retries: int = 3,
         multimodal: bool = False,
+        *,
+        retry_policy: RetryPolicy | None = None,
         **api_kwargs,
     ) -> "AsyncBatchResponses":
         """Factory from a PreparedTask.
@@ -581,6 +645,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
                 schema validation. Defaults to 3.
             multimodal (bool, optional): When ``True``, file paths and URLs in
                 inputs are sent as multimodal content. Defaults to ``False``.
+            retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
             **api_kwargs: Additional OpenAI API parameters forwarded to the Responses API.
 
         Returns:
@@ -599,6 +664,7 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             api_kwargs=api_kwargs,
             max_validation_retries=max_validation_retries,
             multimodal=multimodal,
+            retry_policy=retry_policy,
         )
 
     def __post_init__(self):
@@ -610,7 +676,6 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             _vectorize_system_message(self.system_message),
         )
 
-    @backoff_async(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
     @observe(_LOGGER)
     async def _request_llm(self, user_messages: list[Message[str]]) -> ParsedResponse[Response[ResponseFormat]]:
         """Call the OpenAI JSON‑mode endpoint asynchronously with validation retries.
@@ -622,7 +687,8 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
             ParsedResponse[Response[ResponseFormat]]: Parsed response with assistant messages (arbitrary order).
 
         Raises:
-            RateLimitError: Re‑raised after back‑off retries are exhausted.
+            openai.RateLimitError: Re-raised after transport retries are exhausted.
+            TimeoutError: The explicit transport deadline was exceeded.
             pydantic.ValidationError: Re‑raised when validation still fails after
                 ``max_validation_retries`` correction attempts.
         """
@@ -637,15 +703,27 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
 
         instructions = self._vectorized_system_message
         input_json = Request(user_messages=user_messages).model_dump_json()
+        deadline = retry_deadline(self.retry_policy)
         for attempt in range(self.max_validation_retries + 1):
             try:
-                response: ParsedResponse[ResponseT] = await self.client.responses.parse(
-                    instructions=instructions,
-                    model=self.model_name,
-                    input=input_json,
-                    text_format=ResponseT,
-                    **self.api_kwargs,
+                response: ParsedResponse[ResponseT] = await call_with_retry_async(
+                    self.client,
+                    self.retry_policy,
+                    lambda client, options: client.responses.parse(
+                        instructions=instructions,
+                        model=self.model_name,
+                        input=input_json,
+                        text_format=ResponseT,
+                        **options,
+                    ),
+                    self.api_kwargs,
+                    deadline=deadline,
                 )
+                if response.output_parsed is not None:
+                    _validate_response_ids(
+                        [message.id for message in user_messages],
+                        [message.id for message in response.output_parsed.assistant_messages],
+                    )
                 return cast(ParsedResponse[Response[ResponseFormat]], response)
             except ValidationError as e:
                 if attempt >= self.max_validation_retries:
@@ -655,7 +733,6 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         raise RuntimeError("unreachable validation retry loop state")
 
     @observe(_LOGGER)
-    @backoff_async(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
     async def _request_multimodal(self, input_messages: ResponseInputParam) -> ResponseFormat | None:
         """Send a single multimodal request (async).
 
@@ -669,20 +746,30 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
         response_format: type[ResponseFormat] = self.response_format
 
         if response_format is str:
-            response: OAIResponse = await self.client.responses.create(
-                instructions=self.system_message,
-                model=self.model_name,
-                input=input_messages,
-                **self.api_kwargs,
+            response: OAIResponse = await call_with_retry_async(
+                self.client,
+                self.retry_policy,
+                lambda client, options: client.responses.create(
+                    instructions=self.system_message,
+                    model=self.model_name,
+                    input=input_messages,
+                    **options,
+                ),
+                self.api_kwargs,
             )
             return cast(ResponseFormat, response.output_text)
 
-        parsed_response: ParsedResponse[ResponseFormat] = await self.client.responses.parse(
-            instructions=self.system_message,
-            model=self.model_name,
-            input=input_messages,
-            text_format=response_format,
-            **self.api_kwargs,
+        parsed_response: ParsedResponse[ResponseFormat] = await call_with_retry_async(
+            self.client,
+            self.retry_policy,
+            lambda client, options: client.responses.parse(
+                instructions=self.system_message,
+                model=self.model_name,
+                input=input_messages,
+                text_format=response_format,
+                **options,
+            ),
+            self.api_kwargs,
         )
         return parsed_response.output_parsed
 

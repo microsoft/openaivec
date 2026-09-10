@@ -9,10 +9,11 @@ from openai import OpenAI
 
 from openaivec._cache import BatchCache
 from openaivec._cache.proxy import DEFAULT_MANAGED_CACHE_SIZE
-from openaivec._embeddings import BatchEmbeddings
+from openaivec._embeddings import BatchEmbeddings, EmbeddingLimits
 from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
 from openaivec._provider import CONTAINER
 from openaivec._responses import BatchResponses
+from openaivec._retry import RetryPolicy
 from openaivec._schema import SchemaInferenceInput, SchemaInferenceOutput, SchemaInferer
 from openaivec.pandas_ext._common import _embeddings_to_series, _extract_value
 
@@ -30,6 +31,9 @@ class OpenAIVecSeriesAccessor:
         cache: BatchCache[str, ResponseFormat],
         response_format: type[ResponseFormat] = str,
         multimodal: bool = False,
+        *,
+        max_validation_retries: int = 3,
+        retry_policy: RetryPolicy | None = None,
         **api_kwargs,
     ) -> pd.Series:
         """Call an LLM once for every Series element using a provided cache.
@@ -52,6 +56,9 @@ class OpenAIVecSeriesAccessor:
                 Set cache.batch_size=None to enable automatic batch size optimization.
             response_format (type[ResponseFormat], optional): Pydantic model or built‑in
                 type the assistant should return. Defaults to ``str``.
+            max_validation_retries (int): Additional schema/ID correction attempts.
+                Defaults to 3; 0 disables correction. Must be nonnegative.
+            retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -66,6 +73,8 @@ class OpenAIVecSeriesAccessor:
             system_message=instructions,
             response_format=response_format,
             cache=cache,
+            max_validation_retries=max_validation_retries,
+            retry_policy=retry_policy,
             api_kwargs=api_kwargs,
             multimodal=multimodal,
         )
@@ -79,6 +88,9 @@ class OpenAIVecSeriesAccessor:
         batch_size: int | None = None,
         show_progress: bool = True,
         multimodal: bool = False,
+        *,
+        max_validation_retries: int = 3,
+        retry_policy: RetryPolicy | None = None,
         **api_kwargs,
     ) -> pd.Series:
         """Call an LLM once for every Series element.
@@ -112,6 +124,9 @@ class OpenAIVecSeriesAccessor:
                 request. Defaults to ``None`` (automatic batch size optimization
                 based on execution time). Set to a positive integer for fixed batch size.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
+            max_validation_retries (int): Additional schema/ID correction attempts.
+                Defaults to 3; 0 disables correction. Must be nonnegative.
+            retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -128,12 +143,17 @@ class OpenAIVecSeriesAccessor:
             ),
             response_format=response_format,
             multimodal=multimodal,
+            max_validation_retries=max_validation_retries,
+            retry_policy=retry_policy,
             **api_kwargs,
         )
 
     def embeddings_with_cache(
         self,
         cache: BatchCache[str, np.ndarray],
+        *,
+        limits: EmbeddingLimits | None = None,
+        retry_policy: RetryPolicy | None = None,
         **api_kwargs,
     ) -> pd.Series:
         """Compute OpenAI embeddings for every Series element using a provided cache.
@@ -158,6 +178,8 @@ class OpenAIVecSeriesAccessor:
             cache (BatchCache[str, np.ndarray]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
+            limits (EmbeddingLimits | None): Hard provider limits; None uses OpenAI defaults.
+            retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -171,6 +193,8 @@ class OpenAIVecSeriesAccessor:
             model_name=CONTAINER.resolve(EmbeddingsModelName).value,
             cache=cache,
             api_kwargs=api_kwargs,
+            limits=limits if limits is not None else EmbeddingLimits(),
+            retry_policy=retry_policy,
         )
 
         return _embeddings_to_series(
@@ -179,7 +203,15 @@ class OpenAIVecSeriesAccessor:
             name=self._obj.name,
         )
 
-    def embeddings(self, batch_size: int | None = None, show_progress: bool = True, **api_kwargs) -> pd.Series:
+    def embeddings(
+        self,
+        batch_size: int | None = None,
+        show_progress: bool = True,
+        *,
+        limits: EmbeddingLimits | None = None,
+        retry_policy: RetryPolicy | None = None,
+        **api_kwargs,
+    ) -> pd.Series:
         """Compute OpenAI embeddings for every Series element.
 
         Example:
@@ -201,6 +233,8 @@ class OpenAIVecSeriesAccessor:
                 single request. Defaults to ``None`` (automatic batch size optimization
                 based on execution time). Set to a positive integer for fixed batch size.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
+            limits (EmbeddingLimits | None): Hard provider limits; None uses OpenAI defaults.
+            retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -215,6 +249,8 @@ class OpenAIVecSeriesAccessor:
                 max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
                 show_progress=show_progress,
             ),
+            limits=limits,
+            retry_policy=retry_policy,
             **api_kwargs,
         )
 
@@ -223,6 +259,9 @@ class OpenAIVecSeriesAccessor:
         task: PreparedTask[ResponseFormat],
         cache: BatchCache[str, ResponseFormat],
         multimodal: bool = False,
+        *,
+        max_validation_retries: int = 3,
+        retry_policy: RetryPolicy | None = None,
         **api_kwargs,
     ) -> pd.Series:
         """Execute a prepared task on every Series element using a provided cache.
@@ -248,6 +287,9 @@ class OpenAIVecSeriesAccessor:
             cache (BatchCache[str, ResponseFormat]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
+            max_validation_retries (int): Additional schema/ID correction attempts.
+                Defaults to 3; 0 disables correction. Must be nonnegative.
+            retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -266,6 +308,8 @@ class OpenAIVecSeriesAccessor:
             system_message=task.instructions,
             response_format=task.response_format,
             cache=cache,
+            max_validation_retries=max_validation_retries,
+            retry_policy=retry_policy,
             api_kwargs=api_kwargs,
             multimodal=multimodal,
         )
@@ -277,6 +321,9 @@ class OpenAIVecSeriesAccessor:
         batch_size: int | None = None,
         show_progress: bool = True,
         multimodal: bool = False,
+        *,
+        max_validation_retries: int = 3,
+        retry_policy: RetryPolicy | None = None,
         **api_kwargs,
     ) -> pd.Series:
         """Execute a prepared task on every Series element.
@@ -308,6 +355,9 @@ class OpenAIVecSeriesAccessor:
                 request to optimize API usage. Defaults to ``None`` (automatic batch size
                 optimization based on execution time). Set to a positive integer for fixed batch size.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
+            max_validation_retries (int): Additional schema/ID correction attempts.
+                Defaults to 3; 0 disables correction. Must be nonnegative.
+            retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -328,6 +378,8 @@ class OpenAIVecSeriesAccessor:
                 show_progress=show_progress,
             ),
             multimodal=multimodal,
+            max_validation_retries=max_validation_retries,
+            retry_policy=retry_policy,
             **api_kwargs,
         )
 
@@ -338,6 +390,10 @@ class OpenAIVecSeriesAccessor:
         response_format: type[ResponseFormat] | None = None,
         max_examples: int = 100,
         multimodal: bool = False,
+        *,
+        max_retries: int = 8,
+        max_validation_retries: int = 3,
+        retry_policy: RetryPolicy | None = None,
         **api_kwargs,
     ) -> pd.Series:
         """Parse Series values into structured data using an LLM with a provided cache.
@@ -375,6 +431,12 @@ class OpenAIVecSeriesAccessor:
             max_examples (int, optional): Maximum number of Series values to
                 analyze when inferring the schema. Only used when response_format
                 is None. Defaults to 100.
+            max_retries (int): Total schema inference attempts. Defaults to 8.
+                Used only when response_format is None; must be at least 1.
+            max_validation_retries (int): Additional extraction corrections,
+                separate from inference and transport retries. Defaults to 3;
+                0 disables correction. Must be nonnegative.
+            retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -386,8 +448,16 @@ class OpenAIVecSeriesAccessor:
         """
 
         schema: SchemaInferenceOutput | None = None
+        if max_validation_retries < 0:
+            raise ValueError("max_validation_retries must be >= 0")
         if response_format is None:
-            schema = self.infer_schema(instructions=instructions, max_examples=max_examples, **api_kwargs)
+            schema = self.infer_schema(
+                instructions=instructions,
+                max_examples=max_examples,
+                max_retries=max_retries,
+                retry_policy=retry_policy,
+                **api_kwargs,
+            )
             resolved_response_format = cast(type[ResponseFormat], schema.model)
         else:
             resolved_response_format = response_format
@@ -397,6 +467,8 @@ class OpenAIVecSeriesAccessor:
             cache=cache,
             response_format=resolved_response_format,
             multimodal=multimodal,
+            max_validation_retries=max_validation_retries,
+            retry_policy=retry_policy,
             **api_kwargs,
         )
 
@@ -408,6 +480,10 @@ class OpenAIVecSeriesAccessor:
         batch_size: int | None = None,
         show_progress: bool = True,
         multimodal: bool = False,
+        *,
+        max_retries: int = 8,
+        max_validation_retries: int = 3,
+        retry_policy: RetryPolicy | None = None,
         **api_kwargs,
     ) -> pd.Series:
         """Parse Series values into structured data using an LLM.
@@ -432,6 +508,12 @@ class OpenAIVecSeriesAccessor:
                 per batch. None enables automatic optimization. Defaults to None.
             show_progress (bool, optional): Display progress bar in Jupyter
                 notebooks. Defaults to True.
+            max_retries (int): Total schema inference attempts. Defaults to 8.
+                Used only when response_format is None; must be at least 1.
+            max_validation_retries (int): Additional extraction corrections,
+                separate from inference and transport retries. Defaults to 3;
+                0 disables correction. Must be nonnegative.
+            retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -477,11 +559,22 @@ class OpenAIVecSeriesAccessor:
             ),
             response_format=response_format,
             max_examples=max_examples,
+            max_retries=max_retries,
             multimodal=multimodal,
+            max_validation_retries=max_validation_retries,
+            retry_policy=retry_policy,
             **api_kwargs,
         )
 
-    def infer_schema(self, instructions: str, max_examples: int = 100, **api_kwargs) -> SchemaInferenceOutput:
+    def infer_schema(
+        self,
+        instructions: str,
+        max_examples: int = 100,
+        *,
+        max_retries: int = 8,
+        retry_policy: RetryPolicy | None = None,
+        **api_kwargs,
+    ) -> SchemaInferenceOutput:
         """Infer a structured data schema from Series content using AI.
 
         This method analyzes a sample of Series values to automatically generate
@@ -498,6 +591,9 @@ class OpenAIVecSeriesAccessor:
                 analyze for pattern detection. The method samples randomly up
                 to this limit. Higher values may improve schema quality but
                 increase inference time. Defaults to 100.
+            max_retries (int, optional): Maximum schema inference attempts.
+                Must be at least 1. Defaults to 8.
+            retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -551,9 +647,8 @@ class OpenAIVecSeriesAccessor:
         input: SchemaInferenceInput = SchemaInferenceInput(
             examples=self._obj.sample(n=min(max_examples, len(self._obj))).tolist(),
             instructions=instructions,
-            **api_kwargs,
         )
-        return inferer.infer_schema(input)
+        return inferer.infer_schema(input, max_retries=max_retries, retry_policy=retry_policy, **api_kwargs)
 
     def count_tokens(self) -> pd.Series:
         """Count ``tiktoken`` tokens per element.

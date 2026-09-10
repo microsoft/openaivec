@@ -1,4 +1,4 @@
-from ._embeddings import AsyncBatchEmbeddings, BatchEmbeddings
+from ._embeddings import AsyncBatchEmbeddings, BatchEmbeddings, EmbeddingLimits
 from ._model import PreparedTask
 from ._prompt import FewShotPrompt, FewShotPromptBuilder
 from ._provider import (
@@ -13,16 +13,20 @@ from ._provider import (
     setup_fabric,
 )
 from ._responses import AsyncBatchResponses, BatchResponses
-from ._schema import SchemaInferenceInput, SchemaInferenceOutput, SchemaInferer
+from ._retry import RetryPolicy
+from ._schema import AsyncSchemaInferer, SchemaInferenceInput, SchemaInferenceOutput, SchemaInferer
 
 __all__ = [
     "AsyncBatchEmbeddings",
     "AsyncBatchResponses",
+    "AsyncSchemaInferer",
     "BatchEmbeddings",
     "BatchResponses",
+    "EmbeddingLimits",
     "FewShotPrompt",
     "FewShotPromptBuilder",
     "PreparedTask",
+    "RetryPolicy",
     "SchemaInferenceInput",
     "SchemaInferenceOutput",
     "SchemaInferer",

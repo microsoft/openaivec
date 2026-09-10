@@ -42,17 +42,18 @@ from uuid import UUID
 import duckdb
 import numpy as np
 import pyarrow as pa
-from duckdb.func import PythonUDFType
+from duckdb.func import FunctionNullHandling, PythonUDFType
 from duckdb.sqltypes import DuckDBPyType
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from openaivec._cache import AsyncBatchCache
 from openaivec._cache.proxy import DEFAULT_MANAGED_CACHE_SIZE
-from openaivec._embeddings import AsyncBatchEmbeddings
+from openaivec._embeddings import AsyncBatchEmbeddings, EmbeddingLimits
 from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
 from openaivec._provider import CONTAINER
 from openaivec._responses import AsyncBatchResponses
+from openaivec._retry import RetryPolicy
 from openaivec._util import run_async
 
 __all__ = [
@@ -89,6 +90,8 @@ def responses_udf(
     batch_size: int = 64,
     max_concurrency: int = 8,
     multimodal: bool = False,
+    max_validation_retries: int = 3,
+    retry_policy: RetryPolicy | None = None,
     **api_kwargs: Any,
 ) -> None:
     """Register a DuckDB Arrow-based UDF that calls the OpenAI Responses API.
@@ -101,6 +104,10 @@ def responses_udf(
     access in SQL (e.g. ``SELECT udf(text).sentiment FROM ...``).
     When ``response_format`` is ``str``, the UDF returns ``VARCHAR``.
 
+    SQL NULL inputs are not sent to the API. Missing parsed responses remain
+    SQL NULL, including structured outputs; all-NULL Arrow batches retain the
+    declared return type.
+
     Args:
         conn (duckdb.DuckDBPyConnection): An open DuckDB connection.
         name (str): UDF name visible in SQL.
@@ -111,6 +118,9 @@ def responses_udf(
             container-registered ``ResponsesModelName``.
         batch_size (int): Rows per API batch. Defaults to 64.
         max_concurrency (int): Maximum concurrent API requests. Defaults to 8.
+        max_validation_retries (int): Additional schema/ID corrections per batch.
+            Defaults to 3; 0 disables correction. Must be nonnegative.
+        retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
         **api_kwargs: Extra parameters forwarded to the OpenAI API.
 
     Example:
@@ -140,12 +150,22 @@ def responses_udf(
         system_message=instructions,
         response_format=response_format,
         cache=cache,
+        max_validation_retries=max_validation_retries,
+        retry_policy=retry_policy,
         api_kwargs=api_kwargs,
         multimodal=multimodal,
     )
 
     is_structured = isinstance(response_format, type) and issubclass(response_format, BaseModel)
     return_type = _pydantic_to_struct_type(response_format) if is_structured else duckdb.sqltype("VARCHAR")
+    arrow_type = (
+        conn.sql("SELECT NULL")
+        .select(duckdb.ConstantExpression(None).cast(return_type))
+        .limit(0)
+        .to_arrow_table()
+        .schema.field(0)
+        .type
+    )
 
     def _batch_udf(arrow_batch: pa.Array) -> pa.Array:
         texts = arrow_batch.to_pylist()
@@ -153,7 +173,7 @@ def responses_udf(
         non_null_texts = [texts[i] for i in non_null_indices]
 
         if not non_null_texts:
-            return pa.array([None] * len(texts), type=pa.string())
+            return pa.nulls(len(texts), type=arrow_type)
 
         results = run_async(batch_client.parse(non_null_texts))
 
@@ -164,9 +184,18 @@ def responses_udf(
             elif result is not None:
                 out[idx] = str(result)
 
+        if all(value is None for value in out):
+            return pa.nulls(len(out), type=arrow_type)
         return pa.array(out)
 
-    conn.create_function(name, _batch_udf, [duckdb.sqltype("VARCHAR")], return_type, type=PythonUDFType.ARROW)
+    conn.create_function(
+        name,
+        _batch_udf,
+        [duckdb.sqltype("VARCHAR")],
+        return_type,
+        type=PythonUDFType.ARROW,
+        null_handling=FunctionNullHandling.SPECIAL,
+    )
 
 
 def embeddings_udf(
@@ -176,6 +205,8 @@ def embeddings_udf(
     model_name: str | None = None,
     batch_size: int = 128,
     max_concurrency: int = 8,
+    limits: EmbeddingLimits | None = None,
+    retry_policy: RetryPolicy | None = None,
     **api_kwargs: Any,
 ) -> None:
     """Register a DuckDB Arrow-based UDF that returns embedding vectors.
@@ -189,6 +220,8 @@ def embeddings_udf(
         model_name (str | None): Embeddings model or deployment name.
         batch_size (int): Rows per API batch. Defaults to 128.
         max_concurrency (int): Maximum concurrent API requests. Defaults to 8.
+        limits (EmbeddingLimits | None): Hard provider limits; None uses OpenAI defaults.
+        retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
         **api_kwargs: Extra parameters forwarded to the OpenAI API.
 
     Example:
@@ -213,6 +246,8 @@ def embeddings_udf(
         model_name=_model_name,
         cache=cache,
         api_kwargs=api_kwargs,
+        limits=limits if limits is not None else EmbeddingLimits(),
+        retry_policy=retry_policy,
     )
 
     def _batch_udf(arrow_batch: pa.Array) -> pa.Array:
@@ -245,6 +280,8 @@ def task_udf(
     batch_size: int = 64,
     max_concurrency: int = 8,
     multimodal: bool = False,
+    max_validation_retries: int = 3,
+    retry_policy: RetryPolicy | None = None,
     **api_kwargs: Any,
 ) -> None:
     """Register a DuckDB UDF backed by a ``PreparedTask``.
@@ -256,8 +293,11 @@ def task_udf(
         model_name (str | None): Model or deployment name.
         batch_size (int): Rows per API batch. Defaults to 64.
         max_concurrency (int): Maximum concurrent API requests. Defaults to 8.
+        max_validation_retries (int): Additional schema/ID corrections per batch.
+            Defaults to 3; 0 disables correction. Must be nonnegative.
         multimodal (bool): When ``True``, file paths and URLs are sent as
             multimodal content. Defaults to ``False``.
+        retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
         **api_kwargs: Extra parameters forwarded to the OpenAI API.
     """
     responses_udf(
@@ -269,6 +309,8 @@ def task_udf(
         batch_size=batch_size,
         max_concurrency=max_concurrency,
         multimodal=multimodal,
+        max_validation_retries=max_validation_retries,
+        retry_policy=retry_policy,
         **api_kwargs,
     )
 
