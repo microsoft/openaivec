@@ -1,3 +1,4 @@
+from collections import Counter
 from dataclasses import dataclass, field
 from logging import Logger, getLogger
 from typing import Any, Generic, cast
@@ -28,6 +29,31 @@ __all__ = [
 
 _LOGGER: Logger = getLogger(__name__)
 _MAX_VALIDATION_FEEDBACK_ITEMS = 8
+
+
+def _validate_response_ids(expected_ids: list[int], response_ids: list[int]) -> None:
+    expected = set(expected_ids)
+    received = set(response_ids)
+    if len(response_ids) == len(expected_ids) and received == expected:
+        return
+    duplicates = [identity for identity, count in Counter(response_ids).items() if count > 1]
+    message = (
+        "Response IDs must match every input ID exactly once. "
+        f"Missing IDs: {sorted(expected - received)[:_MAX_VALIDATION_FEEDBACK_ITEMS]}; "
+        f"unknown IDs: {sorted(received - expected)[:_MAX_VALIDATION_FEEDBACK_ITEMS]}; "
+        f"duplicate IDs: {duplicates[:_MAX_VALIDATION_FEEDBACK_ITEMS]}."
+    )
+    raise ValidationError.from_exception_data(
+        "Response",
+        [
+            {
+                "type": "value_error",
+                "loc": ("assistant_messages",),
+                "input": response_ids,
+                "ctx": {"error": ValueError(message)},
+            }
+        ],
+    )
 
 
 def _format_validation_error_location(loc: tuple[Any, ...]) -> str:
@@ -333,6 +359,11 @@ class BatchResponses(Generic[ResponseFormat]):
                     text_format=ResponseT,
                     **self.api_kwargs,
                 )
+                if response.output_parsed is not None:
+                    _validate_response_ids(
+                        [message.id for message in user_messages],
+                        [message.id for message in response.output_parsed.assistant_messages],
+                    )
                 return cast(ParsedResponse[Response[ResponseFormat]], response)
             except ValidationError as e:
                 if attempt >= self.max_validation_retries:
@@ -646,6 +677,11 @@ class AsyncBatchResponses(Generic[ResponseFormat]):
                     text_format=ResponseT,
                     **self.api_kwargs,
                 )
+                if response.output_parsed is not None:
+                    _validate_response_ids(
+                        [message.id for message in user_messages],
+                        [message.id for message in response.output_parsed.assistant_messages],
+                    )
                 return cast(ParsedResponse[Response[ResponseFormat]], response)
             except ValidationError as e:
                 if attempt >= self.max_validation_retries:
