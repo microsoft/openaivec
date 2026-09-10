@@ -837,6 +837,9 @@ def infer_schema(
     example_table_name: str,
     example_field_name: str,
     max_examples: int = 100,
+    *,
+    max_retries: int = 8,
+    **api_kwargs,
 ) -> SchemaInferenceOutput:
     """Infer the schema for a response format based on example data.
 
@@ -849,6 +852,8 @@ def infer_schema(
         example_table_name (str | None): Name of the Spark table containing example data.
         example_field_name (str | None): Name of the field in the table to use as examples.
         max_examples (int): Maximum number of examples to retrieve for schema inference.
+        max_retries (int): Total schema inference attempts. Defaults to 8; at least 1.
+        **api_kwargs: Parameters forwarded to the schema inference Responses API.
 
     Returns:
         InferredSchema: An object containing the inferred schema and response format.
@@ -878,7 +883,7 @@ def infer_schema(
         examples=examples,
     )
     inferer = CONTAINER.resolve(SchemaInferer)
-    return inferer.infer_schema(input)
+    return inferer.infer_schema(input, max_retries=max_retries, **api_kwargs)
 
 
 def parse_udf(
@@ -892,6 +897,7 @@ def parse_udf(
     max_concurrency: int = 8,
     multimodal: bool = False,
     *,
+    max_retries: int = 8,
     max_validation_retries: int = 3,
     **api_kwargs,
 ) -> UserDefinedFunction:
@@ -926,6 +932,8 @@ def parse_udf(
             Total cluster concurrency = max_concurrency × number_of_executors.
             Higher values increase throughput but may hit OpenAI rate limits.
             Recommended: 4-12 per executor. Defaults to 8.
+        max_retries (int): Total schema inference attempts. Defaults to 8.
+            Used only when response_format is None; must be at least 1.
         max_validation_retries (int): Additional extraction corrections, separate
             from inference and transport retries. Defaults to 3; 0 disables
             correction. Must be nonnegative.
@@ -973,6 +981,8 @@ def parse_udf(
             example_table_name=example_table_name,
             example_field_name=example_field_name,
             max_examples=max_examples,
+            max_retries=max_retries,
+            **api_kwargs,
         )
         resolved_instructions = schema.inference_prompt
         resolved_response_format = cast(type[ResponseFormat], schema.model)

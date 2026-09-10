@@ -87,8 +87,9 @@ class TestSeriesAsync:
 async def test_series_aio_parse_with_cache_forwards_api_kwargs_to_schema_inference(monkeypatch):
     captured: dict[str, object] = {}
 
-    async def fake_infer_schema(self, instructions: str, max_examples: int = 100, **api_kwargs):
+    async def fake_infer_schema(self, instructions: str, max_examples: int = 100, *, max_retries=8, **api_kwargs):
         captured["infer_kwargs"] = dict(api_kwargs)
+        captured["max_retries"] = max_retries
         return SimpleNamespace(inference_prompt="inferred prompt", model=str)
 
     async def fake_responses_with_cache(
@@ -117,6 +118,7 @@ async def test_series_aio_parse_with_cache_forwards_api_kwargs_to_schema_inferen
 
     assert out.tolist() == ["ok", "ok"]
     assert captured["infer_kwargs"] == {"temperature": 0.4, "top_p": 0.2}
+    assert captured["max_retries"] == 8
     assert captured["responses_kwargs"] == {"temperature": 0.4, "top_p": 0.2}
     assert captured["max_validation_retries"] == 0
     assert captured["instructions"] == "inferred prompt"

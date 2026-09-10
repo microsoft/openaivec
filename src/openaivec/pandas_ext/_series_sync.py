@@ -359,6 +359,7 @@ class OpenAIVecSeriesAccessor:
         max_examples: int = 100,
         multimodal: bool = False,
         *,
+        max_retries: int = 8,
         max_validation_retries: int = 3,
         **api_kwargs,
     ) -> pd.Series:
@@ -397,6 +398,8 @@ class OpenAIVecSeriesAccessor:
             max_examples (int, optional): Maximum number of Series values to
                 analyze when inferring the schema. Only used when response_format
                 is None. Defaults to 100.
+            max_retries (int): Total schema inference attempts. Defaults to 8.
+                Used only when response_format is None; must be at least 1.
             max_validation_retries (int): Additional extraction corrections,
                 separate from inference and transport retries. Defaults to 3;
                 0 disables correction. Must be nonnegative.
@@ -414,7 +417,9 @@ class OpenAIVecSeriesAccessor:
         if max_validation_retries < 0:
             raise ValueError("max_validation_retries must be >= 0")
         if response_format is None:
-            schema = self.infer_schema(instructions=instructions, max_examples=max_examples, **api_kwargs)
+            schema = self.infer_schema(
+                instructions=instructions, max_examples=max_examples, max_retries=max_retries, **api_kwargs
+            )
             resolved_response_format = cast(type[ResponseFormat], schema.model)
         else:
             resolved_response_format = response_format
@@ -437,6 +442,7 @@ class OpenAIVecSeriesAccessor:
         show_progress: bool = True,
         multimodal: bool = False,
         *,
+        max_retries: int = 8,
         max_validation_retries: int = 3,
         **api_kwargs,
     ) -> pd.Series:
@@ -462,6 +468,8 @@ class OpenAIVecSeriesAccessor:
                 per batch. None enables automatic optimization. Defaults to None.
             show_progress (bool, optional): Display progress bar in Jupyter
                 notebooks. Defaults to True.
+            max_retries (int): Total schema inference attempts. Defaults to 8.
+                Used only when response_format is None; must be at least 1.
             max_validation_retries (int): Additional extraction corrections,
                 separate from inference and transport retries. Defaults to 3;
                 0 disables correction. Must be nonnegative.
@@ -510,6 +518,7 @@ class OpenAIVecSeriesAccessor:
             ),
             response_format=response_format,
             max_examples=max_examples,
+            max_retries=max_retries,
             multimodal=multimodal,
             max_validation_retries=max_validation_retries,
             **api_kwargs,

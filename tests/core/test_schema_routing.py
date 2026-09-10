@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 import openaivec
 from openaivec import SchemaInferer, pandas_ext  # noqa: F401
+from openaivec._cache import AsyncBatchCache, BatchCache
 from openaivec._di import ProviderError
 from openaivec._provider import CONTAINER
 from openaivec._schema import SchemaInferenceOutput
@@ -160,3 +161,96 @@ async def test_async_schema_cancellation_stops_request(monkeypatch):
                 await task
         assert stopped.is_set()
         assert parse.call_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("dataframe", [False, True])
+@pytest.mark.parametrize("with_cache", [False, True])
+@pytest.mark.parametrize("infer_schema", [False, True])
+async def test_parse_separates_inference_and_extraction_limits(
+    monkeypatch, asynchronous, dataframe, with_cache, infer_schema
+):
+    schema = SimpleNamespace(model=str, inference_prompt="extract")
+    inference = AsyncMock(return_value=schema) if asynchronous else Mock(return_value=schema)
+    accessor_type = pandas_ext.AsyncOpenAIVecSeriesAccessor if asynchronous else pandas_ext.OpenAIVecSeriesAccessor
+    monkeypatch.setattr(accessor_type, "infer_schema", inference)
+    client = AsyncOpenAI(api_key="test") if asynchronous else OpenAI(api_key="test")
+    parse = (
+        AsyncMock(return_value=SimpleNamespace(output_parsed=None))
+        if asynchronous
+        else Mock(return_value=SimpleNamespace(output_parsed=None))
+    )
+    monkeypatch.setattr(client.responses, "parse", parse)
+    resolve = CONTAINER.resolve
+    monkeypatch.setattr(CONTAINER, "resolve", lambda kind: client if kind in (OpenAI, AsyncOpenAI) else resolve(kind))
+    series = pd.Series(["first", "second", "first"], index=[9, 3, 7])
+    data = series.to_frame("value") if dataframe else series
+    accessor = data.aio if asynchronous else data.ai
+    options = {
+        "instructions": "extract",
+        "response_format": None if infer_schema else str,
+        "max_retries": 1,
+        "max_validation_retries": 0,
+        "store": False,
+    }
+    method_name = "parse_with_cache" if with_cache else "parse"
+    if with_cache:
+        cache_type = AsyncBatchCache if asynchronous else BatchCache
+        options["cache"] = cache_type(batch_size=2, show_progress=False)
+    try:
+        result = getattr(accessor, method_name)(**options)
+        if asynchronous:
+            result = await result
+        assert result.index.equals(series.index)
+        assert result.tolist() == [None, None, None]
+        assert parse.call_count == 1
+        assert "max_retries" not in parse.call_args.kwargs
+        assert "max_validation_retries" not in parse.call_args.kwargs
+        assert parse.call_args.kwargs["store"] is False
+        assert inference.call_count == int(infer_schema)
+        if infer_schema:
+            assert inference.call_args.kwargs["max_retries"] == 1
+            assert "max_validation_retries" not in inference.call_args.kwargs
+    finally:
+        if asynchronous:
+            await client.close()
+        else:
+            client.close()
+
+
+@pytest.mark.parametrize("extract", [False, True])
+def test_spark_inference_controls_do_not_reach_extraction(monkeypatch, extract):
+    pytest.importorskip("pyspark")
+    from openaivec import spark_ext
+
+    schema = SimpleNamespace(model=str, inference_prompt="extract")
+    inference = Mock(return_value=schema)
+    spark = Mock()
+    spark.table.return_value.rdd.map.return_value.takeSample.return_value = ["first"]
+    parse = AsyncMock(return_value=SimpleNamespace(output_parsed=None))
+    client = Mock(spec=AsyncOpenAI)
+    client.responses = Mock(parse=parse)
+    resolve = CONTAINER.resolve
+
+    def resolve_dependency(kind):
+        if kind is spark_ext.SparkSession:
+            return spark
+        if kind is SchemaInferer:
+            return SimpleNamespace(infer_schema=inference)
+        if kind is AsyncOpenAI:
+            return client
+        return resolve(kind)
+
+    monkeypatch.setattr(CONTAINER, "resolve", resolve_dependency)
+    monkeypatch.setattr(spark_ext, "pandas_udf", lambda **kwargs: lambda function: function)
+    method = spark_ext.parse_udf if extract else spark_ext.infer_schema
+    result = method("extract", example_table_name="inputs", example_field_name="value", max_retries=1, store=False)
+    if extract:
+        list(result(iter([pd.Series(["first"])])))
+        assert parse.call_count == 1
+        assert "max_retries" not in parse.call_args.kwargs
+        assert parse.call_args.kwargs["store"] is False
+    assert inference.call_count == 1
+    assert inference.call_args.kwargs == {"max_retries": 1, "store": False}
+    assert inference.call_args.args[0].examples == ["first"]

@@ -277,6 +277,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         response_format: type[ResponseFormat] | None = None,
         max_examples: int = 100,
         *,
+        max_retries: int = 8,
         max_validation_retries: int = 3,
         **api_kwargs,
     ) -> pd.Series:
@@ -306,6 +307,8 @@ class AsyncOpenAIVecDataFrameAccessor:
                 structure. None triggers automatic schema inference. Defaults to None.
             max_examples (int, optional): Maximum rows for schema inference.
                 Defaults to 100.
+            max_retries (int): Total schema inference attempts. Defaults to 8.
+                Used only when response_format is None; must be at least 1.
             max_validation_retries (int): Additional extraction corrections,
                 separate from inference and transport retries. Defaults to 3;
                 0 disables correction. Must be nonnegative.
@@ -324,6 +327,7 @@ class AsyncOpenAIVecDataFrameAccessor:
             cache=cache,
             response_format=response_format,
             max_examples=max_examples,
+            max_retries=max_retries,
             max_validation_retries=max_validation_retries,
             **api_kwargs,
         )
@@ -337,6 +341,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         max_concurrency: int = 8,
         show_progress: bool = True,
         *,
+        max_retries: int = 8,
         max_validation_retries: int = 3,
         **api_kwargs,
     ) -> pd.Series:
@@ -357,6 +362,8 @@ class AsyncOpenAIVecDataFrameAccessor:
             max_concurrency (int, optional): Maximum concurrent requests.
                 Defaults to 8.
             show_progress (bool, optional): Show progress bar. Defaults to True.
+            max_retries (int): Total schema inference attempts. Defaults to 8.
+                Used only when response_format is None; must be at least 1.
             max_validation_retries (int): Additional extraction corrections,
                 separate from inference and transport retries. Defaults to 3;
                 0 disables correction. Must be nonnegative.
@@ -395,6 +402,7 @@ class AsyncOpenAIVecDataFrameAccessor:
             ),
             response_format=response_format,
             max_examples=max_examples,
+            max_retries=max_retries,
             max_validation_retries=max_validation_retries,
             **api_kwargs,
         )
