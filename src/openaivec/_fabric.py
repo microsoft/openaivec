@@ -27,6 +27,7 @@ from urllib.parse import urlsplit
 
 from openai import AsyncAzureOpenAI, AzureOpenAI
 from openai._models import FinalRequestOptions
+from openai.lib.azure import API_KEY_SENTINEL
 
 __all__ = []
 
@@ -80,16 +81,20 @@ def require_fabric_runtime() -> None:
     """Require the notebook runtime before replacing any configured clients."""
     if not is_fabric_environment():
         raise RuntimeError("setup_fabric() requires a Microsoft Fabric notebook runtime.")
+    _require_fabric_helpers()
+
+
+def _require_fabric_helpers() -> None:
     try:
         credentials = import_module("synapse.ml.fabric.credentials")
     except ImportError as exc:
-        raise RuntimeError("The Fabric notebook runtime is missing the SynapseML authentication helpers.") from exc
+        raise RuntimeError("The Fabric runtime is missing the SynapseML authentication helpers.") from exc
     if not callable(getattr(credentials, "get_openai_httpx_sync_client", None)):
-        raise RuntimeError("The Fabric notebook runtime is missing get_openai_httpx_sync_client().")
+        raise RuntimeError("The Fabric runtime is missing get_openai_httpx_sync_client().")
 
 
 def _fabric_client_kwargs(*, api_version: str, async_client: bool = False) -> dict[str, Any]:
-    require_fabric_runtime()
+    _require_fabric_helpers()
     credentials = import_module("synapse.ml.fabric.credentials")
     helper_name = "get_openai_httpx_async_client" if async_client else "get_openai_httpx_sync_client"
     http_client_factory = getattr(credentials, helper_name, None)
@@ -105,7 +110,7 @@ def _fabric_client_kwargs(*, api_version: str, async_client: bool = False) -> di
     return {
         "api_version": api_version,
         "azure_endpoint": endpoint.rstrip("/") + "/cognitive/openai",
-        "api_key": _FABRIC_PLACEHOLDER,
+        "api_key": API_KEY_SENTINEL,
         "azure_ad_token": _FABRIC_PLACEHOLDER,
         "default_headers": {
             "Authorization": f"Bearer {_FABRIC_PLACEHOLDER}",
