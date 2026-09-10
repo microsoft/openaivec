@@ -12,6 +12,7 @@ from openaivec._embeddings import AsyncBatchEmbeddings, EmbeddingLimits
 from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
 from openaivec._provider import CONTAINER
 from openaivec._responses import AsyncBatchResponses
+from openaivec._retry import RetryPolicy
 from openaivec._schema import AsyncSchemaInferer, SchemaInferenceInput, SchemaInferenceOutput
 from openaivec.pandas_ext._common import _embeddings_to_series
 
@@ -31,6 +32,7 @@ class AsyncOpenAIVecSeriesAccessor:
         multimodal: bool = False,
         *,
         max_validation_retries: int = 3,
+        retry_policy: RetryPolicy | None = None,
         **api_kwargs,
     ) -> pd.Series:
         """Call an LLM once for every Series element using a provided cache (asynchronously).
@@ -59,6 +61,7 @@ class AsyncOpenAIVecSeriesAccessor:
                 type the assistant should return. Defaults to ``str``.
             max_validation_retries (int): Additional schema/ID correction attempts.
                 Defaults to 3; 0 disables correction. Must be nonnegative.
+            retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -76,6 +79,7 @@ class AsyncOpenAIVecSeriesAccessor:
             response_format=response_format,
             cache=cache,
             max_validation_retries=max_validation_retries,
+            retry_policy=retry_policy,
             api_kwargs=api_kwargs,
             multimodal=multimodal,
         )
@@ -93,6 +97,7 @@ class AsyncOpenAIVecSeriesAccessor:
         multimodal: bool = False,
         *,
         max_validation_retries: int = 3,
+        retry_policy: RetryPolicy | None = None,
         **api_kwargs,
     ) -> pd.Series:
         """Call an LLM once for every Series element (asynchronously).
@@ -125,6 +130,7 @@ class AsyncOpenAIVecSeriesAccessor:
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
             max_validation_retries (int): Additional schema/ID correction attempts.
                 Defaults to 3; 0 disables correction. Must be nonnegative.
+            retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -146,6 +152,7 @@ class AsyncOpenAIVecSeriesAccessor:
             response_format=response_format,
             multimodal=multimodal,
             max_validation_retries=max_validation_retries,
+            retry_policy=retry_policy,
             **api_kwargs,
         )
 
@@ -154,6 +161,7 @@ class AsyncOpenAIVecSeriesAccessor:
         cache: AsyncBatchCache[str, np.ndarray],
         *,
         limits: EmbeddingLimits | None = None,
+        retry_policy: RetryPolicy | None = None,
         **api_kwargs,
     ) -> pd.Series:
         """Compute OpenAI embeddings for every Series element using a provided cache (asynchronously).
@@ -183,6 +191,7 @@ class AsyncOpenAIVecSeriesAccessor:
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
             limits (EmbeddingLimits | None): Hard provider limits; None uses OpenAI defaults.
+            retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -200,6 +209,7 @@ class AsyncOpenAIVecSeriesAccessor:
             cache=cache,
             api_kwargs=api_kwargs,
             limits=limits if limits is not None else EmbeddingLimits(),
+            retry_policy=retry_policy,
         )
 
         # Await the async operation
@@ -218,6 +228,7 @@ class AsyncOpenAIVecSeriesAccessor:
         show_progress: bool = True,
         *,
         limits: EmbeddingLimits | None = None,
+        retry_policy: RetryPolicy | None = None,
         **api_kwargs,
     ) -> pd.Series:
         """Compute OpenAI embeddings for every Series element (asynchronously).
@@ -245,6 +256,7 @@ class AsyncOpenAIVecSeriesAccessor:
                 requests. Defaults to ``8``.
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
             limits (EmbeddingLimits | None): Hard provider limits; None uses OpenAI defaults.
+            retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -264,6 +276,7 @@ class AsyncOpenAIVecSeriesAccessor:
                 show_progress=show_progress,
             ),
             limits=limits,
+            retry_policy=retry_policy,
             **api_kwargs,
         )
 
@@ -274,6 +287,7 @@ class AsyncOpenAIVecSeriesAccessor:
         multimodal: bool = False,
         *,
         max_validation_retries: int = 3,
+        retry_policy: RetryPolicy | None = None,
         **api_kwargs,
     ) -> pd.Series:
         """Execute a prepared task on every Series element using a provided cache (asynchronously).
@@ -302,6 +316,7 @@ class AsyncOpenAIVecSeriesAccessor:
                 Set cache.batch_size=None to enable automatic batch size optimization.
             max_validation_retries (int): Additional schema/ID correction attempts.
                 Defaults to 3; 0 disables correction. Must be nonnegative.
+            retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -320,6 +335,7 @@ class AsyncOpenAIVecSeriesAccessor:
             response_format=task.response_format,
             cache=cache,
             max_validation_retries=max_validation_retries,
+            retry_policy=retry_policy,
             api_kwargs=api_kwargs,
             multimodal=multimodal,
         )
@@ -336,6 +352,7 @@ class AsyncOpenAIVecSeriesAccessor:
         multimodal: bool = False,
         *,
         max_validation_retries: int = 3,
+        retry_policy: RetryPolicy | None = None,
         **api_kwargs,
     ) -> pd.Series:
         """Execute a prepared task on every Series element (asynchronously).
@@ -372,6 +389,7 @@ class AsyncOpenAIVecSeriesAccessor:
             show_progress (bool, optional): Show progress bar in Jupyter notebooks. Defaults to ``True``.
             max_validation_retries (int): Additional schema/ID correction attempts.
                 Defaults to 3; 0 disables correction. Must be nonnegative.
+            retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -393,6 +411,7 @@ class AsyncOpenAIVecSeriesAccessor:
             ),
             multimodal=multimodal,
             max_validation_retries=max_validation_retries,
+            retry_policy=retry_policy,
             **api_kwargs,
         )
 
@@ -406,6 +425,7 @@ class AsyncOpenAIVecSeriesAccessor:
         *,
         max_retries: int = 8,
         max_validation_retries: int = 3,
+        retry_policy: RetryPolicy | None = None,
         **api_kwargs,
     ) -> pd.Series:
         """Parse Series values into structured data using an LLM with a provided cache (asynchronously).
@@ -443,6 +463,7 @@ class AsyncOpenAIVecSeriesAccessor:
             max_validation_retries (int): Additional extraction corrections,
                 separate from inference and transport retries. Defaults to 3;
                 0 disables correction. Must be nonnegative.
+            retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -462,6 +483,7 @@ class AsyncOpenAIVecSeriesAccessor:
                 instructions=instructions,
                 max_examples=max_examples,
                 max_retries=max_retries,
+                retry_policy=retry_policy,
                 **api_kwargs,
             )
             schema = inferred_schema
@@ -475,11 +497,18 @@ class AsyncOpenAIVecSeriesAccessor:
             response_format=resolved_response_format,
             multimodal=multimodal,
             max_validation_retries=max_validation_retries,
+            retry_policy=retry_policy,
             **api_kwargs,
         )
 
     async def infer_schema(
-        self, instructions: str, max_examples: int = 100, *, max_retries: int = 8, **api_kwargs
+        self,
+        instructions: str,
+        max_examples: int = 100,
+        *,
+        max_retries: int = 8,
+        retry_policy: RetryPolicy | None = None,
+        **api_kwargs,
     ) -> SchemaInferenceOutput:
         """Infer a schema using the configured asynchronous client.
 
@@ -488,6 +517,7 @@ class AsyncOpenAIVecSeriesAccessor:
             max_examples (int, optional): Maximum sampled values. Defaults to 100.
             max_retries (int, optional): Maximum inference attempts, at least 1.
                 Defaults to 8.
+            retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
             **api_kwargs: Parameters forwarded to the asynchronous Responses API.
 
         Returns:
@@ -504,7 +534,7 @@ class AsyncOpenAIVecSeriesAccessor:
             examples=self._obj.sample(n=min(max_examples, len(self._obj))).tolist(),
             instructions=instructions,
         )
-        return await inferer.infer_schema(data, max_retries=max_retries, **api_kwargs)
+        return await inferer.infer_schema(data, max_retries=max_retries, retry_policy=retry_policy, **api_kwargs)
 
     async def parse(
         self,
@@ -518,6 +548,7 @@ class AsyncOpenAIVecSeriesAccessor:
         *,
         max_retries: int = 8,
         max_validation_retries: int = 3,
+        retry_policy: RetryPolicy | None = None,
         **api_kwargs,
     ) -> pd.Series:
         """Parse Series values into structured data using an LLM (asynchronously).
@@ -542,6 +573,7 @@ class AsyncOpenAIVecSeriesAccessor:
             max_validation_retries (int): Additional extraction corrections,
                 separate from inference and transport retries. Defaults to 3;
                 0 disables correction. Must be nonnegative.
+            retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -578,5 +610,6 @@ class AsyncOpenAIVecSeriesAccessor:
             max_retries=max_retries,
             multimodal=multimodal,
             max_validation_retries=max_validation_retries,
+            retry_policy=retry_policy,
             **api_kwargs,
         )

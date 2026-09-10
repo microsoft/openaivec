@@ -53,6 +53,7 @@ from openaivec._embeddings import AsyncBatchEmbeddings, EmbeddingLimits
 from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
 from openaivec._provider import CONTAINER
 from openaivec._responses import AsyncBatchResponses
+from openaivec._retry import RetryPolicy
 from openaivec._util import run_async
 
 __all__ = [
@@ -90,6 +91,7 @@ def responses_udf(
     max_concurrency: int = 8,
     multimodal: bool = False,
     max_validation_retries: int = 3,
+    retry_policy: RetryPolicy | None = None,
     **api_kwargs: Any,
 ) -> None:
     """Register a DuckDB Arrow-based UDF that calls the OpenAI Responses API.
@@ -118,6 +120,7 @@ def responses_udf(
         max_concurrency (int): Maximum concurrent API requests. Defaults to 8.
         max_validation_retries (int): Additional schema/ID corrections per batch.
             Defaults to 3; 0 disables correction. Must be nonnegative.
+        retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
         **api_kwargs: Extra parameters forwarded to the OpenAI API.
 
     Example:
@@ -148,6 +151,7 @@ def responses_udf(
         response_format=response_format,
         cache=cache,
         max_validation_retries=max_validation_retries,
+        retry_policy=retry_policy,
         api_kwargs=api_kwargs,
         multimodal=multimodal,
     )
@@ -202,6 +206,7 @@ def embeddings_udf(
     batch_size: int = 128,
     max_concurrency: int = 8,
     limits: EmbeddingLimits | None = None,
+    retry_policy: RetryPolicy | None = None,
     **api_kwargs: Any,
 ) -> None:
     """Register a DuckDB Arrow-based UDF that returns embedding vectors.
@@ -216,6 +221,7 @@ def embeddings_udf(
         batch_size (int): Rows per API batch. Defaults to 128.
         max_concurrency (int): Maximum concurrent API requests. Defaults to 8.
         limits (EmbeddingLimits | None): Hard provider limits; None uses OpenAI defaults.
+        retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
         **api_kwargs: Extra parameters forwarded to the OpenAI API.
 
     Example:
@@ -241,6 +247,7 @@ def embeddings_udf(
         cache=cache,
         api_kwargs=api_kwargs,
         limits=limits if limits is not None else EmbeddingLimits(),
+        retry_policy=retry_policy,
     )
 
     def _batch_udf(arrow_batch: pa.Array) -> pa.Array:
@@ -274,6 +281,7 @@ def task_udf(
     max_concurrency: int = 8,
     multimodal: bool = False,
     max_validation_retries: int = 3,
+    retry_policy: RetryPolicy | None = None,
     **api_kwargs: Any,
 ) -> None:
     """Register a DuckDB UDF backed by a ``PreparedTask``.
@@ -289,6 +297,7 @@ def task_udf(
             Defaults to 3; 0 disables correction. Must be nonnegative.
         multimodal (bool): When ``True``, file paths and URLs are sent as
             multimodal content. Defaults to ``False``.
+        retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
         **api_kwargs: Extra parameters forwarded to the OpenAI API.
     """
     responses_udf(
@@ -301,6 +310,7 @@ def task_udf(
         max_concurrency=max_concurrency,
         multimodal=multimodal,
         max_validation_retries=max_validation_retries,
+        retry_policy=retry_policy,
         **api_kwargs,
     )
 

@@ -156,6 +156,7 @@ from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, 
 from openaivec._provider import CONTAINER, get_async_client, provide_async_openai_client, provide_openai_client
 from openaivec._provider import setup_fabric as _setup_fabric
 from openaivec._responses import AsyncBatchResponses
+from openaivec._retry import RetryPolicy
 from openaivec._schema import SchemaInferenceInput, SchemaInferenceOutput, SchemaInferer
 from openaivec._serialize import deserialize_base_model, serialize_base_model
 from openaivec._util import TextChunker, run_partition_async
@@ -597,6 +598,7 @@ def responses_udf(
     multimodal: bool = False,
     *,
     max_validation_retries: int = 3,
+    retry_policy: RetryPolicy | None = None,
     **api_kwargs,
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF for generating responses.
@@ -640,6 +642,7 @@ def responses_udf(
         max_validation_retries (int): Additional schema/ID corrections per batch,
             separate from transport retries. Defaults to 3; 0 disables correction.
             Must be nonnegative.
+        retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
         **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``, ``top_p``,
             ``frequency_penalty``, ``presence_penalty``, ``seed``, ``max_output_tokens``, etc.)
             forwarded verbatim to the underlying API calls. These parameters are applied to
@@ -702,6 +705,7 @@ def responses_udf(
                     response_format=response_model,
                     cache=cache,
                     max_validation_retries=max_validation_retries,
+                    retry_policy=retry_policy,
                     api_kwargs=api_kwargs,
                     multimodal=multimodal,
                 )
@@ -737,6 +741,7 @@ def responses_udf(
                     response_format=str,
                     cache=cache,
                     max_validation_retries=max_validation_retries,
+                    retry_policy=retry_policy,
                     api_kwargs=api_kwargs,
                     multimodal=multimodal,
                 )
@@ -765,6 +770,7 @@ def task_udf(
     multimodal: bool = False,
     *,
     max_validation_retries: int = 3,
+    retry_policy: RetryPolicy | None = None,
     **api_kwargs,
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF from a predefined task.
@@ -794,6 +800,7 @@ def task_udf(
         max_validation_retries (int): Additional schema/ID corrections per batch,
             separate from transport retries. Defaults to 3; 0 disables correction.
             Must be nonnegative.
+        retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
 
         Additional Keyword Args:
         Arbitrary OpenAI Responses API parameters (e.g. ``temperature``, ``top_p``,
@@ -828,6 +835,7 @@ def task_udf(
         max_concurrency=max_concurrency,
         multimodal=multimodal,
         max_validation_retries=max_validation_retries,
+        retry_policy=retry_policy,
         **api_kwargs,
     )
 
@@ -839,6 +847,7 @@ def infer_schema(
     max_examples: int = 100,
     *,
     max_retries: int = 8,
+    retry_policy: RetryPolicy | None = None,
     **api_kwargs,
 ) -> SchemaInferenceOutput:
     """Infer the schema for a response format based on example data.
@@ -853,6 +862,7 @@ def infer_schema(
         example_field_name (str | None): Name of the field in the table to use as examples.
         max_examples (int): Maximum number of examples to retrieve for schema inference.
         max_retries (int): Total schema inference attempts. Defaults to 8; at least 1.
+        retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
         **api_kwargs: Parameters forwarded to the schema inference Responses API.
 
     Returns:
@@ -883,7 +893,7 @@ def infer_schema(
         examples=examples,
     )
     inferer = CONTAINER.resolve(SchemaInferer)
-    return inferer.infer_schema(input, max_retries=max_retries, **api_kwargs)
+    return inferer.infer_schema(input, max_retries=max_retries, retry_policy=retry_policy, **api_kwargs)
 
 
 def parse_udf(
@@ -899,6 +909,7 @@ def parse_udf(
     *,
     max_retries: int = 8,
     max_validation_retries: int = 3,
+    retry_policy: RetryPolicy | None = None,
     **api_kwargs,
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF for parsing responses.
@@ -937,6 +948,7 @@ def parse_udf(
         max_validation_retries (int): Additional extraction corrections, separate
             from inference and transport retries. Defaults to 3; 0 disables
             correction. Must be nonnegative.
+        retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
         **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``, ``top_p``,
             ``frequency_penalty``, ``presence_penalty``, ``seed``, ``max_output_tokens``, etc.)
             forwarded verbatim to the underlying API calls. These parameters are applied to
@@ -982,6 +994,7 @@ def parse_udf(
             example_field_name=example_field_name,
             max_examples=max_examples,
             max_retries=max_retries,
+            retry_policy=retry_policy,
             **api_kwargs,
         )
         resolved_instructions = schema.inference_prompt
@@ -998,6 +1011,7 @@ def parse_udf(
         max_concurrency=max_concurrency,
         multimodal=multimodal,
         max_validation_retries=max_validation_retries,
+        retry_policy=retry_policy,
         **api_kwargs,
     )
 
@@ -1008,6 +1022,7 @@ def embeddings_udf(
     max_concurrency: int = 8,
     *,
     limits: EmbeddingLimits | None = None,
+    retry_policy: RetryPolicy | None = None,
     **api_kwargs,
 ) -> UserDefinedFunction:
     """Create an asynchronous Spark pandas UDF for generating embeddings.
@@ -1047,6 +1062,7 @@ def embeddings_udf(
             Higher values increase throughput but may hit OpenAI rate limits.
             Recommended: 4-12 per executor. Defaults to 8.
         limits (EmbeddingLimits | None): Hard provider limits; None uses OpenAI defaults.
+        retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
         **api_kwargs: Additional OpenAI API parameters (e.g., dimensions for text-embedding-3 models).
 
     Returns:
@@ -1083,6 +1099,7 @@ def embeddings_udf(
                 cache=cache,
                 api_kwargs=api_kwargs,
                 limits=limits if limits is not None else EmbeddingLimits(),
+                retry_policy=retry_policy,
             )
             embeddings = await batch_client.create(part.tolist())
             if embeddings:

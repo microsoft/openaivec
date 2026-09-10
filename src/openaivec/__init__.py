@@ -13,6 +13,7 @@ from ._provider import (
     setup_fabric,
 )
 from ._responses import AsyncBatchResponses, BatchResponses
+from ._retry import RetryPolicy
 from ._schema import AsyncSchemaInferer, SchemaInferenceInput, SchemaInferenceOutput, SchemaInferer
 
 __all__ = [
@@ -25,6 +26,7 @@ __all__ = [
     "FewShotPrompt",
     "FewShotPromptBuilder",
     "PreparedTask",
+    "RetryPolicy",
     "SchemaInferenceInput",
     "SchemaInferenceOutput",
     "SchemaInferer",

@@ -5,13 +5,13 @@ from typing import Any
 import numpy as np
 import tiktoken
 from numpy.typing import NDArray
-from openai import AsyncOpenAI, InternalServerError, OpenAI, RateLimitError
+from openai import AsyncOpenAI, OpenAI
 from openai.types import Embedding
 
 from openaivec._cache import AsyncBatchCache, BatchCache
 from openaivec._cache.proxy import DEFAULT_MANAGED_CACHE_SIZE
 from openaivec._log import observe
-from openaivec._util import backoff, backoff_async
+from openaivec._retry import RetryPolicy, call_with_retry, call_with_retry_async, retry_deadline
 
 __all__ = []
 
@@ -99,11 +99,12 @@ def _as_float32_rows(raw_embeddings: list[list[float]]) -> list[NDArray[np.float
 class BatchEmbeddings:
     """Thin wrapper around the OpenAI embeddings endpoint (synchronous).
 
-    API requests are limited to 2,048 inputs and 300,000 total tokens, even
+    By default, requests are limited to 2,048 inputs and 300,000 total tokens, even
     with automatic or nonpositive batch sizes. Empty inputs and inputs over
     8,192 tokens are rejected before sending the affected cache batch. Text
     is never truncated. Deployment aliases use the ``cl100k_base`` tokenizer
-    shared by the supported OpenAI embedding models.
+    shared by the supported OpenAI embedding models. Supply ``limits`` to
+    override these provider defaults.
 
     Attributes:
         client (OpenAI): Configured OpenAI client.
@@ -114,6 +115,7 @@ class BatchEmbeddings:
             retention by default.
         api_kwargs (dict[str, Any]): Additional OpenAI API parameters stored at initialization.
         limits (EmbeddingLimits): Provider request limits, independent of cache batch size.
+        retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
     """
 
     client: OpenAI
@@ -123,6 +125,7 @@ class BatchEmbeddings:
     )
     api_kwargs: dict[str, Any] = field(default_factory=dict)
     limits: EmbeddingLimits = field(default_factory=EmbeddingLimits)
+    retry_policy: RetryPolicy | None = None
 
     @classmethod
     def of(
@@ -132,6 +135,7 @@ class BatchEmbeddings:
         batch_size: int | None = None,
         *,
         limits: EmbeddingLimits | None = None,
+        retry_policy: RetryPolicy | None = None,
         **api_kwargs,
     ) -> "BatchEmbeddings":
         """Factory constructor.
@@ -141,8 +145,9 @@ class BatchEmbeddings:
             model_name (str): For Azure OpenAI, use your deployment name. For OpenAI, use the model name.
             batch_size (int | None, optional): Max unique inputs per API call. Defaults to None
                 (automatic batch size optimization). Set to a positive integer for fixed batch size.
-            **api_kwargs: Additional OpenAI API parameters (e.g., dimensions for text-embedding-3 models).
             limits (EmbeddingLimits | None): Provider-specific hard limits. None uses OpenAI defaults.
+            retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
+            **api_kwargs: Additional OpenAI API parameters (e.g., dimensions for text-embedding-3 models).
 
         Returns:
             BatchEmbeddings: Configured instance backed by a batching proxy.
@@ -153,6 +158,7 @@ class BatchEmbeddings:
             cache=BatchCache(batch_size=batch_size, max_cache_size=DEFAULT_MANAGED_CACHE_SIZE),
             api_kwargs=api_kwargs,
             limits=limits if limits is not None else EmbeddingLimits(),
+            retry_policy=retry_policy,
         )
 
     @observe(_LOGGER)
@@ -160,8 +166,8 @@ class BatchEmbeddings:
         """Embed one minibatch of strings.
 
         This private helper is the unit of work used by the map/parallel
-        utilities.  Exponential back‑off is applied automatically when
-        ``openai.RateLimitError`` is raised.
+        utilities. Transport retries use the SDK configuration by default,
+        or the explicit ``retry_policy`` when supplied.
 
         Args:
             inputs (list[str]): Input strings to be embedded. Duplicates allowed.
@@ -170,13 +176,19 @@ class BatchEmbeddings:
             list[NDArray[np.float32]]: Embedding vectors aligned to ``inputs``.
         """
         rows: list[NDArray[np.float32]] = []
+        deadline = retry_deadline(self.retry_policy)
         for batch in _plan_embedding_batches(inputs, self.model_name, self.limits):
-            rows.extend(self._request_embeddings(batch))
+            rows.extend(self._request_embeddings(batch, deadline=deadline))
         return rows
 
-    @backoff(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
-    def _request_embeddings(self, inputs: list[str]) -> list[NDArray[np.float32]]:
-        responses = self.client.embeddings.create(input=inputs, model=self.model_name, **self.api_kwargs)
+    def _request_embeddings(self, inputs: list[str], *, deadline: float | None = None) -> list[NDArray[np.float32]]:
+        responses = call_with_retry(
+            self.client,
+            self.retry_policy,
+            lambda client, options: client.embeddings.create(input=inputs, model=self.model_name, **options),
+            self.api_kwargs,
+            deadline=deadline,
+        )
         return _ordered_embedding_rows(responses.data, len(inputs))
 
     @observe(_LOGGER)
@@ -243,6 +255,7 @@ class AsyncBatchEmbeddings:
             proxy. Library-managed instances use bounded retention by default.
         api_kwargs (dict): Additional OpenAI API parameters stored at initialization.
         limits (EmbeddingLimits): Provider request limits, independent of cache batch size.
+        retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
     """
 
     client: AsyncOpenAI
@@ -256,6 +269,7 @@ class AsyncBatchEmbeddings:
     )
     api_kwargs: dict[str, Any] = field(default_factory=dict)
     limits: EmbeddingLimits = field(default_factory=EmbeddingLimits)
+    retry_policy: RetryPolicy | None = None
 
     @classmethod
     def of(
@@ -266,6 +280,7 @@ class AsyncBatchEmbeddings:
         max_concurrency: int = 8,
         *,
         limits: EmbeddingLimits | None = None,
+        retry_policy: RetryPolicy | None = None,
         **api_kwargs,
     ) -> "AsyncBatchEmbeddings":
         """Factory constructor.
@@ -277,6 +292,7 @@ class AsyncBatchEmbeddings:
                 (automatic batch size optimization). Set to a positive integer for fixed batch size.
             max_concurrency (int, optional): Max concurrent API calls. Defaults to 8.
             limits (EmbeddingLimits | None): Provider-specific hard limits. None uses OpenAI defaults.
+            retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
             **api_kwargs: Additional OpenAI API parameters (e.g., dimensions for text-embedding-3 models).
 
         Returns:
@@ -292,6 +308,7 @@ class AsyncBatchEmbeddings:
             ),
             api_kwargs=api_kwargs,
             limits=limits if limits is not None else EmbeddingLimits(),
+            retry_policy=retry_policy,
         )
 
     @observe(_LOGGER)
@@ -299,8 +316,8 @@ class AsyncBatchEmbeddings:
         """Embed one minibatch of strings asynchronously.
 
         This private helper handles the actual API call for a batch of inputs.
-        Exponential back-off is applied automatically when ``openai.RateLimitError``
-        is raised.
+        Transport retries use the SDK configuration by default, or the explicit
+        ``retry_policy`` when supplied.
 
         Args:
             inputs (list[str]): Input strings to be embedded. Duplicates allowed.
@@ -312,13 +329,21 @@ class AsyncBatchEmbeddings:
             RateLimitError: Propagated if retries are exhausted.
         """
         rows: list[NDArray[np.float32]] = []
+        deadline = retry_deadline(self.retry_policy)
         for batch in _plan_embedding_batches(inputs, self.model_name, self.limits):
-            rows.extend(await self._request_embeddings(batch))
+            rows.extend(await self._request_embeddings(batch, deadline=deadline))
         return rows
 
-    @backoff_async(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
-    async def _request_embeddings(self, inputs: list[str]) -> list[NDArray[np.float32]]:
-        responses = await self.client.embeddings.create(input=inputs, model=self.model_name, **self.api_kwargs)
+    async def _request_embeddings(
+        self, inputs: list[str], *, deadline: float | None = None
+    ) -> list[NDArray[np.float32]]:
+        responses = await call_with_retry_async(
+            self.client,
+            self.retry_policy,
+            lambda client, options: client.embeddings.create(input=inputs, model=self.model_name, **options),
+            self.api_kwargs,
+            deadline=deadline,
+        )
         return _ordered_embedding_rows(responses.data, len(inputs))
 
     @observe(_LOGGER)

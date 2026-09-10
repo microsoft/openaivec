@@ -20,8 +20,9 @@ separate `max_retries=8` (total schema inference attempts) from
 `max_validation_retries=3` (additional extraction corrections). Set the latter
 to zero to disable extraction corrections. Neither option is forwarded as an
 OpenAI API parameter. `store`, `timeout`, and other API options apply to both
-inference and extraction; neither control changes the client's transport retry
-settings. Spark `infer_schema()` also accepts `max_retries` and API options.
+inference and extraction; neither validation control changes transport retries.
+Use `retry_policy` to apply [transport limits](retries.md) to both stages.
+Spark `infer_schema()` also accepts `max_retries`, `retry_policy`, and API options.
 
 ```python
 import openaivec

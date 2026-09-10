@@ -252,5 +252,5 @@ def test_spark_inference_controls_do_not_reach_extraction(monkeypatch, extract):
         assert "max_retries" not in parse.call_args.kwargs
         assert parse.call_args.kwargs["store"] is False
     assert inference.call_count == 1
-    assert inference.call_args.kwargs == {"max_retries": 1, "store": False}
+    assert inference.call_args.kwargs == {"max_retries": 1, "retry_policy": None, "store": False}
     assert inference.call_args.args[0].examples == ["first"]

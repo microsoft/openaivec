@@ -63,6 +63,7 @@ from openai.types.responses import ParsedResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from openaivec._model import PreparedTask
+from openaivec._retry import RetryPolicy, call_with_retry, call_with_retry_async, retry_deadline
 from openaivec._schema.spec import ObjectSpec, _build_model
 
 # Internal module: explicitly not part of public API
@@ -290,7 +291,12 @@ class SchemaInferer:
     model_name: str
 
     def infer_schema(
-        self, data: SchemaInferenceInput, *args: Any, max_retries: int = 8, **kwargs: Any
+        self,
+        data: SchemaInferenceInput,
+        *args: Any,
+        max_retries: int = 8,
+        retry_policy: RetryPolicy | None = None,
+        **kwargs: Any,
     ) -> SchemaInferenceOutput:
         """Infer a validated schema from representative examples.
 
@@ -306,6 +312,7 @@ class SchemaInferer:
             *args: Positional passthrough to ``client.responses.parse``.
             max_retries (int, optional): Attempts before surfacing the last validation error
                 (must be >= 1). Defaults to 8.
+            retry_policy (RetryPolicy | None): Transport policy. None preserves SDK settings.
             **kwargs: Keyword passthrough to ``client.responses.parse``.
 
         Returns:
@@ -321,15 +328,22 @@ class SchemaInferer:
         last_err: ValueError | None = None
         previous_errors: list[str] = []
         input_json = data.model_dump_json()
+        deadline = retry_deadline(retry_policy)
         for _ in range(max_retries):
             try:
-                response: ParsedResponse[SchemaInferenceOutput] = self.client.responses.parse(
-                    model=self.model_name,
-                    instructions=_schema_instructions(previous_errors),
-                    input=input_json,
-                    text_format=SchemaInferenceOutput,
-                    *args,
-                    **kwargs,
+                response: ParsedResponse[SchemaInferenceOutput] = call_with_retry(
+                    self.client,
+                    retry_policy,
+                    lambda client, options: client.responses.parse(
+                        model=self.model_name,
+                        instructions=_schema_instructions(previous_errors),
+                        input=input_json,
+                        text_format=SchemaInferenceOutput,
+                        *args,
+                        **options,
+                    ),
+                    kwargs,
+                    deadline=deadline,
                 )
             except ValidationError as error:
                 last_err = error
@@ -355,7 +369,12 @@ class AsyncSchemaInferer:
     model_name: str
 
     async def infer_schema(
-        self, data: SchemaInferenceInput, *args: Any, max_retries: int = 8, **kwargs: Any
+        self,
+        data: SchemaInferenceInput,
+        *args: Any,
+        max_retries: int = 8,
+        retry_policy: RetryPolicy | None = None,
+        **kwargs: Any,
     ) -> SchemaInferenceOutput:
         """Infer and validate a schema without resolving a synchronous client.
 
@@ -364,6 +383,7 @@ class AsyncSchemaInferer:
             *args: Positional passthrough to ``client.responses.parse``.
             max_retries (int, optional): Maximum inference attempts, at least 1.
                 Defaults to 8, matching ``SchemaInferer``.
+            retry_policy (RetryPolicy | None): Transport policy. None preserves SDK settings.
             **kwargs: Keyword passthrough to ``client.responses.parse``.
 
         Returns:
@@ -377,15 +397,22 @@ class AsyncSchemaInferer:
         last_err: ValueError | None = None
         previous_errors: list[str] = []
         input_json = data.model_dump_json()
+        deadline = retry_deadline(retry_policy)
         for _ in range(max_retries):
             try:
-                response: ParsedResponse[SchemaInferenceOutput] = await self.client.responses.parse(
-                    model=self.model_name,
-                    instructions=_schema_instructions(previous_errors),
-                    input=input_json,
-                    text_format=SchemaInferenceOutput,
-                    *args,
-                    **kwargs,
+                response: ParsedResponse[SchemaInferenceOutput] = await call_with_retry_async(
+                    self.client,
+                    retry_policy,
+                    lambda client, options: client.responses.parse(
+                        model=self.model_name,
+                        instructions=_schema_instructions(previous_errors),
+                        input=input_json,
+                        text_format=SchemaInferenceOutput,
+                        *args,
+                        **options,
+                    ),
+                    kwargs,
+                    deadline=deadline,
                 )
             except ValidationError as error:
                 last_err = error
