@@ -65,7 +65,7 @@ Underscore-prefixed modules (`_responses.py`, `_cache/`, `_schema/`, `_di.py`, e
 3. **Dedup + restore** — duplicate inputs are collapsed; outputs are expanded back to original positions.
 4. **Preserve pandas index / Spark schema** — no hidden reindexing or sorting.
 5. **Reasoning models** (o1/o3 families) — must set `temperature=None`.
-6. **Exponential backoff** — `@backoff` / `@backoff_async` for `RateLimitError` / `InternalServerError`, max 12 retries.
+6. **One transport retry owner** — `retry_policy=None` preserves SDK retries. An explicit `RetryPolicy` uses an SDK configuration copy with `max_retries=0`, bounded attempts and capped jitter; never add an outer retry decorator. Validation corrections share the batch deadline but have a separate retry count.
 7. **Structured outputs preferred** — use Pydantic `response_format` over free-form JSON/text.
 8. **Progress bars** — only in notebooks and only when `show_progress=True`.
 
@@ -160,9 +160,21 @@ udf = responses_udf(
 ### Adding a batched API wrapper
 
 ```python
+from openaivec._retry import call_with_retry, retry_deadline
+
 @observe(_LOGGER)
-@backoff(exceptions=[RateLimitError, InternalServerError], scale=1, max_retries=12)
 def _unit_of_work(self, xs: list[str]) -> list[TOut]:
-    resp = self.client.api(xs)
+    deadline = retry_deadline(self.retry_policy)
+    resp = call_with_retry(
+        self.client,
+        self.retry_policy,
+        lambda client, options: client.api(xs, **options),
+        {},
+        deadline=deadline,
+    )
     return convert(resp)  # must be same length/order as xs
 ```
+
+Use `call_with_retry_async` for async wrappers. Reuse the same deadline across
+validation corrections or split requests within one cache batch; never close
+caller-owned clients or their SDK configuration copies.
