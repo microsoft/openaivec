@@ -42,7 +42,7 @@ from uuid import UUID
 import duckdb
 import numpy as np
 import pyarrow as pa
-from duckdb.func import PythonUDFType
+from duckdb.func import FunctionNullHandling, PythonUDFType
 from duckdb.sqltypes import DuckDBPyType
 from openai import AsyncOpenAI
 from pydantic import BaseModel
@@ -102,6 +102,10 @@ def responses_udf(
     access in SQL (e.g. ``SELECT udf(text).sentiment FROM ...``).
     When ``response_format`` is ``str``, the UDF returns ``VARCHAR``.
 
+    SQL NULL inputs are not sent to the API. Missing parsed responses remain
+    SQL NULL, including structured outputs; all-NULL Arrow batches retain the
+    declared return type.
+
     Args:
         conn (duckdb.DuckDBPyConnection): An open DuckDB connection.
         name (str): UDF name visible in SQL.
@@ -150,6 +154,14 @@ def responses_udf(
 
     is_structured = isinstance(response_format, type) and issubclass(response_format, BaseModel)
     return_type = _pydantic_to_struct_type(response_format) if is_structured else duckdb.sqltype("VARCHAR")
+    arrow_type = (
+        conn.sql("SELECT NULL")
+        .select(duckdb.ConstantExpression(None).cast(return_type))
+        .limit(0)
+        .to_arrow_table()
+        .schema.field(0)
+        .type
+    )
 
     def _batch_udf(arrow_batch: pa.Array) -> pa.Array:
         texts = arrow_batch.to_pylist()
@@ -157,7 +169,7 @@ def responses_udf(
         non_null_texts = [texts[i] for i in non_null_indices]
 
         if not non_null_texts:
-            return pa.array([None] * len(texts), type=pa.string())
+            return pa.nulls(len(texts), type=arrow_type)
 
         results = run_async(batch_client.parse(non_null_texts))
 
@@ -168,9 +180,18 @@ def responses_udf(
             elif result is not None:
                 out[idx] = str(result)
 
+        if all(value is None for value in out):
+            return pa.nulls(len(out), type=arrow_type)
         return pa.array(out)
 
-    conn.create_function(name, _batch_udf, [duckdb.sqltype("VARCHAR")], return_type, type=PythonUDFType.ARROW)
+    conn.create_function(
+        name,
+        _batch_udf,
+        [duckdb.sqltype("VARCHAR")],
+        return_type,
+        type=PythonUDFType.ARROW,
+        null_handling=FunctionNullHandling.SPECIAL,
+    )
 
 
 def embeddings_udf(
