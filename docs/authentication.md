@@ -60,26 +60,33 @@ the name of a deployment in your own Azure resource.
 
 ### Spark UDFs
 
-Install `openaivec` and compatible dependencies in a **Fabric Environment**, publish
-it, attach it to the notebook, and start a new session. Use Full publish mode for a
-reproducible dependency snapshot. Fabric's `%pip` installs on the driver and executors,
-but is session-scoped and disabled in pipeline runs by default; `!pip` installs only
-on the driver. Do not install `openaivec[spark]` in Fabric: the platform supplies
-PySpark.
+Install only `openaivec==2.5.1` in a **Fabric Environment** and let the package's runtime
+dependencies resolve during Full publication. Version 2.5.1 includes the dependency
+fixes for this setup; 2.5.0 does not. Use the [Environment setup below](#validated-environment),
+publish, attach the Environment to the notebook, and start a new
+session. Fabric's `%pip` installs on the driver and executors, but is session-scoped
+and disabled in pipeline runs by default; `!pip` installs only on the driver.
+Do not install `openaivec[spark]` in Fabric: the platform supplies PySpark, SynapseML,
+and NotebookUtils.
 
-Use the Spark-specific setup before constructing UDFs:
+Use the Spark-specific setup before constructing UDFs, then register them for SQL:
 
 ```python
 from openaivec.spark_ext import embeddings_udf, responses_udf, setup_fabric
 
 setup_fabric(spark)
 
-translate = responses_udf("Translate to French.", batch_size=2, max_concurrency=1)
-embed = embeddings_udf(batch_size=2, max_concurrency=1)
+spark.udf.register("ai_translate", responses_udf("Translate to French.", batch_size=2, max_concurrency=1))
+spark.udf.register("ai_embeddings", embeddings_udf(batch_size=2, max_concurrency=1))
 texts = spark.createDataFrame([(0, "apple"), (1, "banana"), (2, "apple")], ["id", "text"])
-texts.withColumn("translation", translate("text")).show()
-texts.withColumn("embedding", embed("text")).show()
+texts.createOrReplaceTempView("example_texts")
+spark.sql("SELECT id, ai_translate(text) AS translation FROM example_texts").show()
+spark.sql("SELECT id, ai_embeddings(text) AS embedding FROM example_texts").show()
 ```
+
+Register functions once per Spark session. They are also available to subsequent
+`%%sql` cells in that session, not to the Lakehouse T-SQL analytics endpoint.
+Importing `openaivec` does not choose authentication or register SQL names automatically.
 
 This also configures driver-local operations. Spark UDFs capture only the API
 version, model names, and their own options. Each partition creates a runtime-managed
@@ -99,8 +106,21 @@ across two partitions and writes its validation report to the attached Lakehouse
 
 ### Validated Environment
 
-The 2.5.0 implementation was validated on September 10, 2026 with the following
-configuration. Model availability and runtime updates can differ between tenants.
+Use a dedicated Runtime 1.3 Environment. Import
+[fabric_environment.yml](examples/fabric_environment.yml) to set `openaivec==2.5.1`
+as its sole External library entry. Remove any older openaivec wheel from Custom
+libraries when switching to the PyPI release. Do not replace a shared Environment's
+library list. Publish in **Full** mode, attach the Environment, and start a **new
+session**. The package supplies its own dependency declarations; no individual
+dependency pins or custom wheel are required for the release.
+
+Before release, the dependency-complete candidate `2.5.1.dev1` was validated on
+September 10, 2026 with **one custom wheel and zero external library entries**,
+replacing the previous 15-entry definition. Version 2.5.1 has the same package code
+and runtime dependency declarations as that candidate. The verified publication
+resolved the wheel's dependencies for both the driver and workers without individual
+package pins. Model availability and resolved dependencies can differ between tenants
+and publication dates; the results below describe that candidate run.
 
 | Component | Tested value |
 |---|---|
@@ -108,39 +128,32 @@ configuration. Model availability and runtime updates can differ between tenants
 | Spark | 3.5.5.5.4.20260807.1 |
 | Python | 3.11.8 |
 | Capacity and region | F64, Japan East |
-| OpenAI SDK | 2.0.0 |
-| Loaded pandas / PyArrow | 2.3.3 / 19.0.1 |
-| typing-extensions module | 4.15.0, verified against its distribution file record |
+| Loaded OpenAI SDK / aiohttp / httpx | 3.11.0 / 3.14.3 / 0.28.1 |
+| Loaded NumPy / pandas / PyArrow | 1.26.4 / 3.0.5 / 25.0.1 |
+| Loaded Pydantic | 2.13.5 |
 
-Import [fabric_environment.yml](examples/fabric_environment.yml) into the
-Environment's external libraries, publish in **Full** mode, attach it to the
-notebook, and start a **new session**. This definition selects the released
-`openaivec==2.5.0`; the live pre-release validation used the equivalent candidate
-wheel as a custom library with the same dependency pins. Do not keep a different
-openaivec wheel in Custom libraries when switching to the PyPI package. The
-definition leaves Fabric's managed PySpark and NumPy untouched and is not a lock
-of every transitive or platform dependency.
+The package now declares its direct `httpx`, `numpy`, `pydantic`, and
+`typing-extensions` imports as runtime dependencies. The other runtime dependencies,
+including pandas and PyArrow for vectorized UDFs, were already declared. The
+`aiohttp>=3.10.0` requirement excludes the older transport missing
+`aiohttp.SocketTimeoutError`: SDK 3.11.0 failed with the runtime's aiohttp 3.9.3,
+but passed this validation with the resolved aiohttp 3.14.3. A global SDK 2.0.0 pin
+is no longer needed for the tested workflow. One library entry still installs
+transitive dependencies; it does not mean that only one Python package is present.
 
-SDK 2.0.0 is deliberate for this runtime snapshot: SDK 3.11.0 failed to import
-against its built-in aiohttp 3.9.3 because `aiohttp.SocketTimeoutError` was absent.
-This is not a package-wide upper bound on OpenAI SDK versions. Qualify a newer SDK
-with its transport dependencies before using it in another runtime.
+Driver and worker imports matched for the seven libraries listed above. Fabric
+still retained older distribution metadata: pandas reported 2.1.4 through
+`importlib.metadata` while importing 3.0.5, and aiohttp reported 3.9.3 while importing
+3.14.3 with the timeout exception available. PyArrow showed the same kind of
+discrepancy. A successful run does not certify a clean platform-wide `pip check`.
+Compare loaded modules and UDF results, and do not delete Fabric-managed files.
 
-The tested Environment retained old distribution metadata alongside overrides.
-For example, `importlib.metadata.version("pandas")` reported 2.1.4 while the loaded
-`pandas.__version__` was 2.3.3 on both driver and workers. PyArrow and Azure Identity
-showed similar metadata discrepancies. The overridden tqdm version detector itself
-consults that metadata, so even its `__version__` can report the old version.
-`pip check` was therefore not clean, and unrelated platform dependency warnings
-also remained. Do not interpret a successful publish or a single metadata lookup
-as proof of dependency consistency: compare loaded modules, file records where
-needed, and the UDF results. Do not delete Fabric-managed files to hide warnings.
-
-The live test passed string Responses, structured Responses, Embeddings,
-`task_udf`, and `parse_udf`: six rows in two partitions, two-row Arrow batches,
-row-ID correspondence, partition-local duplicate results, 1,536-dimensional
-embeddings, and a repeated Spark action. No driver token or client was broadcast.
-This validates the inference workflow, not a fully clean platform environment.
+The live test registered all five paths and invoked them through `spark.sql`:
+string Responses, structured Responses, Embeddings, `task_udf`, and `parse_udf`.
+Each returned six rows in two partitions with two-row Arrow batches. Row-ID
+correspondence, partition-local duplicate results, nonzero 1,536-dimensional
+embeddings, and a repeated SQL action passed. The fresh report is written to
+`Files/openaivec-example/spark-sql-udfs.json`. No driver token or client was broadcast.
 
 ### Requirements and limitations
 
