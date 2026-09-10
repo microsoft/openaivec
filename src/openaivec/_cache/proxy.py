@@ -55,74 +55,21 @@ class BatchCacheBase(Generic[S, T]):
             cache.pop_oldest()
 
     def _is_notebook_environment(self) -> bool:
-        """Check if running in a Jupyter notebook environment.
+        """Check whether the active IPython shell owns a notebook kernel.
 
         Returns:
-            bool: True if running in a notebook, False otherwise.
+            bool: True only with a kernel-backed shell. Installed packages and
+                inherited notebook environment variables are not sufficient.
         """
-        import os
-        import sys
+        import importlib
 
         try:
-            # Resolve via importlib to keep compatibility across IPython versions
-            # without relying on private module paths.
-            import importlib
-
             ipython_module = importlib.import_module("IPython")
-            get_ipython = getattr(ipython_module, "get_ipython", None)
-            ipython = get_ipython() if callable(get_ipython) else None
-            if ipython is not None:
-                # Kernel-backed shells (Jupyter, VS Code notebook, Colab, etc.)
-                # expose a kernel object.
-                if getattr(ipython, "kernel", None) is not None:
-                    return True
-
-                # Check for different notebook environments
-                class_name = ipython.__class__.__name__
-                module_name = ipython.__class__.__module__
-
-                # Standard Jupyter notebook/lab
-                if class_name == "ZMQInteractiveShell":
-                    return True
-
-                # JupyterLab and newer environments
-                if "zmq" in module_name.lower() or "jupyter" in module_name.lower():
-                    return True
-
-                # Google Colab
-                if "google.colab" in module_name:
-                    return True
-
         except ImportError:
-            pass
-
-        # Check for other notebook indicators
-        # Check for common notebook environment variables
-        notebook_vars = [
-            "JPY_PARENT_PID",
-            "JPY_SESSION_NAME",
-            "JUPYTER_CONFIG_DIR",
-            "JUPYTERLAB_DIR",
-            "COLAB_GPU",
-            "VSCODE_PID",  # VS Code
-        ]
-
-        for var in notebook_vars:
-            if var in os.environ:
-                return True
-
-        # Check if running in IPython without terminal
-        if "IPython" in sys.modules:
-            try:
-                # If we can import display from IPython, likely in notebook
-                import importlib.util
-
-                if importlib.util.find_spec("IPython.display") is not None:
-                    return True
-            except ImportError:
-                pass
-
-        return False
+            return False
+        get_ipython = getattr(ipython_module, "get_ipython", None)
+        ipython = get_ipython() if callable(get_ipython) else None
+        return getattr(ipython, "kernel", None) is not None
 
     def _create_progress_bar(self, total: int, desc: str = "Processing batches") -> Any:
         """Create a progress bar if conditions are met.

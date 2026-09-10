@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import builtins
+import importlib
 import sys
 import time
 import types
@@ -698,34 +698,84 @@ def test_notebook_environment_detection():
     assert isinstance(result, bool)
 
 
-def test_notebook_environment_detection_with_jpy_parent_pid(monkeypatch):
-    """Test notebook detection fallback when IPython import is unavailable."""
+def test_notebook_environment_detection_without_ipython(monkeypatch):
     from openaivec._cache import BatchCacheBase
 
-    proxy = BatchCacheBase()
-
-    notebook_vars = [
-        "JPY_PARENT_PID",
-        "JPY_SESSION_NAME",
-        "JUPYTER_CONFIG_DIR",
-        "JUPYTERLAB_DIR",
-        "COLAB_GPU",
-        "VSCODE_PID",
-    ]
-    for var in notebook_vars:
-        monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("JPY_PARENT_PID", "12345")
+    original_import = importlib.import_module
 
-    original_import = builtins.__import__
-
-    def _fake_import(name, globals=None, locals=None, fromlist=(), level=0):
-        if name == "IPython" or name.startswith("IPython."):
+    def _fake_import(name, package=None):
+        if name == "IPython":
             raise ImportError("IPython unavailable for this test")
-        return original_import(name, globals, locals, fromlist, level)
+        return original_import(name, package)
 
-    monkeypatch.setattr(builtins, "__import__", _fake_import)
+    monkeypatch.setattr(importlib, "import_module", _fake_import)
 
-    assert proxy._is_notebook_environment() is True
+    assert BatchCacheBase()._is_notebook_environment() is False
+
+
+@pytest.mark.parametrize("cache_type", [BatchCache, AsyncBatchCache])
+@pytest.mark.parametrize("show_progress", [False, True])
+@pytest.mark.parametrize(
+    "shell,environment,is_notebook",
+    [
+        pytest.param(None, {}, False, id="python-with-ipython-installed"),
+        pytest.param(None, {"VSCODE_PID": "123"}, False, id="vscode-terminal"),
+        pytest.param(types.SimpleNamespace(), {}, False, id="terminal-ipython"),
+        pytest.param(
+            None,
+            {
+                "JPY_PARENT_PID": "123",
+                "JPY_SESSION_NAME": "session",
+                "JUPYTER_CONFIG_DIR": "/tmp/jupyter",
+                "JUPYTERLAB_DIR": "/tmp/lab",
+                "COLAB_GPU": "1",
+                "VSCODE_PID": "456",
+            },
+            False,
+            id="worker-with-inherited-notebook-environment",
+        ),
+        pytest.param(types.SimpleNamespace(kernel=None), {}, False, id="shell-without-kernel"),
+        pytest.param(types.SimpleNamespace(kernel=object()), {}, True, id="jupyter-kernel"),
+        pytest.param(types.SimpleNamespace(kernel=object()), {"VSCODE_PID": "123"}, True, id="vscode-notebook-kernel"),
+        pytest.param(types.SimpleNamespace(kernel=object()), {"COLAB_GPU": "1"}, True, id="colab-kernel"),
+    ],
+)
+def test_progress_requires_active_kernel(monkeypatch, cache_type, show_progress, shell, environment, is_notebook):
+    original_import = importlib.import_module
+    ipython_module = types.SimpleNamespace(get_ipython=lambda: shell)
+
+    def _fake_import(name, package=None):
+        return ipython_module if name == "IPython" else original_import(name, package)
+
+    monkeypatch.setattr(importlib, "import_module", _fake_import)
+    for name, value in environment.items():
+        monkeypatch.setenv(name, value)
+    calls = []
+    progress = object()
+
+    def create_progress(**options):
+        calls.append(options)
+        return progress
+
+    monkeypatch.setitem(sys.modules, "tqdm.notebook", types.SimpleNamespace(tqdm=create_progress))
+    monkeypatch.setitem(sys.modules, "tqdm.auto", types.SimpleNamespace(tqdm=create_progress))
+    cache = cache_type(show_progress=show_progress)
+
+    assert cache._is_notebook_environment() is is_notebook
+    assert cache._create_progress_bar(3) is (progress if show_progress and is_notebook else None)
+    assert len(calls) == int(show_progress and is_notebook)
+
+
+@pytest.mark.parametrize("cache_type", [BatchCache, AsyncBatchCache])
+def test_progress_disabled_skips_environment_detection(monkeypatch, cache_type):
+    cache = cache_type(show_progress=False)
+
+    def detect():
+        pytest.fail("Disabled progress must not inspect the notebook environment")
+
+    monkeypatch.setattr(cache, "_is_notebook_environment", detect)
+    assert cache._create_progress_bar(3) is None
 
 
 def test_progress_bar_methods():
