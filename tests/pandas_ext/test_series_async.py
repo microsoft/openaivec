@@ -87,7 +87,7 @@ class TestSeriesAsync:
 async def test_series_aio_parse_with_cache_forwards_api_kwargs_to_schema_inference(monkeypatch):
     captured: dict[str, object] = {}
 
-    def fake_infer_schema(self, instructions: str, max_examples: int = 100, **api_kwargs):
+    async def fake_infer_schema(self, instructions: str, max_examples: int = 100, **api_kwargs):
         captured["infer_kwargs"] = dict(api_kwargs)
         return SimpleNamespace(inference_prompt="inferred prompt", model=str)
 
@@ -99,7 +99,7 @@ async def test_series_aio_parse_with_cache_forwards_api_kwargs_to_schema_inferen
         captured["response_format"] = response_format
         return pd.Series(["ok"] * len(self._obj), index=self._obj.index, name=self._obj.name)
 
-    monkeypatch.setattr(pandas_ext.OpenAIVecSeriesAccessor, "infer_schema", fake_infer_schema)
+    monkeypatch.setattr(pandas_ext.AsyncOpenAIVecSeriesAccessor, "infer_schema", fake_infer_schema)
     monkeypatch.setattr(pandas_ext.AsyncOpenAIVecSeriesAccessor, "responses_with_cache", fake_responses_with_cache)
 
     series = pd.Series(["a", "b"])

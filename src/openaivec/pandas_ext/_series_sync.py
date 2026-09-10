@@ -481,7 +481,9 @@ class OpenAIVecSeriesAccessor:
             **api_kwargs,
         )
 
-    def infer_schema(self, instructions: str, max_examples: int = 100, **api_kwargs) -> SchemaInferenceOutput:
+    def infer_schema(
+        self, instructions: str, max_examples: int = 100, *, max_retries: int = 8, **api_kwargs
+    ) -> SchemaInferenceOutput:
         """Infer a structured data schema from Series content using AI.
 
         This method analyzes a sample of Series values to automatically generate
@@ -498,6 +500,8 @@ class OpenAIVecSeriesAccessor:
                 analyze for pattern detection. The method samples randomly up
                 to this limit. Higher values may improve schema quality but
                 increase inference time. Defaults to 100.
+            max_retries (int, optional): Maximum schema inference attempts.
+                Must be at least 1. Defaults to 8.
             **api_kwargs: Additional OpenAI API parameters (e.g. ``temperature``,
                 ``top_p``, ``max_output_tokens``) forwarded verbatim to the
                 underlying client.
@@ -551,9 +555,8 @@ class OpenAIVecSeriesAccessor:
         input: SchemaInferenceInput = SchemaInferenceInput(
             examples=self._obj.sample(n=min(max_examples, len(self._obj))).tolist(),
             instructions=instructions,
-            **api_kwargs,
         )
-        return inferer.infer_schema(input)
+        return inferer.infer_schema(input, max_retries=max_retries, **api_kwargs)
 
     def count_tokens(self) -> pd.Series:
         """Count ``tiktoken`` tokens per element.

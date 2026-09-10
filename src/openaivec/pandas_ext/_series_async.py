@@ -1,6 +1,5 @@
 """Asynchronous pandas Series accessor (``.aio``)."""
 
-import asyncio
 from typing import cast
 
 import numpy as np
@@ -13,7 +12,7 @@ from openaivec._embeddings import AsyncBatchEmbeddings
 from openaivec._model import EmbeddingsModelName, PreparedTask, ResponseFormat, ResponsesModelName
 from openaivec._provider import CONTAINER
 from openaivec._responses import AsyncBatchResponses
-from openaivec._schema import SchemaInferenceOutput
+from openaivec._schema import AsyncSchemaInferer, SchemaInferenceInput, SchemaInferenceOutput
 from openaivec.pandas_ext._common import _embeddings_to_series
 
 
@@ -417,8 +416,7 @@ class AsyncOpenAIVecSeriesAccessor:
         """
         schema: SchemaInferenceOutput | None = None
         if response_format is None:
-            inferred_schema = await asyncio.to_thread(
-                self._obj.ai.infer_schema,
+            inferred_schema = await self.infer_schema(
                 instructions=instructions,
                 max_examples=max_examples,
                 **api_kwargs,
@@ -435,6 +433,34 @@ class AsyncOpenAIVecSeriesAccessor:
             multimodal=multimodal,
             **api_kwargs,
         )
+
+    async def infer_schema(
+        self, instructions: str, max_examples: int = 100, *, max_retries: int = 8, **api_kwargs
+    ) -> SchemaInferenceOutput:
+        """Infer a schema using the configured asynchronous client.
+
+        Args:
+            instructions (str): Extraction goal used to select schema fields.
+            max_examples (int, optional): Maximum sampled values. Defaults to 100.
+            max_retries (int, optional): Maximum inference attempts, at least 1.
+                Defaults to 8.
+            **api_kwargs: Parameters forwarded to the asynchronous Responses API.
+
+        Returns:
+            SchemaInferenceOutput: Validated schema and extraction prompt.
+
+        Raises:
+            ValueError: Invalid attempt limit or exhausted schema validation.
+        """
+        inferer = AsyncSchemaInferer(
+            client=CONTAINER.resolve(AsyncOpenAI),
+            model_name=CONTAINER.resolve(ResponsesModelName).value,
+        )
+        data = SchemaInferenceInput(
+            examples=self._obj.sample(n=min(max_examples, len(self._obj))).tolist(),
+            instructions=instructions,
+        )
+        return await inferer.infer_schema(data, max_retries=max_retries, **api_kwargs)
 
     async def parse(
         self,

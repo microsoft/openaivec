@@ -13,11 +13,12 @@ from ._provider import (
     setup_fabric,
 )
 from ._responses import AsyncBatchResponses, BatchResponses
-from ._schema import SchemaInferenceInput, SchemaInferenceOutput, SchemaInferer
+from ._schema import AsyncSchemaInferer, SchemaInferenceInput, SchemaInferenceOutput, SchemaInferer
 
 __all__ = [
     "AsyncBatchEmbeddings",
     "AsyncBatchResponses",
+    "AsyncSchemaInferer",
     "BatchEmbeddings",
     "BatchResponses",
     "FewShotPrompt",
