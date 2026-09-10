@@ -65,7 +65,7 @@ spark.udf.register(
         response_format=Translation,
         model_name="gpt-4.1-mini",  # For Azure: deployment name, for OpenAI: model name
         batch_size=64,              # Rows per API request within partition
-        max_concurrency=8           # Concurrent requests PER EXECUTOR
+        max_concurrency=1           # Concurrent requests per partition invocation
     ),
 )
 
@@ -82,7 +82,7 @@ spark.udf.register(
     embeddings_udf(
         model_name="text-embedding-3-small",  # For Azure: deployment name, for OpenAI: model name
         batch_size=128,                       # Larger batches for embeddings
-        max_concurrency=8                     # Concurrent requests PER EXECUTOR
+        max_concurrency=1                     # Concurrent requests per partition invocation
     ),
 )
 
@@ -113,18 +113,19 @@ When using these UDFs in distributed Spark environments:
 - **`batch_size`**: Controls rows processed per API request within each partition.
   Recommended: 32-128 for responses, 64-256 for embeddings.
 
-- **`max_concurrency`**: Sets concurrent API requests **PER EXECUTOR**, not per cluster.
-  Total cluster concurrency = max_concurrency × number_of_executors.
-  Recommended: 4-12 per executor to avoid overwhelming OpenAI rate limits.
+- **`max_concurrency`**: Sets concurrent API requests per partition invocation (default 8).
+    Each invocation has an independent limiter; no executor-wide or cluster-wide limiter is shared.
+    Start with 1 and size it using available task slots and model quota.
 
-- **Rate Limit Management**: Monitor OpenAI API usage when scaling executors.
-  Consider your OpenAI tier limits and adjust max_concurrency accordingly.
+- **Rate Limit Management**: Monitor OpenAI API usage when scaling concurrent Spark tasks.
+    This limits in-flight requests, not requests per second.
 
-Example for a 5-executor cluster with max_concurrency=8:
-Total concurrent requests = 8 × 5 = 40 simultaneous API calls.
+With P simultaneous partition invocations, the combined bound is max_concurrency * P.
+For example, 5 simultaneous invocations with max_concurrency=8 can issue up to 40 requests.
 
-Note: AI-powered UDFs run one reusable asyncio event loop per invocation and
-use partition-local caches to avoid duplicate remote calls inside a partition.
+Note: AI-powered UDFs reuse one asyncio event loop and cache across Arrow batches within an
+invocation. Caches are not shared across invocations. Repeated actions, task retries, speculation,
+and multiple UDFs can send requests again; exactly-once API execution is not guaranteed.
 """
 
 import logging

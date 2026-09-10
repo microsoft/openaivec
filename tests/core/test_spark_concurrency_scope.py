@@ -14,9 +14,9 @@ pytest.importorskip("pyspark")
 from openaivec import spark_ext
 
 
-@pytest.mark.parametrize("name", ["responses_udf", "task_udf", "parse_udf", "embeddings_udf"])
+@pytest.mark.parametrize("name", [None, "responses_udf", "task_udf", "parse_udf", "embeddings_udf"])
 def test_concurrency_documentation_describes_invocation_scope(name):
-    documentation = inspect.getdoc(getattr(spark_ext, name))
+    documentation = inspect.getdoc(spark_ext if name is None else getattr(spark_ext, name))
     assert "partition invocation" in documentation
     assert "PER EXECUTOR" not in documentation
     assert "max_concurrency × executors" not in documentation
