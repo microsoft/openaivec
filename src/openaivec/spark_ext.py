@@ -635,10 +635,10 @@ def responses_udf(
             Defaults to None (automatic batch size optimization that dynamically
             adjusts based on execution time, targeting 30-60 seconds per batch).
             Set to a positive integer (e.g., 32-128) for fixed batch size.
-        max_concurrency (int): Maximum number of concurrent API requests **PER EXECUTOR**.
-            Total cluster concurrency = max_concurrency × number_of_executors.
-            Higher values increase throughput but may hit OpenAI rate limits.
-            Recommended: 4-12 per executor. Defaults to 8.
+        max_concurrency (int): Maximum concurrent batch requests per partition invocation.
+            Defaults to 8. Each invocation has an independent limiter; there is
+            no shared executor-wide or cluster-wide limit. With P simultaneous
+            invocations, the aggregate upper bound is max_concurrency * P.
         max_validation_retries (int): Additional schema/ID corrections per batch,
             separate from transport retries. Defaults to 3; 0 disables correction.
             Must be nonnegative.
@@ -672,8 +672,8 @@ def responses_udf(
         For optimal performance in distributed environments:
         - **Automatic Caching**: Duplicate inputs within each partition are cached,
           reducing API calls and costs significantly on datasets with repeated content
-        - Monitor OpenAI API rate limits when scaling executor count
-        - Consider your OpenAI tier limits: total_requests = max_concurrency × executors
+        - Monitor provider limits when scaling simultaneous partition invocations
+        - Size max_concurrency against active task slots, not executor count alone
         - Use Spark UI to optimize partition sizes relative to batch_size
         - **Multimodal**: Local file paths are not accessible from executors.
           Use HTTP(S) URLs or pre-encoded data URIs when ``multimodal=True``.
@@ -792,10 +792,10 @@ def task_udf(
             Defaults to None (automatic batch size optimization that dynamically
             adjusts based on execution time, targeting 30-60 seconds per batch).
             Set to a positive integer (e.g., 32-128) for fixed batch size.
-        max_concurrency (int): Maximum number of concurrent API requests **PER EXECUTOR**.
-            Total cluster concurrency = max_concurrency × number_of_executors.
-            Higher values increase throughput but may hit OpenAI rate limits.
-            Recommended: 4-12 per executor. Defaults to 8.
+        max_concurrency (int): Maximum concurrent batch requests per partition invocation.
+            Defaults to 8. Each invocation has an independent limiter; there is
+            no shared executor-wide or cluster-wide limit. With P simultaneous
+            invocations, the aggregate upper bound is max_concurrency * P.
 
         max_validation_retries (int): Additional schema/ID corrections per batch,
             separate from transport retries. Defaults to 3; 0 disables correction.
@@ -939,10 +939,10 @@ def parse_udf(
             Defaults to None (automatic batch size optimization that dynamically
             adjusts based on execution time, targeting 30-60 seconds per batch).
             Set to a positive integer (e.g., 32-128) for fixed batch size
-        max_concurrency (int): Maximum number of concurrent API requests **PER EXECUTOR**.
-            Total cluster concurrency = max_concurrency × number_of_executors.
-            Higher values increase throughput but may hit OpenAI rate limits.
-            Recommended: 4-12 per executor. Defaults to 8.
+        max_concurrency (int): Maximum concurrent batch requests per partition invocation.
+            Defaults to 8. Each invocation has an independent limiter; there is
+            no shared executor-wide or cluster-wide limit. With P simultaneous
+            invocations, the aggregate upper bound is max_concurrency * P.
         max_retries (int): Total schema inference attempts. Defaults to 8.
             Used only when response_format is None; must be at least 1.
         max_validation_retries (int): Additional extraction corrections, separate
@@ -1057,10 +1057,10 @@ def embeddings_udf(
             adjusts based on execution time, targeting 30-60 seconds per batch).
             Set to a positive integer (e.g., 64-256) for fixed batch size.
             Embeddings typically handle larger batches efficiently.
-        max_concurrency (int): Maximum number of concurrent API requests **PER EXECUTOR**.
-            Total cluster concurrency = max_concurrency × number_of_executors.
-            Higher values increase throughput but may hit OpenAI rate limits.
-            Recommended: 4-12 per executor. Defaults to 8.
+        max_concurrency (int): Maximum concurrent batch requests per partition invocation.
+            Defaults to 8. Each invocation has an independent limiter; there is
+            no shared executor-wide or cluster-wide limit. With P simultaneous
+            invocations, the aggregate upper bound is max_concurrency * P.
         limits (EmbeddingLimits | None): Hard provider limits; None uses OpenAI defaults.
         retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
         **api_kwargs: Additional OpenAI API parameters (e.g., dimensions for text-embedding-3 models).
@@ -1074,8 +1074,8 @@ def embeddings_udf(
         For optimal performance in distributed environments:
         - **Automatic Caching**: Duplicate inputs within each partition are cached,
           reducing API calls and costs significantly on datasets with repeated content
-        - Monitor OpenAI API rate limits when scaling executor count
-        - Consider your OpenAI tier limits: total_requests = max_concurrency × executors
+        - Monitor provider limits when scaling simultaneous partition invocations
+        - Size max_concurrency against active task slots, not executor count alone
         - Embeddings API typically has higher throughput than chat completions
         - Use larger batch_size for embeddings compared to response generation
     """
