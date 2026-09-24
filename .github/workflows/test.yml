@@ -19,6 +19,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Validate agent skills
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh skill publish --dry-run
+
       - name: Install uv
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
@@ -29,6 +34,18 @@ jobs:
 
       - name: Install dependencies via uv
         run: uv sync --locked --all-extras --dev
+
+      - name: Validate Excel support consent gate
+        run: |
+          set -euo pipefail
+          before="$(uv run python skills/openaivec-skill/scripts/manage_excel_extension.py check)"
+          set +e
+          uv run python skills/openaivec-skill/scripts/manage_excel_extension.py install
+          status=$?
+          set -e
+          after="$(uv run python skills/openaivec-skill/scripts/manage_excel_extension.py check)"
+          test "$status" -eq 2
+          test "$before" = "$after"
 
       - name: Lint with ruff
         run: uv run ruff check .

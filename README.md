@@ -59,6 +59,7 @@ These are previously recorded measurements, not GPT-6 results. Batching alone re
 - [Using with Apache Spark UDFs](#using-with-apache-spark-udfs)
 - [Spark authentication options](#spark-authentication-options)
 - [Using with DuckDB](#using-with-duckdb)
+- [Agent skill for batch data processing](#agent-skill-for-batch-data-processing)
 - [Building Prompts](#building-prompts)
 - [Using with Microsoft Fabric](#using-with-microsoft-fabric)
 - [Contributing](#contributing)
@@ -73,6 +74,9 @@ These are previously recorded measurements, not GPT-6 results. Batching alone re
 - Built-in caches and retries remove boilerplate; pandas and async helpers can share caches explicitly, while Spark UDFs dedupe repeated inputs within each partition.
 - Spark UDFs, DuckDB integration, and Microsoft Fabric guides move notebooks into production-scale ETL.
 - Prompt tooling (`FewShotPromptBuilder`, `improve`) and the task library ship curated prompts with validated outputs.
+- Intelligent fill can infer missing DataFrame values from bounded few-shot
+  examples; the Agent Skill includes a holdout protocol for selecting the
+  example count rather than assuming the default is optimal.
 
 ## Overview
 
@@ -440,6 +444,31 @@ See the [DuckDB API guide](https://microsoft.github.io/openaivec/api/duckdb_ext/
 for the pandas feature mapping and examples.
 
 📓 **[DuckDB tutorial →](https://microsoft.github.io/openaivec/examples/duckdb/)**
+
+## Agent skill for batch data processing
+
+The portable [`openaivec-skill`](skills/openaivec-skill/) Agent Skill teaches
+Copilot, Claude Code, Codex, and other compatible harnesses to apply openaivec
+safely to large file sets or table columns from Excel, CSV/TSV, Parquet, JSON,
+and supported relational sources. It includes read-only defaults, explicit
+write and destructive-operation gates, cost and privacy checks, global
+deduplication, regular progress checkpoints for long runs, plain-language
+consent before adding Excel support, and conversational recovery for OpenAI,
+Azure OpenAI, Entra ID, and Fabric authentication.
+
+Preview and install it from GitHub:
+
+```bash
+gh skill preview microsoft/openaivec openaivec-skill
+gh skill install microsoft/openaivec openaivec-skill --agent github-copilot
+```
+
+See the [skill package README](skills/openaivec-skill/README.md) for
+multi-harness installation, local validation, automated release instructions,
+[business scenario examples](skills/openaivec-skill/references/business-scenarios.md),
+the
+[business-safe shaping and cross-tab workflow](skills/openaivec-skill/references/data-shaping-and-crosstabs.md),
+and the [safe data I/O policy](skills/openaivec-skill/references/safe-data-io.md).
 
 ## Building Prompts
 
