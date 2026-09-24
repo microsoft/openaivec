@@ -693,7 +693,7 @@ def responses_udf(
         def structure_udf(col: Iterator[pd.Series]) -> Iterator[pd.DataFrame]:
             partition_client = _PartitionClient.of(fabric_config)
             response_model = deserialize_base_model(json_schema_string)
-            cache = AsyncBatchCache[str, response_model](
+            cache = AsyncBatchCache[str, response_model | None](
                 batch_size=batch_size,
                 max_concurrency=max_concurrency,
                 max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,
@@ -729,7 +729,7 @@ def responses_udf(
         @pandas_udf(returnType=StringType())  # type: ignore[call-overload]
         def string_udf(col: Iterator[pd.Series]) -> Iterator[pd.Series]:
             partition_client = _PartitionClient.of(fabric_config)
-            cache = AsyncBatchCache[str, str](
+            cache = AsyncBatchCache[str, str | None](
                 batch_size=batch_size,
                 max_concurrency=max_concurrency,
                 max_cache_size=DEFAULT_MANAGED_CACHE_SIZE,

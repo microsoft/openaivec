@@ -255,17 +255,17 @@ def test_dataframe_fillna_fills_only_missing_rows_in_index_order(monkeypatch):
     from openaivec._model import PreparedTask
     from openaivec.task.table import FillNaResponse
 
-    def fake_fillna(df, target_column_name, max_examples=500):
+    def fake_fillna(df, target_column_name, max_examples=8):
         assert target_column_name == "name"
-        assert max_examples == 500
+        assert max_examples == 8
         return PreparedTask(instructions="stub fillna", response_format=FillNaResponse)
 
     def fake_task(self, task, batch_size=None, show_progress=True, **api_kwargs):
         assert task.instructions == "stub fillna"
         assert self._obj.index.tolist() == [10, 40]
         return [
-            FillNaResponse(index=999, output="Carol"),
-            FillNaResponse(index=888, output=None),
+            FillNaResponse(output="Carol"),
+            FillNaResponse(output=None),
         ]
 
     monkeypatch.setattr(pandas_ext, "fillna", fake_fillna)

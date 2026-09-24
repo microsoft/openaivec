@@ -3,6 +3,7 @@
 import inspect
 from collections.abc import Awaitable, Callable
 
+import numpy as np
 import pandas as pd
 
 from openaivec._cache import AsyncBatchCache
@@ -23,7 +24,7 @@ class AsyncOpenAIVecDataFrameAccessor:
     async def responses_with_cache(
         self,
         instructions: str,
-        cache: AsyncBatchCache[str, ResponseFormat],
+        cache: AsyncBatchCache[str, ResponseFormat | None],
         response_format: type[ResponseFormat] = str,
         *,
         max_validation_retries: int = 3,
@@ -58,7 +59,7 @@ class AsyncOpenAIVecDataFrameAccessor:
 
         Args:
             instructions (str): System prompt prepended to every user message.
-            cache (AsyncBatchCache[str, ResponseFormat]): Pre-configured cache
+            cache (AsyncBatchCache[str, ResponseFormat | None]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
             response_format (type[ResponseFormat], optional): Pydantic model or built‑in
@@ -160,7 +161,7 @@ class AsyncOpenAIVecDataFrameAccessor:
     async def task_with_cache(
         self,
         task: PreparedTask[ResponseFormat],
-        cache: AsyncBatchCache[str, ResponseFormat],
+        cache: AsyncBatchCache[str, ResponseFormat | None],
         *,
         max_validation_retries: int = 3,
         retry_policy: RetryPolicy | None = None,
@@ -186,7 +187,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         Args:
             task (PreparedTask): A pre-configured task containing instructions,
                 response format for processing the inputs.
-            cache (AsyncBatchCache[str, ResponseFormat]): Pre-configured cache
+            cache (AsyncBatchCache[str, ResponseFormat | None]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
             max_validation_retries (int): Additional schema/ID correction attempts.
@@ -286,7 +287,7 @@ class AsyncOpenAIVecDataFrameAccessor:
     async def parse_with_cache(
         self,
         instructions: str,
-        cache: AsyncBatchCache[str, ResponseFormat],
+        cache: AsyncBatchCache[str, ResponseFormat | None],
         response_format: type[ResponseFormat] | None = None,
         max_examples: int = 100,
         *,
@@ -315,7 +316,7 @@ class AsyncOpenAIVecDataFrameAccessor:
         Args:
             instructions (str): Plain language extraction goals (e.g., "Extract
                 invoice details including items, quantities, and totals").
-            cache (AsyncBatchCache[str, ResponseFormat]): Pre-configured
+            cache (AsyncBatchCache[str, ResponseFormat | None]): Pre-configured
                 async cache for concurrent API call management.
             response_format (type[ResponseFormat] | None, optional): Target
                 structure. None triggers automatic schema inference. Defaults to None.
@@ -522,7 +523,7 @@ class AsyncOpenAIVecDataFrameAccessor:
     async def fillna(
         self,
         target_column_name: str,
-        max_examples: int = 500,
+        max_examples: int = 8,
         batch_size: int | None = None,
         max_concurrency: int = 8,
         show_progress: bool = True,
@@ -539,7 +540,8 @@ class AsyncOpenAIVecDataFrameAccessor:
                 that need to be filled.
             max_examples (int, optional): The maximum number of example rows to use
                 for context when predicting missing values. Higher values may improve
-                accuracy but increase API costs and processing time. Defaults to 500.
+                accuracy but increase API costs and processing time. Defaults to 8;
+                example text is capped at 6000 characters.
             batch_size (int | None, optional): Number of requests sent in one batch
                 to optimize API usage. Defaults to ``None`` (automatic batch size
                 optimization based on execution time). Set to a positive integer for fixed batch size.
@@ -578,7 +580,8 @@ class AsyncOpenAIVecDataFrameAccessor:
             is returned unchanged.
         """
 
-        missing_rows = self._obj[self._obj[target_column_name].isna()]
+        missing_positions = np.flatnonzero(self._obj[target_column_name].isna().to_numpy())
+        missing_rows = self._obj.iloc[missing_positions]
         if missing_rows.empty:
             return self._obj
         import openaivec.pandas_ext as _pkg
@@ -592,16 +595,10 @@ class AsyncOpenAIVecDataFrameAccessor:
             show_progress=show_progress,
         )
 
-        # get deep copy of the DataFrame to avoid modifying the original
         df = self._obj.copy()
-
-        # Get the actual indices of missing rows to map the results correctly
-        missing_indices = missing_rows.index.tolist()
-
-        for i, result in enumerate(filled_values):
+        column_position = df.columns.get_loc(target_column_name)
+        for position, result in zip(missing_positions, filled_values):
             if result.output is not None:
-                # Use the actual index from the original DataFrame, not the relative index from result
-                actual_index = missing_indices[i]
-                df.at[actual_index, target_column_name] = result.output
+                df.iat[position, column_position] = result.output
 
         return df
