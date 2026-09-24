@@ -16,9 +16,11 @@ from openaivec import pandas_ext
 
 # AI-powered data processing
 fruits = pd.Series(["apple", "banana", "orange", "grape", "kiwi"])
-fruits.ai.responses("Translate this fruit name into French.")
+fruits.ai.responses("Translate this fruit name into French.", reasoning={"effort": "none"})
 # Result: ['pomme', 'banane', 'orange', 'raisin', 'kiwi']
 ```
+
+The OpenAI Responses default is `gpt-6-luna`. Set `reasoning={"effort": "none"}` explicitly for routine processing; omitted reasoning uses the model's `medium` default. See the [GPT-6 migration guide](model-migration.md) before upgrading an existing workflow. Fabric built-in defaults remain unchanged.
 
 Perfect for **data scientists**, **analysts**, and **ML engineers** who want to leverage AI for text processing at scale.
 
@@ -94,7 +96,7 @@ from typing import List
 openaivec.set_client(OpenAI())
 
 # Set models for responses and embeddings (optional; defaults shown)
-openaivec.set_responses_model("gpt-4.1-mini")
+openaivec.set_responses_model("gpt-6-luna")
 openaivec.set_embeddings_model("text-embedding-3-small")
 
 
@@ -106,7 +108,7 @@ fruits_df = pd.DataFrame({"name": fruits})
 
 ```python
 fruits_df.assign(
-    color=lambda df: df["name"].ai.responses("What is the color of this fruit?")
+    color=lambda df: df["name"].ai.responses("What is the color of this fruit?", reasoning={"effort": "none"})
 )
 ```
 
@@ -146,6 +148,7 @@ fruits_df.assign(
     translation=lambda df: df["name"].ai.responses(
         instructions="Translate this fruit name into English, French, Japanese, Spanish, German, Italian, Portuguese and Russian.",
         response_format=Translation,
+        reasoning={"effort": "none"},
     )
 )
 ```
@@ -170,6 +173,7 @@ fruits_df.assign(
     translation=lambda df: df["name"].ai.responses(
         instructions="Translate this fruit name into English, French, Japanese, Spanish, German, Italian, Portuguese and Russian.",
         response_format=Translation,
+        reasoning={"effort": "none"},
     )
 ).ai.extract("translation")
 ```
@@ -210,6 +214,7 @@ async def analyze_feedback():
     # Process with optimized parameters
     sentiments = await df["customer_feedback"].aio.responses(
         "Classify sentiment as positive, negative, or neutral",
+        reasoning={"effort": "none"},
         batch_size=64,         # Group 64 requests per API call
         max_concurrency=16     # Allow 16 concurrent requests
     )

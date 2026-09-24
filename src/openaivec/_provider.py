@@ -273,7 +273,7 @@ def _provide_async_bearer_token_provider() -> AsyncBearerTokenProvider:
 
 def _register_default_providers() -> None:
     """Install the library's default provider graph into the shared container."""
-    CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName("gpt-4.1-mini"))
+    CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName("gpt-6-luna"))
     CONTAINER.register(EmbeddingsModelName, lambda: EmbeddingsModelName("text-embedding-3-small"))
 
     CONTAINER.register(OpenAIAPIKey, lambda: OpenAIAPIKey(os.getenv("OPENAI_API_KEY")))
@@ -405,6 +405,9 @@ def setup_fabric(
 def set_client(client: OpenAI) -> None:
     """Register a custom ``OpenAI`` client.
 
+    Future schema inference resolves its provider again with the new client.
+    Caller-owned clients are never closed by this function.
+
     Args:
         client (OpenAI): A pre-configured ``openai.OpenAI`` instance. To target
             Azure OpenAI, construct it with ``base_url`` ending in ``/openai/v1/``
@@ -412,6 +415,7 @@ def set_client(client: OpenAI) -> None:
             ``api_key``.
     """
     CONTAINER.register(OpenAI, lambda: client)
+    CONTAINER._invalidate_instance(SchemaInferer)
 
 
 def get_client() -> OpenAI:
@@ -445,10 +449,14 @@ def get_async_client() -> AsyncOpenAI:
 def set_responses_model(name: str) -> None:
     """Override the model used for text responses.
 
+    Future schema inference resolves its provider again with the new model.
+    Existing response wrappers and UDFs retain their configured model.
+
     Args:
-        name (str): Model or deployment name (e.g. ``"gpt-4.1-mini"``).
+        name (str): Model or deployment name (e.g. ``"gpt-6-luna"``).
     """
     CONTAINER.register(ResponsesModelName, lambda: ResponsesModelName(name))
+    CONTAINER._invalidate_instance(SchemaInferer)
 
 
 def get_responses_model() -> str:

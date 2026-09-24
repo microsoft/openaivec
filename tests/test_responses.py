@@ -306,9 +306,9 @@ class TestVectorizedResponsesOpenAI:
 @pytest.mark.requires_api
 class TestAsyncBatchResponses:
     @pytest.fixture(autouse=True)
-    def setup_client(self, async_openai_client):
+    def setup_client(self, async_openai_client, responses_model_name):
         self.openai_client = async_openai_client
-        self.model_name = "gpt-4.1-mini"
+        self.model_name = responses_model_name
         yield
 
     @pytest.mark.asyncio

@@ -47,7 +47,7 @@ class TestDataFrameSync:
 
         task = PreparedTask(instructions="Extract the animal name from the data", response_format=str)
         df = pd.DataFrame([{"animal": "cat", "legs": 4}, {"animal": "dog", "legs": 4}])
-        results = df.ai.task(task=task, batch_size=2, show_progress=False, temperature=0.0, top_p=1.0)
+        results = df.ai.task(task=task, batch_size=2, show_progress=False, reasoning={"effort": "none"})
         assert len(results) == 2
         assert results.index.equals(df.index)
         assert all(isinstance(result, str) for result in results)

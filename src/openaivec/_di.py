@@ -324,3 +324,15 @@ class Container:
         """
         with self._lock:
             self._instances.clear()
+
+    def _invalidate_instance(self, cls: type[Any]) -> None:
+        """Discard one cached instance while preserving its registered provider.
+
+        Explicitly registered instances retain their identity when resolved
+        again because their provider still returns the caller-owned instance.
+
+        Args:
+            cls (type[Any]): Service whose dependencies have changed.
+        """
+        with self._lock:
+            self._instances.pop(cls, None)

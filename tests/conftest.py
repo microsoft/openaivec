@@ -66,8 +66,8 @@ def async_openai_client() -> Generator[AsyncOpenAI, None, None]:
 
 @pytest.fixture(scope="session")
 def responses_model_name() -> str:
-    """Default model name for response generation."""
-    return "gpt-4.1-mini"
+    """Model for live response tests; override to compare migration candidates."""
+    return os.getenv("OPENAIVEC_TEST_RESPONSES_MODEL", "gpt-6-luna")
 
 
 @pytest.fixture(scope="session")

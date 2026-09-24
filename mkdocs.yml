@@ -52,6 +52,7 @@ theme:
 nav:
   - Home: index.md
   - Authentication: authentication.md
+  - GPT-6 Migration: model-migration.md
   - PyPI: https://pypi.org/project/openaivec/
   - GitHub: https://github.com/microsoft/openaivec
   - Contributor Guidelines: contributor-guide.md

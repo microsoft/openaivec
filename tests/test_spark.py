@@ -120,7 +120,7 @@ class TestSparkUDFs:
 
         self.spark.udf.register(
             "repeat_text",
-            task_udf(task=simple_task, temperature=0.0, top_p=1.0),
+            task_udf(task=simple_task, reasoning={"effort": "none"}),
         )
 
         text_data = [("hello",), ("world",), ("test",)]
@@ -151,7 +151,7 @@ class TestSparkUDFs:
 
         self.spark.udf.register(
             "analyze_text",
-            task_udf(task=structured_task, temperature=0.0, top_p=1.0),
+            task_udf(task=structured_task, reasoning={"effort": "none"}),
         )
 
         text_data = [("hello",), ("world",), ("testing",)]

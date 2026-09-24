@@ -20,8 +20,9 @@ openaivec.set_client(OpenAI(
     base_url="https://YOUR-RESOURCE-NAME.services.ai.azure.com/openai/v1/",
 ))
 
-# Set up model names (optional, defaults shown)
-openaivec.set_responses_model("gpt-4.1-mini")
+# Set up OpenAI model names (optional, defaults shown).
+# For Azure, use your resource's deployment names instead.
+openaivec.set_responses_model("gpt-6-luna")
 openaivec.set_embeddings_model("text-embedding-3-small")
 ```
 

@@ -64,7 +64,7 @@ Underscore-prefixed modules (`_responses.py`, `_cache/`, `_schema/`, `_di.py`, e
 2. **Same-length invariant** — `map_func` output must match input length and order exactly.
 3. **Dedup + restore** — duplicate inputs are collapsed; outputs are expanded back to original positions.
 4. **Preserve pandas index / Spark schema** — no hidden reindexing or sorting.
-5. **Reasoning models** (o1/o3 families) — must set `temperature=None`.
+5. **GPT-6 request settings** — default OpenAI Responses model is `gpt-6-luna`; examples pass `reasoning={"effort": "none"}` explicitly. Omission uses the API's `medium` default. Forward caller options unchanged; omit sampling/logprobs options for non-`none` reasoning. Preserve Fabric built-in defaults and Azure deployment names.
 6. **One transport retry owner** — `retry_policy=None` preserves SDK retries. An explicit `RetryPolicy` uses an SDK configuration copy with `max_retries=0`, bounded attempts and capped jitter; never add an outer retry decorator. Validation corrections share the batch deadline but have a separate retry count.
 7. **Structured outputs preferred** — use Pydantic `response_format` over free-form JSON/text.
 8. **Progress bars** — only in notebooks and only when `show_progress=True`.
@@ -128,7 +128,7 @@ openaivec.set_async_client(AsyncOpenAI(
 ))
 
 # Override default models
-openaivec.set_responses_model("gpt-4.1-mini")
+openaivec.set_responses_model("YOUR-RESPONSES-DEPLOYMENT")
 openaivec.set_embeddings_model("text-embedding-3-small")
 ```
 
@@ -137,7 +137,7 @@ openaivec.set_embeddings_model("text-embedding-3-small")
 ```python
 from openaivec._cache import BatchCache
 shared = BatchCache[str, str](batch_size=64)
-df["text"].ai.responses_with_cache("instructions", cache=shared)
+df["text"].ai.responses_with_cache("instructions", cache=shared, reasoning={"effort": "none"})
 ```
 
 ### Spark UDF with structured output
@@ -152,6 +152,7 @@ class Result(BaseModel):
 udf = responses_udf(
     instructions="Do something",
     response_format=Result,
+    reasoning={"effort": "none"},
     batch_size=64,
     max_concurrency=8,
 )
