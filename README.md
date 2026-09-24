@@ -463,10 +463,13 @@ gh skill preview microsoft/openaivec openaivec-skill
 gh skill install microsoft/openaivec openaivec-skill --agent github-copilot
 ```
 
-See the [skill package README](skills/openaivec-skill/README.md) for
-multi-harness installation, local validation, automated release instructions,
+Start with the
+[getting-started guide](skills/openaivec-skill/GETTING_STARTED.md) for
+installation, bootstrap prompts, and business examples focused on extracting
+information from large datasets. The
+[skill package README](skills/openaivec-skill/README.md) also covers
+multi-harness installation, local validation, and automated releases. See the
 [business scenario examples](skills/openaivec-skill/references/business-scenarios.md),
-the
 [business-safe shaping and cross-tab workflow](skills/openaivec-skill/references/data-shaping-and-crosstabs.md),
 and the [safe data I/O policy](skills/openaivec-skill/references/safe-data-io.md).
 
