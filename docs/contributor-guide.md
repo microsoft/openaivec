@@ -12,5 +12,6 @@ uv sync --group docs
 uv run mkdocs build --strict -d site
 ```
 
-The generated `site/` directory is gitignored. The Pages workflow uses the
-same strict configuration, so warning-producing builds cannot be published.
+The generated `site/` directory is gitignored. The Pages workflow runs the
+same strict build for documentation pull requests without uploading or
+deploying them. Tagged builds publish only after the strict build succeeds.

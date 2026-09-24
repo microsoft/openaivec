@@ -1,6 +1,11 @@
-name: Publish documentation to GitHub Pages
+name: Build and publish documentation
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/docs.yml"
+      - "docs/**"
+      - "mkdocs.yml"
   push:
     tags:
       - "v*.*.*"
@@ -8,8 +13,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages-${{ github.ref }}
@@ -26,15 +29,17 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
+          enable-cache: true
           python-version: "3.10"
 
       - name: Install dependencies via uv
-        run: uv sync --group docs
+        run: uv sync --locked --group docs
 
       - name: Build with uv
         run: uv run mkdocs build --strict -d site
 
       - name: Upload to GitHub Pages
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: site
@@ -42,10 +47,15 @@ jobs:
 
   deploy:
     needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
