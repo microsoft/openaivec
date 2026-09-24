@@ -1,0 +1,1 @@
+--8<-- "skills/openaivec-skill/references/authentication.md"
