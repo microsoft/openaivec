@@ -190,7 +190,24 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
-          for artifact in dist/* signatures/*; do
-            grep -Fxq "$(basename "$artifact")" <<< "$assets"
+          for attempt in {1..6}; do
+            assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
+            missing=()
+            for artifact in dist/* signatures/*; do
+              name="$(basename "$artifact")"
+              if ! grep -Fxq "$name" <<< "$assets"; then
+                missing+=("$name")
+              fi
+            done
+            if [ "${#missing[@]}" -eq 0 ]; then
+              echo "Verified all release assets for $RELEASE_TAG"
+              exit 0
+            fi
+            if [ "$attempt" -lt 6 ]; then
+              printf 'Waiting for release assets (attempt %s/6): %s\n' "$attempt" "${missing[*]}" >&2
+              sleep 5
+            fi
           done
+          printf '::error::Missing release assets after 6 checks: %s\n' "${missing[*]}"
+          printf 'Visible assets:\n%s\n' "$assets"
+          exit 1
