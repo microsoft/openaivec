@@ -193,7 +193,7 @@ jobs:
           for attempt in {1..6}; do
             assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
             missing=()
-            for artifact in dist/* signatures/*; do
+            for artifact in dist/*.whl dist/*.tar.gz signatures/*.bundle.json; do
               name="$(basename "$artifact")"
               if ! grep -Fxq "$name" <<< "$assets"; then
                 missing+=("$name")
