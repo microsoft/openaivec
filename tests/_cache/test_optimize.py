@@ -30,7 +30,7 @@ class TestBatchSizeSuggester:
         suggester = BatchSizeSuggester()
 
         assert suggester.current_batch_size == 10
-        assert suggester.min_batch_size == 10
+        assert suggester.min_batch_size == 1
         assert suggester.min_duration == 30.0
         assert suggester.max_duration == 60.0
         assert suggester.step_ratio_up == 0.1
@@ -74,6 +74,7 @@ class TestBatchSizeSuggester:
             ({"current_batch_size": 5, "min_batch_size": 10}, "current_batch_size must be >= min_batch_size"),
             ({"sample_size": 0}, "sample_size must be > 0"),
             ({"max_history_size": 0}, "max_history_size must be > 0"),
+            ({"sample_size": 5, "max_history_size": 4}, "max_history_size must be >= sample_size"),
             ({"step_ratio_up": 0}, "step_ratio_up must be > 0"),
             ({"step_ratio_down": 0}, "step_ratio_down must be > 0"),
             ({"min_step": 0}, "min_step must be > 0"),
@@ -202,6 +203,34 @@ class TestBatchSizeSuggester:
                 time.sleep(0.001)
 
         assert suggester.suggest_batch_size() == 10  # No change
+
+    def test_history_at_sample_boundary_can_adapt(self):
+        suggester = BatchSizeSuggester(sample_size=4, max_history_size=4, min_duration=1, max_duration=2)
+        now = datetime.now(timezone.utc)
+        suggester._history = [PerformanceMetric(0.01, 10, now) for _ in range(4)]
+        assert suggester.suggest_batch_size() == 11
+
+    def test_slow_samples_shrink_below_ten_to_one(self):
+        suggester = BatchSizeSuggester(sample_size=1, min_duration=1, max_duration=2, step_ratio_down=0.5)
+        for _ in range(5):
+            suggester._history.append(PerformanceMetric(10, suggester.current_batch_size, datetime.now(timezone.utc)))
+            assert suggester.suggest_batch_size() >= 1
+        assert suggester.current_batch_size == 1
+
+    @pytest.mark.parametrize(
+        "sizes,durations,expected",
+        [
+            ([1, 1, 1, 1], [0.001] * 4, 100),
+            ([100] * 4, [0.001] * 4, 110),
+            ([1, 1, 1, 100], [0.001] * 4, 110),
+            ([1, 1, 1, 100], [1.0, 1.0, 1.0, 40.0], 100),
+        ],
+    )
+    def test_growth_uses_measured_batch_sizes(self, sizes, durations, expected):
+        suggester = BatchSizeSuggester(current_batch_size=100, sample_size=4)
+        now = datetime.now(timezone.utc)
+        suggester._history = [PerformanceMetric(duration, size, now) for size, duration in zip(sizes, durations)]
+        assert suggester.suggest_batch_size() == expected
 
     @pytest.mark.parametrize(
         "scenario,sleep_duration,expected_size,should_change",

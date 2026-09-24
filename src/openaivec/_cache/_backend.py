@@ -12,7 +12,12 @@ transparently.
 
 from __future__ import annotations
 
+import base64
+import json
+import math
 import pickle
+import re
+import threading
 from collections import OrderedDict
 from collections.abc import Hashable, Iterator
 from dataclasses import dataclass, field
@@ -113,33 +118,55 @@ class InMemoryCacheBackend(Generic[S, T]):
 # DuckDB persistent backend
 # ---------------------------------------------------------------------------
 
-_CREATE_TABLE_SQL = """
-CREATE TABLE IF NOT EXISTS {table} (
-    key TEXT PRIMARY KEY,
-    value BLOB NOT NULL,
-    accessed_at TIMESTAMP DEFAULT now()
-)
-"""
+_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z_0-9]*\Z")
+_KEY_FORMAT = "typed-json-v1"
+_SQL_CHUNK_SIZE = 500
 
-_UPSERT_SQL = """
-INSERT INTO {table} (key, value, accessed_at)
-VALUES ($1, $2, now())
-ON CONFLICT (key) DO UPDATE SET value = excluded.value, accessed_at = now()
-"""
 
-_TOUCH_SQL = "UPDATE {table} SET accessed_at = now() WHERE key = $1"
-_SELECT_SQL = "SELECT value FROM {table} WHERE key = $1"
-_DELETE_OLDEST_SQL = """
-DELETE FROM {table}
-WHERE key IN (
-    SELECT key FROM {table} ORDER BY accessed_at ASC LIMIT $1
-)
-"""
-_COUNT_SQL = "SELECT count(*) FROM {table}"
-_CONTAINS_SQL = "SELECT 1 FROM {table} WHERE key = $1 LIMIT 1"
-_ALL_KEYS_SQL = "SELECT key FROM {table} ORDER BY accessed_at ASC"
-_DELETE_KEY_SQL = "DELETE FROM {table} WHERE key = $1"
-_DELETE_ALL_SQL = "DELETE FROM {table}"
+def _quote_table(table: str) -> str:
+    """Validate a single, unqualified SQL identifier and quote it."""
+    if not isinstance(table, str) or not _IDENTIFIER.fullmatch(table):
+        raise ValueError("table must be a single SQL identifier (letters, digits, underscores; no leading digit)")
+    return f'"{table}"'
+
+
+def _key_data(key: object) -> list:
+    if isinstance(key, bool):
+        return ["bool", key]
+    if isinstance(key, str):
+        return ["str", key]
+    if isinstance(key, int):
+        return ["int", str(key)]
+    if isinstance(key, float):
+        if math.isnan(key):
+            raise TypeError("NaN is not a supported DuckDB cache key")
+        return ["float", key.hex()]
+    if isinstance(key, bytes):
+        return ["bytes", base64.b64encode(key).decode("ascii")]
+    if isinstance(key, tuple):
+        return ["tuple", [_key_data(item) for item in key]]
+    raise TypeError(f"unsupported DuckDB cache key type: {type(key).__name__}")
+
+
+def _encode_key(key: object) -> str:
+    return json.dumps(_key_data(key), ensure_ascii=False, separators=(",", ":"))
+
+
+def _decode_key(encoded: str) -> Hashable:
+    tag, value = json.loads(encoded)
+    if tag == "bool":
+        return bool(value)
+    if tag == "str":
+        return str(value)
+    if tag == "int":
+        return int(value)
+    if tag == "float":
+        return float.fromhex(value)
+    if tag == "bytes":
+        return base64.b64decode(value)
+    if tag == "tuple":
+        return tuple(_decode_key(json.dumps(item)) for item in value)
+    raise ValueError(f"unknown DuckDB cache key encoding: {tag}")
 
 
 @dataclass
@@ -152,7 +179,7 @@ class DuckDBCacheBackend(Generic[T]):
 
     Attributes:
         conn (duckdb.DuckDBPyConnection): An open DuckDB connection.
-        table (str): Table name used for cache storage.
+        table (str): Unqualified SQL identifier for cache storage.
 
     Example:
         >>> from openaivec._cache._backend import DuckDBCacheBackend
@@ -167,6 +194,30 @@ class DuckDBCacheBackend(Generic[T]):
 
     conn: duckdb.DuckDBPyConnection
     table: str = "openaivec_cache"
+    _sql_table: str = field(init=False, repr=False)
+    _next_seq: int = field(init=False, repr=False)
+    _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._sql_table = _quote_table(self.table)
+        self.conn.execute(
+            f"CREATE TABLE IF NOT EXISTS {self._sql_table} ("
+            "key TEXT PRIMARY KEY, value BLOB NOT NULL, access_seq BIGINT NOT NULL, "
+            f"key_format TEXT NOT NULL DEFAULT '{_KEY_FORMAT}')"
+        )
+        columns = {row[1] for row in self.conn.execute(f"PRAGMA table_info({self._sql_table})").fetchall()}
+        if not {"key", "value", "access_seq", "key_format"} <= columns:
+            raise ValueError(
+                f"cache table {self.table!r} uses an incompatible schema; "
+                "choose a new table name or migrate the old entries explicitly"
+            )
+        row = self.conn.execute(
+            f"SELECT max(access_seq), count(*) FILTER (WHERE key_format != ?) FROM {self._sql_table}",
+            [_KEY_FORMAT],
+        ).fetchone()
+        if row is None or row[1]:
+            raise ValueError(f"cache table {self.table!r} contains unsupported key-format rows")
+        self._next_seq = row[0] or 0
 
     @classmethod
     def of(cls, database: str = ":memory:", *, table: str = "openaivec_cache") -> DuckDBCacheBackend:
@@ -177,37 +228,46 @@ class DuckDBCacheBackend(Generic[T]):
 
         Args:
             database (str): Path to the DuckDB database file.
-            table (str): Cache table name.
+            table (str): Single unqualified SQL identifier (letters, digits,
+                underscores; cannot begin with a digit). SQL reserved words
+                are supported.
 
         Returns:
             DuckDBCacheBackend: A new backend instance.
         """
         conn = duckdb.connect(database)
-        conn.execute(_CREATE_TABLE_SQL.format(table=table))
-        return cls(conn=conn, table=table)
+        try:
+            return cls(conn=conn, table=table)
+        except Exception:
+            conn.close()
+            raise
 
     def __contains__(self, key: object) -> bool:
-        result = self.conn.execute(_CONTAINS_SQL.format(table=self.table), [str(key)]).fetchone()
-        return result is not None
+        with self._lock:
+            row = self.conn.execute(
+                f"SELECT 1 FROM {self._sql_table} WHERE key = ? LIMIT 1", [_encode_key(key)]
+            ).fetchone()
+            return row is not None
 
     def __getitem__(self, key: object) -> T:
-        result = self.conn.execute(_SELECT_SQL.format(table=self.table), [str(key)]).fetchone()
-        if result is None:
-            raise KeyError(key)
-        self.conn.execute(_TOUCH_SQL.format(table=self.table), [str(key)])
-        return pickle.loads(result[0])
+        encoded = _encode_key(key)
+        with self._lock:
+            row = self.conn.execute(f"SELECT value FROM {self._sql_table} WHERE key = ?", [encoded]).fetchone()
+            if row is None:
+                raise KeyError(key)
+            self.touch_many([key])
+            return pickle.loads(row[0])
 
     def __setitem__(self, key: object, value: T) -> None:
-        blob = pickle.dumps(value)
-        self.conn.execute(_UPSERT_SQL.format(table=self.table), [str(key), blob])
+        self.put_many([(key, value)])
 
     def __len__(self) -> int:
-        result = self.conn.execute(_COUNT_SQL.format(table=self.table)).fetchone()
-        return result[0] if result else 0
+        with self._lock:
+            row = self.conn.execute(f"SELECT count(*) FROM {self._sql_table}").fetchone()
+            return row[0] if row is not None else 0
 
     def __iter__(self) -> Iterator:
-        rows = self.conn.execute(_ALL_KEYS_SQL.format(table=self.table)).fetchall()
-        return iter(row[0] for row in rows)
+        return iter(self.keys())
 
     def get(self, key: object, default: T | None = None) -> T | None:
         """Return cached value or *default*."""
@@ -217,27 +277,109 @@ class DuckDBCacheBackend(Generic[T]):
             return default
 
     def move_to_end(self, key: object) -> None:
-        """Refresh the ``accessed_at`` timestamp for LRU bookkeeping."""
-        self.conn.execute(_TOUCH_SQL.format(table=self.table), [str(key)])
+        """Refresh the access sequence for LRU bookkeeping."""
+        self.touch_many([key])
 
-    def pop_oldest(self) -> tuple[str, T]:
+    def pop_oldest(self) -> tuple[Hashable, T]:
         """Remove and return the least-recently used ``(key, value)`` pair."""
-        row = self.conn.execute(f"SELECT key, value FROM {self.table} ORDER BY accessed_at ASC LIMIT 1").fetchone()
-        if row is None:
-            raise KeyError("cache is empty")
-        key, blob = row
-        self.conn.execute(_DELETE_KEY_SQL.format(table=self.table), [key])
-        return key, pickle.loads(blob)
+        with self._lock:
+            self.conn.execute("BEGIN TRANSACTION")
+            try:
+                row = self.conn.execute(
+                    f"SELECT key, value FROM {self._sql_table} ORDER BY access_seq ASC LIMIT 1"
+                ).fetchone()
+                if row is None:
+                    raise KeyError("cache is empty")
+                self.conn.execute(f"DELETE FROM {self._sql_table} WHERE key = ?", [row[0]])
+                self.conn.execute("COMMIT")
+            except Exception:
+                self.conn.execute("ROLLBACK")
+                raise
+            return _decode_key(row[0]), pickle.loads(row[1])
 
-    def keys(self) -> list[str]:
+    def keys(self) -> list[Hashable]:
         """Return all cache keys ordered by access time (oldest first)."""
-        rows = self.conn.execute(_ALL_KEYS_SQL.format(table=self.table)).fetchall()
-        return [row[0] for row in rows]
+        with self._lock:
+            rows = self.conn.execute(f"SELECT key FROM {self._sql_table} ORDER BY access_seq ASC").fetchall()
+            return [_decode_key(row[0]) for row in rows]
+
+    def get_many(self, keys: list[Hashable]) -> dict[Hashable, T]:
+        """Fetch a batch without updating LRU order; use ``touch_many`` after consumption."""
+        encoded = list(dict.fromkeys(_encode_key(key) for key in keys))
+        if len({_decode_key(key) for key in encoded}) != len(encoded):
+            raise ValueError("bulk lookup cannot represent different key types that compare equal in a dict")
+        if not encoded:
+            return {}
+        with self._lock:
+            blobs: dict[str, bytes] = {}
+            for start in range(0, len(encoded), _SQL_CHUNK_SIZE):
+                rows = self.conn.execute(
+                    f"SELECT key, value FROM {self._sql_table} WHERE key IN (SELECT unnest(?))",
+                    [encoded[start : start + _SQL_CHUNK_SIZE]],
+                ).fetchall()
+                blobs.update(rows)
+            return {_decode_key(key): pickle.loads(blobs[key]) for key in encoded if key in blobs}
+
+    def put_many(self, items: list[tuple[Hashable, T]]) -> None:
+        """Upsert entries in order in bounded SQL batches and one transaction."""
+        encoded = list({_encode_key(key): pickle.dumps(value) for key, value in items}.items())
+        if not encoded:
+            return
+        with self._lock:
+            self.conn.execute("BEGIN TRANSACTION")
+            try:
+                row = self.conn.execute(f"SELECT max(access_seq) FROM {self._sql_table}").fetchone()
+                self._next_seq = max(self._next_seq, row[0] or 0) if row is not None else self._next_seq
+                for start in range(0, len(encoded), _SQL_CHUNK_SIZE):
+                    chunk = encoded[start : start + _SQL_CHUNK_SIZE]
+                    params: list[object] = []
+                    for key, blob in chunk:
+                        self._next_seq += 1
+                        params.extend((key, blob, self._next_seq))
+                    placeholders = ", ".join(["(?, ?, ?)"] * len(chunk))
+                    self.conn.execute(
+                        f"INSERT INTO {self._sql_table} (key, value, access_seq) VALUES {placeholders} "
+                        "ON CONFLICT (key) DO UPDATE SET value = excluded.value, access_seq = excluded.access_seq",
+                        params,
+                    )
+                self.conn.execute("COMMIT")
+            except Exception:
+                self.conn.execute("ROLLBACK")
+                raise
+
+    def touch_many(self, keys: list[Hashable]) -> None:
+        """Update LRU order in one transactional SQL statement per chunk."""
+        encoded = list(dict.fromkeys(_encode_key(key) for key in keys))
+        if not encoded:
+            return
+        with self._lock:
+            self.conn.execute("BEGIN TRANSACTION")
+            try:
+                row = self.conn.execute(f"SELECT max(access_seq) FROM {self._sql_table}").fetchone()
+                self._next_seq = max(self._next_seq, row[0] or 0) if row is not None else self._next_seq
+                for start in range(0, len(encoded), _SQL_CHUNK_SIZE):
+                    chunk = encoded[start : start + _SQL_CHUNK_SIZE]
+                    params: list[object] = []
+                    for key in chunk:
+                        self._next_seq += 1
+                        params.extend((key, self._next_seq))
+                    placeholders = ", ".join(["(?, ?)"] * len(chunk))
+                    self.conn.execute(
+                        f"UPDATE {self._sql_table} AS t SET access_seq = v.seq "
+                        f"FROM (VALUES {placeholders}) AS v(key, seq) WHERE t.key = v.key",
+                        params,
+                    )
+                self.conn.execute("COMMIT")
+            except Exception:
+                self.conn.execute("ROLLBACK")
+                raise
 
     def clear(self) -> None:
         """Remove all entries from the cache table."""
-        self.conn.execute(_DELETE_ALL_SQL.format(table=self.table))
+        with self._lock:
+            self.conn.execute(f"DELETE FROM {self._sql_table}")
 
     def close(self) -> None:
         """Close the underlying DuckDB connection."""
-        self.conn.close()
+        with self._lock:
+            self.conn.close()

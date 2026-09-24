@@ -21,11 +21,13 @@ class BatchSizeSuggester:
 
     The suggester keeps a bounded history of recent metrics, ignores failed
     samples when adapting, and targets batch durations between
-    ``min_duration`` and ``max_duration``.
+    ``min_duration`` and ``max_duration``. Mixed-size samples are weighted
+    by their item counts when estimating the duration of a full batch; growth
+    requires at least one full-size measurement.
     """
 
     current_batch_size: int = 10
-    min_batch_size: int = 10
+    min_batch_size: int = 1
     min_duration: float = 30.0
     max_duration: float = 60.0
     step_ratio_up: float = 0.1
@@ -47,6 +49,8 @@ class BatchSizeSuggester:
             raise ValueError("sample_size must be > 0")
         if self.max_history_size is not None and self.max_history_size < 1:
             raise ValueError("max_history_size must be > 0")
+        if self.max_history_size is not None and self.max_history_size < self.sample_size:
+            raise ValueError("max_history_size must be >= sample_size")
         if self.step_ratio_up <= 0:
             raise ValueError("step_ratio_up must be > 0")
         if self.step_ratio_down <= 0:
@@ -105,6 +109,14 @@ class BatchSizeSuggester:
         with self._lock:
             self._history.clear()
 
+    def reduce_after_size_error(self, failed_size: int) -> None:
+        """Reduce the next automatic batch after a provider request-size error."""
+        with self._lock:
+            smaller = max(1, failed_size // 2)
+            if smaller < self.current_batch_size:
+                self.current_batch_size = smaller
+                self._batch_size_changed_at = datetime.now(timezone.utc)
+
     def suggest_batch_size(self) -> int:
         selected = self.samples
 
@@ -112,17 +124,19 @@ class BatchSizeSuggester:
             with self._lock:
                 return self.current_batch_size
 
-        average_duration = sum(m.duration for m in selected) / len(selected)
-
         with self._lock:
             current_size = self.current_batch_size
+            total_items = sum(m.batch_size for m in selected)
+            if total_items <= 0:
+                return current_size
+            estimated_duration = sum(m.duration for m in selected) * current_size / total_items
 
-            if average_duration < self.min_duration:
+            if estimated_duration < self.min_duration and any(m.batch_size >= current_size for m in selected):
                 delta = max(self.min_step, int(current_size * self.step_ratio_up))
                 if self.max_step is not None:
                     delta = min(delta, self.max_step)
                 new_batch_size = current_size + delta
-            elif average_duration > self.max_duration:
+            elif estimated_duration > self.max_duration:
                 delta = max(self.min_step, int(current_size * self.step_ratio_down))
                 if self.max_step is not None:
                     delta = min(delta, self.max_step)

@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from enum import Enum
+from pathlib import Path
+from time import perf_counter
+from unittest.mock import MagicMock
+from uuid import uuid4
 
+import duckdb
 import pytest
 from pydantic import BaseModel
 
@@ -201,6 +206,118 @@ class TestDuckDBCacheBackend:
         assert c["k"] == "v"
         c.close()
 
+    @pytest.mark.parametrize("table", ["select", "from", "MixedCase"])
+    def test_reserved_and_quoted_table_names(self, table):
+        c = DuckDBCacheBackend.of(":memory:", table=table)
+        c["key"] = 3
+        assert c["key"] == 3
+        c.clear()
+        assert len(c) == 0
+        c.close()
+        direct = DuckDBCacheBackend(conn=duckdb.connect(), table=table)
+        direct["key"] = 4
+        assert direct["key"] == 4
+        direct.close()
+
+    @pytest.mark.parametrize("table", ["", "1invalid", "schema.cache", "a b", "x\x00y"])
+    def test_invalid_table_names_rejected_in_both_constructors(self, table):
+        with pytest.raises(ValueError, match="single SQL identifier"):
+            DuckDBCacheBackend.of(":memory:", table=table)
+        conn = duckdb.connect()
+        with pytest.raises(ValueError, match="single SQL identifier"):
+            DuckDBCacheBackend(conn=conn, table=table)
+        conn.close()
+
+    def test_injection_payload_does_not_execute(self):
+        conn = duckdb.connect()
+        conn.execute("CREATE TABLE important (value INTEGER)")
+        with pytest.raises(ValueError, match="single SQL identifier"):
+            DuckDBCacheBackend(conn=conn, table="cache; DROP TABLE important; --")
+        assert conn.execute("SELECT count(*) FROM important").fetchone()[0] == 0
+        conn.close()
+
+    def test_distinct_type_tagged_keys_and_order(self):
+        c = DuckDBCacheBackend.of(":memory:")
+        entries = [(1, "integer"), ("1", "string"), (True, "boolean"), (1.0, "float"), (b"1", "bytes"), ((1,), "tuple")]
+        for key, value in entries:
+            c[key] = value
+        assert len(c) == len(entries)
+        for key, value in entries:
+            assert c[key] == value
+        assert c.keys() == [key for key, _ in entries]
+        assert [c.pop_oldest()[1] for _ in entries] == [value for _, value in entries]
+        c.close()
+
+    def test_unsupported_keys_fail_clearly(self):
+        c = DuckDBCacheBackend.of(":memory:")
+        with pytest.raises(TypeError, match="unsupported DuckDB cache key type: frozenset"):
+            c[frozenset({"a"})] = "value"
+        with pytest.raises(TypeError, match="unsupported DuckDB cache key type: frozenset"):
+            _ = frozenset({"a"}) in c
+        with pytest.raises(TypeError, match="NaN is not a supported"):
+            c[float("nan")] = "value"
+        c.close()
+
+    def test_bulk_lookup_rejects_python_equal_distinct_keys(self):
+        c = DuckDBCacheBackend.of(":memory:")
+        c.put_many([(1, "integer"), (True, "boolean")])
+        assert c[1] == "integer"
+        assert c[True] == "boolean"
+        with pytest.raises(ValueError, match="different key types that compare equal"):
+            c.get_many([1, True])
+        c.close()
+
+    def test_reopen_persists_typed_keys(self):
+        database = Path("artifacts") / f"cache-{uuid4().hex}.duckdb"
+        database.parent.mkdir(exist_ok=True)
+        try:
+            first = DuckDBCacheBackend.of(str(database))
+            first[1] = "integer"
+            first["1"] = "string"
+            first.close()
+            second = DuckDBCacheBackend.of(str(database))
+            assert second[1] == "integer"
+            assert second["1"] == "string"
+            second.close()
+        finally:
+            database.unlink(missing_ok=True)
+            database.with_suffix(".duckdb.wal").unlink(missing_ok=True)
+
+    def test_live_instances_keep_access_sequence_monotonic(self):
+        conn = duckdb.connect()
+        first = DuckDBCacheBackend(conn=conn)
+        second = DuckDBCacheBackend(conn=conn)
+        first["a"] = 1
+        second["b"] = 2
+        first.move_to_end("a")
+        assert first.pop_oldest() == ("b", 2)
+        first.close()
+
+    def test_old_schema_requires_explicit_migration(self):
+        conn = duckdb.connect()
+        conn.execute("CREATE TABLE legacy (key TEXT PRIMARY KEY, value BLOB NOT NULL, accessed_at TIMESTAMP)")
+        conn.execute("INSERT INTO legacy VALUES ('1', '\\x01', now())")
+        with pytest.raises(ValueError, match="choose a new table name or migrate"):
+            DuckDBCacheBackend(conn=conn, table="legacy")
+        assert conn.execute("SELECT key FROM legacy").fetchone()[0] == "1"
+        conn.close()
+
+    def test_bulk_methods_bound_query_count_and_lru(self):
+        conn = MagicMock(wraps=duckdb.connect())
+        c = DuckDBCacheBackend(conn=conn)
+        entries = [(f"k{i}", i) for i in range(1000)]
+        conn.execute.reset_mock()
+        c.put_many(entries)
+        assert conn.execute.call_count <= 5
+        conn.execute.reset_mock()
+        assert c.get_many([key for key, _ in entries]) == dict(entries)
+        assert conn.execute.call_count <= 2
+        conn.execute.reset_mock()
+        c.touch_many(["k0", "k0", "k1"])
+        assert conn.execute.call_count <= 4
+        assert c.pop_oldest() == ("k2", 2)
+        c.close()
+
     def test_move_to_end_updates_access(self):
         c = DuckDBCacheBackend.of(":memory:")
         c["a"] = 1
@@ -220,6 +337,60 @@ class TestDuckDBCacheBackend:
 
 class TestDuckDBCacheBackendWithProxy:
     """Test DuckDBCacheBackend as a drop-in for BatchCache."""
+
+    @pytest.mark.asyncio
+    async def test_async_1000_key_bulk_round_trips(self):
+        from openaivec._cache import AsyncBatchCache
+
+        conn = MagicMock(wraps=duckdb.connect())
+        backend = DuckDBCacheBackend(conn=conn)
+        proxy: AsyncBatchCache[str, str] = AsyncBatchCache(
+            batch_size=1000, max_concurrency=2, cache=backend, show_progress=False
+        )
+        items = [f"k{i}" for i in range(1000)]
+
+        async def mapper(xs: list[str]) -> list[str]:
+            return [f"result:{key}" for key in xs]
+
+        conn.execute.reset_mock()
+        expected = [f"result:{key}" for key in items]
+        assert await proxy.map(items, mapper) == expected
+        assert conn.execute.call_count <= 24
+        conn.execute.reset_mock()
+        assert await proxy.map(items, mapper) == expected
+        assert conn.execute.call_count <= 12
+        backend.close()
+
+    def test_1000_key_cold_warm_bulk_round_trips(self):
+        from openaivec._cache import BatchCache
+
+        conn = MagicMock(wraps=duckdb.connect())
+        backend = DuckDBCacheBackend(conn=conn)
+        proxy: BatchCache[str, str] = BatchCache(batch_size=1000, cache=backend, show_progress=False)
+        items = [f"k{i}" for i in range(1000)]
+        calls = 0
+
+        def mapper(xs: list[str]) -> list[str]:
+            nonlocal calls
+            calls += 1
+            return [f"result:{key}" for key in xs]
+
+        conn.execute.reset_mock()
+        start = perf_counter()
+        expected = [f"result:{key}" for key in items]
+        assert proxy.map(items, mapper) == expected
+        cold = perf_counter() - start
+        cold_queries = conn.execute.call_count
+        conn.execute.reset_mock()
+        start = perf_counter()
+        assert proxy.map(items, mapper) == expected
+        warm = perf_counter() - start
+        warm_queries = conn.execute.call_count
+        assert calls == 1
+        assert cold_queries <= 24
+        assert warm_queries <= 12
+        print(f"DuckDB 1,000 keys: cold={cold:.3f}s/{cold_queries} SQL; warm={warm:.3f}s/{warm_queries} SQL")
+        backend.close()
 
     def test_proxy_with_duckdb_backend(self):
         from openaivec._cache import BatchCache
