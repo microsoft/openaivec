@@ -461,12 +461,15 @@ command:
 
 ```text
 Install the official openaivec-skill from the microsoft/openaivec GitHub
-repository for this project only. Preview it and explain the files and scope
-before changing anything. Ask for my approval before installation, then use
-this harness's supported Agent Skills mechanism and verify the installed
-source, version, and project scope. Do not open business data or configure
-credentials during installation. Do not ask me to run command-line commands;
-prepare an administrator handoff if direct installation is unavailable.
+repository for this project only. First select the highest stable official
+GitHub Release whose tag matches openaivec-skill-vX.Y.Z, excluding drafts and
+prereleases, and report its publication date. Preview it and explain the files
+and scope before changing anything. Ask for my approval before installation,
+then use this harness's supported Agent Skills mechanism and verify the
+installed source, version, and project scope. Do not open business data or
+configure credentials during installation. Do not ask me to run command-line
+commands; prepare an administrator handoff if direct installation is
+unavailable.
 ```
 
 Start with the

@@ -100,7 +100,41 @@ materialized AI result. They do not require a separate model call.
 
 ## Required Workflow
 
-1. **Establish local source support, then inspect before any remote call.**
+1. **Verify Skill freshness against the official GitHub Releases.**
+   - Run this check at the start of every Skill invocation, before opening
+     business data, changing the environment, or calling an AI service.
+   - Read the installed `metadata.version` and `metadata.repository` from this
+     `SKILL.md`. The repository must be
+     `https://github.com/microsoft/openaivec`; otherwise stop and report that
+     the installed source is not the official source.
+   - Read public Release metadata from the official GitHub repository. Select
+     the highest semantic version whose tag exactly matches
+     `openaivec-skill-vX.Y.Z`; exclude drafts, prereleases, unrelated package
+     releases, and untagged branch content. This read-only request must not
+     include user data or credentials.
+   - Report the installed version, latest stable Skill version, and its
+     publication date. Call the installation current only when the versions
+     match. A latest release can be old by date and still be current; report
+     the date instead of inventing an age threshold.
+   - If a newer stable version exists, summarize its official release notes
+     and ask one single-select question: update the project-local Skill now
+     (recommended), continue this run with the installed version, or prepare
+     an administrator handoff. Use the harness-provided free-text option when
+     available. Never update automatically.
+   - After explicit update approval, use the harness's supported project-local
+     Agent Skills mechanism. Explain files and scope, preserve unrelated local
+     changes, verify the new source and version, and tell the user whether a
+     new conversation or workspace reload is required.
+     Do not ask a business user to run command-line commands. Restart this
+     workflow after reload.
+   - If the installed version is newer than the latest stable Release, label
+     it an unreleased or development version; do not call it current. Ask
+     whether to continue with it or replace it with the latest stable version.
+   - If GitHub cannot be reached or Release metadata cannot be validated,
+     state that freshness is unverified and do not claim the Skill is current.
+     Ask whether to continue once with the installed version, wait and retry,
+     or prepare an administrator handoff.
+2. **Establish local source support, then inspect before any remote call.**
    - Before opening `.xlsx`, run
      `python scripts/manage_excel_extension.py check` from this skill
      directory. If support is missing, use the explanation and choices in
@@ -124,7 +158,7 @@ materialized AI result. They do not require a separate model call.
      overwrite/replace, or delete/drop. Record the exact authorized source,
      destination, and operation; do not broaden them.
    - Do not invoke the OpenAI-backed UDF yet.
-2. **Agree on business meaning before shaping or aggregating.**
+3. **Agree on business meaning before shaping or aggregating.**
    - Establish what one row represents, the stable business key, included
      population, dimensions, measures, business date, timezone, units,
      missing-value meaning, join relationships, and desired denominator.
@@ -143,13 +177,13 @@ materialized AI result. They do not require a separate model call.
    - After the contract is clear, perform any required pre-AI filtering,
      casting, code mapping, or join in temporary views. Preserve raw values and
      count rejected or unmatched rows before constructing model inputs.
-3. **Protect identity and order.**
+4. **Protect identity and order.**
    - Preserve the user's primary key.
    - For file scans, retain `filename`; retain a file row number when DuckDB
      exposes one.
    - If no key exists, materialize a `row_number()` in a staging table before
      invoking the UDF. Do not claim scan order is a durable identifier.
-4. **Measure scope locally.**
+5. **Measure scope locally.**
    - Report total rows, non-NULL inputs, and distinct non-NULL inputs.
    - For intelligent fill, instead report known target rows, missing target
      rows, approved exemplar rows, and distinct complete-row JSON inputs among
@@ -166,7 +200,7 @@ materialized AI result. They do not require a separate model call.
    - If the run may take more than about two minutes, or includes more than
      1,000 distinct text inputs or 25 media files, agree on a progress cadence
      before the full run.
-5. **Confirm privacy, cost, and writes.**
+6. **Confirm privacy, cost, and writes.**
    - State which column or files leave the machine, which provider/model will
      receive them, the distinct-input count, and the destination.
    - Obtain confirmation before a large billable run or before sending
@@ -176,7 +210,7 @@ materialized AI result. They do not require a separate model call.
    - For an authorized write, state the exact new destination and fail if it
      exists. Existing-object mutation requires the stronger authorization in
      the non-negotiable rules above.
-6. **Verify the environment and authentication.**
+7. **Verify the environment and authentication.**
    - Run `python scripts/check_environment.py` from this skill directory, or
      `python scripts/check_environment.py --fabric` in a supported Fabric
      notebook context.
@@ -188,7 +222,7 @@ materialized AI result. They do not require a separate model call.
      or client secret into chat.
    - Keep database passwords and connection strings in the user's environment
      or secret store. Never print, log, or place them in generated SQL.
-7. **Choose one public DuckDB integration.**
+8. **Choose one public DuckDB integration.**
 
    | Intent | API |
    | --- | --- |
@@ -203,7 +237,7 @@ materialized AI result. They do not require a separate model call.
    Prefer an explicit Pydantic model with
    `ConfigDict(extra="forbid")` for structured output. Infer a schema only when
    the user cannot define one; inference itself is a remote call.
-8. **Run a small pilot.**
+9. **Run a small pilot.**
    - Register the UDF once.
    - For routine row processing, start with `reasoning={"effort": "none"}`.
    - Use 3-10 representative distinct inputs and show the user the output
@@ -214,7 +248,7 @@ materialized AI result. They do not require a separate model call.
      first, then pilot 3-10 actual missing rows with the accepted task.
    - If the prompt, schema, model, or provider changes, register a new UDF and
      discard incompatible pilot materializations. Do not mix configurations.
-9. **Globally deduplicate and materialize exactly once.**
+10. **Globally deduplicate and materialize exactly once.**
    - Build a distinct non-NULL input table.
    - Apply the OpenAI-backed UDF once per distinct input.
    - Materialize that mapping in an in-memory temporary table, then join it
@@ -234,7 +268,7 @@ materialized AI result. They do not require a separate model call.
      Never export partial work as a successful final result.
    - Use in-memory temporary run tables by default. Persistent run tables are
      outputs and require the user's explicit destination instruction.
-10. **Project and summarize the materialized result locally.**
+11. **Project and summarize the materialized result locally.**
    - Follow
      [data shaping and cross-tabs](references/data-shaping-and-crosstabs.md).
      Use temporary views/tables for remaining explicit casts, approved code
@@ -249,7 +283,7 @@ materialized AI result. They do not require a separate model call.
      without the agreed row grain.
    - Never place a remote UDF inside an aggregate, window, or `PIVOT`; aggregate
      only the materialized result.
-11. **Validate and export.**
+12. **Validate and export.**
    - Check row count, key uniqueness where expected, NULL behavior, and
      structured field types.
    - Order by the preserved key only when presenting or exporting an ordered
@@ -334,6 +368,9 @@ count that meets predeclared overall and segment-level quality gates.
 
 Report:
 
+- installed Skill version, latest stable GitHub Skill version, publication
+  date, and whether the user updated, explicitly continued, or could not
+  verify freshness;
 - source and preserved key;
 - agreed row grain, population, business meanings, units, time basis, and any
   unresolved ambiguity;

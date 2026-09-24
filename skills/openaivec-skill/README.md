@@ -35,14 +35,16 @@ may be used internally around the materialized AI result.
 
 The assistant should keep implementation details in the background and:
 
-1. restate the business outcome, source, fields, and requested destination;
-2. ask one plain-language question at a time when a column meaning is unclear;
-3. show which data may leave the environment, the unique workload, and the
+1. compare the installed Skill version with the latest stable
+   `openaivec-skill-vX.Y.Z` GitHub Release before opening business data;
+2. restate the business outcome, source, fields, and requested destination;
+3. ask one plain-language question at a time when a column meaning is unclear;
+4. show which data may leave the environment, the unique workload, and the
    limits of any cost estimate;
-4. run a small structured preview and agree on acceptance checks;
-5. process duplicate inputs once while restoring every source row;
-6. report regular checkpoints during long work; and
-7. return validated counts, unresolved items, and a human-review-ready result
+5. run a small structured preview and agree on acceptance checks;
+6. process duplicate inputs once while restoring every source row;
+7. report regular checkpoints during long work; and
+8. return validated counts, unresolved items, and a human-review-ready result
    without silently changing the source.
 
 ## Getting started
@@ -61,10 +63,12 @@ Ask the selected assistant to install the Skill for the current project:
 
 ```text
 Install the official openaivec-skill from the microsoft/openaivec GitHub
-repository for this project only. Preview it and explain the files and scope
-before changing anything. Ask for my approval before installation. Do not
-open business data, install processing software, configure credentials, or
-make an AI request during this bootstrap step. After approval, use this
+repository for this project only. First select the highest stable official
+GitHub Release whose tag matches openaivec-skill-vX.Y.Z, excluding drafts and
+prereleases, and report its publication date. Preview it and explain the files
+and scope before changing anything. Ask for my approval before installation.
+Do not open business data, install processing software, configure credentials,
+or make an AI request during this bootstrap step. After approval, use this
 harness's supported Agent Skills mechanism, verify the source, version, and
 project scope, and tell me whether I need to start a new chat. Do not ask me
 to run command-line commands; prepare an administrator handoff if direct
@@ -95,6 +99,13 @@ gh skill install . openaivec-skill --from-local --agent github-copilot
 ```
 
 ## Use
+
+Every invocation starts by comparing the installed `metadata.version` with the
+highest stable official GitHub Release tagged
+`openaivec-skill-vX.Y.Z`. Drafts, prereleases, unrelated package releases, and
+untagged branch content are excluded. The harness reports both versions and
+the publication date. It never updates automatically or claims the Skill is
+current when GitHub cannot be checked.
 
 The harness should load the skill automatically for requests such as:
 
