@@ -4,12 +4,45 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
   test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.10
+
+      - name: Install dependencies via uv
+        run: uv sync --locked --all-extras --dev
+
+      - name: Lint with ruff
+        run: uv run ruff check .
+
+      - name: Type check with pyright
+        run: uv run pyright src/openaivec
+
+      - name: Run deterministic tests
+        run: uv run pytest -m "not slow and not requires_api"
+
+  integration:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: integration
     env:
@@ -21,18 +54,16 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          enable-cache: true
 
       - name: Set up Python
         run: uv python install 3.10
 
       - name: Install dependencies via uv
-        run: uv sync --all-extras --dev
+        run: uv sync --locked --all-extras --dev
 
-      - name: Lint with ruff
-        run: uv run ruff check .
-
-      - name: Type check with pyright
-        run: uv run pyright src/openaivec || echo "Type check completed with issues - see above"
-
-      - name: Run tests
-        run: uv run pytest
+      - name: Run complete test suite
+        run: |
+          test -n "$OPENAI_API_KEY"
+          uv run pytest
