@@ -4,6 +4,20 @@ on:
   push:
     tags:
       - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing vX.Y.Z tag to validate and publish"
+        required: true
+        type: string
+      expected_commit:
+        description: "Full commit SHA targeted by the release tag"
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ inputs.release_tag || github.ref_name }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -18,22 +32,30 @@ jobs:
         python-version: ["3.10", "3.11", "3.12"]
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+      EXPECTED_COMMIT: ${{ inputs.expected_commit || github.sha }}
 
     steps:
       - name: Checkout tagged commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          ref: ${{ github.sha }}
+          fetch-tags: true
+          ref: ${{ inputs.release_tag || github.sha }}
 
       - name: Verify tag points to checked-out commit
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          test "$GITHUB_REF" = "refs/tags/$RELEASE_TAG"
-          test "$(git rev-list -n 1 "refs/tags/$RELEASE_TAG")" = "$(git rev-parse HEAD)"
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            test "$GITHUB_REF" = "refs/tags/$RELEASE_TAG"
+          else
+            test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+            test "$GITHUB_REF" = "refs/heads/main"
+          fi
+          test "$(git rev-list -n 1 "refs/tags/$RELEASE_TAG")" = "$EXPECTED_COMMIT"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
 
       - name: Install uv
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
@@ -67,12 +89,25 @@ jobs:
     permissions:
       contents: write
       id-token: write
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+      EXPECTED_COMMIT: ${{ inputs.expected_commit || github.sha }}
 
     steps:
-      - name: Checkout repository
+      - name: Checkout tagged commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ inputs.release_tag || github.ref }}
+
+      - name: Verify tag points to tested commit
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-list -n 1 "refs/tags/$RELEASE_TAG")" = "$EXPECTED_COMMIT"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
 
       - name: Install uv
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
@@ -85,6 +120,18 @@ jobs:
 
       - name: Build with uv
         run: uv build
+
+      - name: Verify distribution version
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          test "$(find dist -maxdepth 1 -type f | wc -l)" -eq 2
+          wheel="dist/openaivec-${version}-py3-none-any.whl"
+          sdist="dist/openaivec-${version}.tar.gz"
+          test -f "$wheel"
+          test -f "$sdist"
+          unzip -p "$wheel" "openaivec-${version}.dist-info/METADATA" | grep -qx "Version: $version"
+          tar -xOf "$sdist" "openaivec-${version}/PKG-INFO" | grep -qx "Version: $version"
 
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
@@ -103,14 +150,46 @@ jobs:
             fi
           done
 
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          target_commitish: ${{ inputs.expected_commit || github.sha }}
           generate_release_notes: true
+          fail_on_unmatched_files: true
           files: |
             dist/*.whl
             dist/*.tar.gz
             signatures/*.bundle.json
 
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+      - name: Remove mismatched assets from an incomplete release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
+          while IFS= read -r asset; do
+            case "$asset" in
+              "openaivec-${version}-"*.whl | "openaivec-${version}.tar.gz" | \
+              "openaivec-${version}-"*.whl.bundle.json | "openaivec-${version}.tar.gz.bundle.json")
+                ;;
+              openaivec-*)
+                gh release delete-asset "$RELEASE_TAG" "$asset" --yes
+                ;;
+            esac
+          done <<< "$assets"
+
+      - name: Verify GitHub Release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
+          for artifact in dist/* signatures/*; do
+            grep -Fxq "$(basename "$artifact")" <<< "$assets"
+          done

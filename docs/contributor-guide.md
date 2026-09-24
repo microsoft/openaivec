@@ -23,7 +23,17 @@ tag pointing to that commit. The PyPI workflow checks the tagged commit on
 Python 3.10-3.12 with Ruff, Pyright, the full test suite, and a distribution
 build before publishing. The `integration` environment must provide
 `OPENAI_API_KEY` for the full suite; the `pypi` environment supplies the
-trusted-publishing configuration. After validation, the workflow signs and
-attaches the distributions to a GitHub Release with generated release notes,
-then publishes them to PyPI. Confirm that both the workflow and the published
-package version succeeded before announcing the release.
+trusted-publishing configuration. After validation, the workflow checks that
+both distributions contain the version named by the tag, signs them, publishes
+them to PyPI, and attaches them to a GitHub Release with generated release
+notes. Confirm that the workflow, the PyPI version, and the Release assets
+all succeeded before announcing the release.
+
+If a tagged publish fails because the workflow itself needs repair, do not
+move or re-create the tag. Merge the workflow fix into `main`, then manually
+run **Publish to PyPI** from `main`, providing the existing `release_tag` and
+its full `expected_commit` (from `git rev-list -n 1 vX.Y.Z`). The manual run
+revalidates that exact tagged commit before publishing. After successfully
+uploading the distributions, it also removes assets with a mismatched package
+version from a previously incomplete GitHub Release. Do not retry a publish
+that already succeeded on PyPI; PyPI does not permit replacing distributions.
