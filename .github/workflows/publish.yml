@@ -6,17 +6,73 @@ on:
       - "v*.*.*"
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    environment: integration
+    strategy:
+      fail-fast: true
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+    steps:
+      - name: Checkout tagged commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Verify tag points to checked-out commit
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/tags/$RELEASE_TAG"
+          test "$(git rev-list -n 1 "refs/tags/$RELEASE_TAG")" = "$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies via uv
+        run: uv sync --locked --python ${{ matrix.python-version }} --all-extras --dev
+
+      - name: Lint and type check
+        run: |
+          uv run ruff check .
+          uv run pyright src/openaivec
+
+      - name: Run full suite
+        run: |
+          test -n "$OPENAI_API_KEY"
+          uv run pytest
+
+      - name: Validate distribution
+        if: matrix.python-version == '3.10'
+        run: uv build
+
   build-and-publish:
+    needs: validate
     runs-on: ubuntu-latest
     environment: pypi
+    permissions:
+      contents: write
+      id-token: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
@@ -25,7 +81,7 @@ jobs:
         run: uv python install 3.10
 
       - name: Install dependencies via uv
-        run: uv sync --all-extras --dev
+        run: uv sync --locked --all-extras --dev
 
       - name: Build with uv
         run: uv build
