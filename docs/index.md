@@ -238,6 +238,9 @@ results = asyncio.run(analyze_feedback())
 - Set a positive integer for deterministic batch sizes when coordinating with rate limits
 - Use `0` or a negative value only when everything fits in a single request
 - Typical ranges: 32–128 for responses, 64–256 for embeddings when you need fixed sizes
+- Adaptive sizing starts at 10 but can shrink to 1 for slow batches. It weights recent batch durations by item count; tiny final batches alone cannot justify increasing a large batch size.
+- If OpenAI rejects a request for a recognized context/request-size limit, the cache splits that chunk in order (up to 16 split levels) and reduces the next automatic batch size. A single oversized item still raises the original error; authentication, rate-limit and validation errors are not split or retried by the cache.
+- Cache backends may optionally provide `get_many(keys)`, `put_many(items)` and `touch_many(keys)` to batch I/O; without them, the proxies continue to use per-key cache operations. Bulk reads must preserve cached `None` values and must not themselves change recency.
 
 **`max_concurrency`** (default: 8):
 - Limits the number of simultaneous API requests

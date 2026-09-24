@@ -1,5 +1,6 @@
 site_name: openaivec - AI-Powered Data Processing for Pandas & Spark
 site_url: https://microsoft.github.io/openaivec/
+strict: true
 site_description: Transform your data analysis with OpenAI's language models. Comprehensive task domains including NLP, customer support, and future business domains. Seamlessly integrate structured AI processing, multilingual analysis, and automated workflows into pandas DataFrames and Apache Spark for scalable enterprise insights.
 site_author: Hiroki Mizukami
 repo_url: https://github.com/microsoft/openaivec
@@ -142,7 +143,12 @@ extra:
 plugins:
   - search:
       separator: '[\s\-,:!=\[\]()"/]+|(?!\b)(?=[A-Z][a-z])|\.(?!\d)|&[lg]t;'
-  - mkdocs-jupyter
+  - mkdocs-jupyter:
+      include:
+        - "*.ipynb"
+      # Jupytext probes Markdown before include filtering and misreads ::: API directives as fenced divs.
+      ignore:
+        - "*.md"
   - mkdocstrings:
       handlers:
         python:
@@ -150,6 +156,8 @@ plugins:
             - src
           options:
             docstring_style: google
+            docstring_options:
+              warn_missing_types: false
             show_submodules: true
             show_source: true
             show_root_heading: true
