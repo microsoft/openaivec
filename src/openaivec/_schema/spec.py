@@ -4,11 +4,12 @@ import re
 from enum import Enum
 from typing import Any, Literal, cast
 
-from pydantic import BaseModel, Field, create_model
+from pydantic import BaseModel, ConfigDict, Field, create_model
 
 __all__: list[str] = []
 
 _MAX_ENUM_VALUES = 24
+_MIN_ENUM_VALUES = 1
 
 
 class FieldSpec(BaseModel):
@@ -62,6 +63,10 @@ class FieldSpec(BaseModel):
             "contained 'name' is used to derive the generated nested Pydantic model class name."
         ),
     )
+    minimum: float | None = Field(default=None, description="Inclusive lower bound for an integer or float field.")
+    maximum: float | None = Field(default=None, description="Inclusive upper bound for an integer or float field.")
+    boolean_value: bool | None = Field(default=None, description="Required value for a boolean field, if fixed.")
+    nullable: bool = Field(default=False, description="Whether the required field may contain null.")
 
 
 class EnumSpec(BaseModel):
@@ -70,9 +75,8 @@ class EnumSpec(BaseModel):
     Attributes:
         name: Required Enum class name (UpperCamelCase). Must match ^[A-Z][A-Za-z0-9]*$. Previously optional; now
             explicit to remove implicit coupling to the field name and make schemas self‑describing.
-        values: Raw label values (1–_MAX_ENUM_VALUES before de‑dup). Values are uppercased then
-            de-duplicated using a set; ordering of generated Enum members is not guaranteed. Any
-            casing variants collapse silently to a single member.
+        values: Exact string labels (1–_MAX_ENUM_VALUES before de-dup). Exact duplicates
+            are removed in order; casing variants remain distinct.
     """
 
     name: str = Field(
@@ -80,8 +84,8 @@ class EnumSpec(BaseModel):
     )
     values: list[str] = Field(
         description=(
-            f"Raw enum label values (1–{_MAX_ENUM_VALUES}). Uppercased then deduplicated; order of members "
-            "not guaranteed."
+            f"Exact enum string values ({_MIN_ENUM_VALUES}–{_MAX_ENUM_VALUES}). "
+            "Duplicate values are removed while preserving first-seen order."
         )
     )
 
@@ -101,6 +105,42 @@ class ObjectSpec(BaseModel):
     )
 
 
+def _string_enum(enum_spec: EnumSpec) -> type[Enum]:
+    members: dict[str, str] = {}
+    for index, value in enumerate(dict.fromkeys(enum_spec.values), 1):
+        if not value or not value.strip():
+            raise ValueError("enum_spec.values must contain non-blank strings.")
+        candidate = value.upper()
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]*", candidate) or candidate.startswith("VALUE_"):
+            candidate = f"VALUE_{index}"
+        name = candidate
+        suffix = 2
+        while name in members:
+            name = f"{candidate}_{suffix}"
+            suffix += 1
+        members[name] = value
+    return cast(type[Enum], Enum(enum_spec.name, members, type=str))
+
+
+def _field_constraints(field: FieldSpec) -> dict[str, Any]:
+    numeric = field.type in {"integer", "float"}
+    if (field.minimum is not None or field.maximum is not None) and not numeric:
+        raise ValueError(f"Field '{field.name}': minimum/maximum require an integer or float field.")
+    if field.minimum is not None and field.maximum is not None and field.minimum > field.maximum:
+        raise ValueError(f"Field '{field.name}': minimum must not exceed maximum.")
+    if field.type == "integer":
+        for bound in (field.minimum, field.maximum):
+            if bound is not None and (not float("-inf") < bound < float("inf") or not bound.is_integer()):
+                raise ValueError(f"Field '{field.name}': integer bounds must be finite whole numbers.")
+    if numeric:
+        for bound in (field.minimum, field.maximum):
+            if bound is not None and not float("-inf") < bound < float("inf"):
+                raise ValueError(f"Field '{field.name}': numeric bounds must be finite.")
+    if field.boolean_value is not None and field.type != "boolean":
+        raise ValueError(f"Field '{field.name}': boolean_value requires a boolean field.")
+    return {"ge": field.minimum, "le": field.maximum}
+
+
 def _build_model(model_spec: ObjectSpec) -> type[BaseModel]:
     lower_sname_pattern = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
     upper_camel_pattern = re.compile(r"^[A-Z][A-Za-z0-9]*$")
@@ -116,6 +156,10 @@ def _build_model(model_spec: ObjectSpec) -> type[BaseModel]:
     }
     output_fields: dict[str, tuple[Any, object]] = {}
 
+    if not upper_camel_pattern.fullmatch(model_spec.name):
+        raise ValueError(f"Object name '{model_spec.name}' must be UpperCamelCase.")
+    if not model_spec.fields:
+        raise ValueError(f"Object '{model_spec.name}' must contain at least one field.")
     field_names: list[str] = [field.name for field in model_spec.fields]
 
     # Assert that names of fields are not duplicated
@@ -123,6 +167,7 @@ def _build_model(model_spec: ObjectSpec) -> type[BaseModel]:
         raise ValueError("Field names must be unique within the object spec.")
 
     for field in model_spec.fields:
+        constraints = _field_constraints(field)
         # Assert that field names are lower_snake_case
         if not lower_sname_pattern.match(field.name):
             raise ValueError(f"Field name '{field.name}' must be in lower_snake_case format (e.g., 'my_field_name').")
@@ -144,26 +189,26 @@ def _build_model(model_spec: ObjectSpec) -> type[BaseModel]:
                 object_spec=None,
             ):
                 field_type = type_map[field.type]
-                output_fields[name] = (field_type, Field(description=description))
+                if field.type == "boolean" and field.boolean_value is not None:
+                    field_type = Literal[True] if field.boolean_value else Literal[False]
+                output_fields[name] = (field_type, Field(description=description, **constraints))
 
             case FieldSpec(name=name, type="enum", description=description, enum_spec=enum_spec, object_spec=None) if (
                 enum_spec
-                and 0 < len(enum_spec.values) <= _MAX_ENUM_VALUES
+                and _MIN_ENUM_VALUES <= len(enum_spec.values) <= _MAX_ENUM_VALUES
                 and upper_camel_pattern.match(enum_spec.name)
             ):
-                member_names = sorted({v.upper() for v in enum_spec.values})
-                enum_type = cast(type[Enum], Enum(enum_spec.name, member_names))
+                enum_type = _string_enum(enum_spec)
                 output_fields[name] = (enum_type, Field(description=description))
 
             case FieldSpec(
                 name=name, type="enum_array", description=description, enum_spec=enum_spec, object_spec=None
             ) if (
                 enum_spec
-                and 0 < len(enum_spec.values) <= _MAX_ENUM_VALUES
+                and _MIN_ENUM_VALUES <= len(enum_spec.values) <= _MAX_ENUM_VALUES
                 and upper_camel_pattern.match(enum_spec.name)
             ):
-                member_names = sorted({v.upper() for v in enum_spec.values})
-                enum_type = cast(type[Enum], Enum(enum_spec.name, member_names))
+                enum_type = _string_enum(enum_spec)
                 output_fields[name] = (list[enum_type], Field(description=description))
 
             case FieldSpec(
@@ -350,4 +395,8 @@ def _build_model(model_spec: ObjectSpec) -> type[BaseModel]:
                     )
                 )
 
-    return create_model(model_spec.name, **cast(Any, output_fields))
+        if field.nullable:
+            annotation, metadata = output_fields[field.name]
+            output_fields[field.name] = (annotation | None, metadata)
+
+    return create_model(model_spec.name, __config__=ConfigDict(extra="forbid"), **cast(Any, output_fields))

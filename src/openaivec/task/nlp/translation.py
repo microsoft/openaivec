@@ -1,6 +1,9 @@
 """Multilingual translation task definition."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from collections.abc import Sequence
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, create_model
 
 from openaivec._model import PreparedTask
 from openaivec.task._prompt_templates import join_sections
@@ -12,7 +15,7 @@ __all__ = ["multilingual_translation"]
 class TranslatedString(BaseModel):
     """Translations for a fixed set of language-code fields."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     # Germanic languages
     en: str = Field(description="Translated text in English")
@@ -79,7 +82,7 @@ class TranslatedString(BaseModel):
     el: str = Field(description="Translated text in Greek")
 
     # Nordic language (name avoids Python keyword conflict)
-    is_: str = Field(description="Translated text in Icelandic")
+    is_: str = Field(alias="is", description="Translated text in Icelandic")
 
     # Other languages
     eu: str = Field(description="Translated text in Basque")
@@ -88,26 +91,60 @@ class TranslatedString(BaseModel):
     mt: str = Field(description="Translated text in Maltese")
 
 
-def _build_instructions() -> str:
+def _build_instructions(codes: Sequence[str]) -> str:
     return join_sections(
-        "Translate the input text into all target languages defined by the response schema.",
+        f"Translate the input text into these target language codes: {', '.join(codes)}.",
         "Keep meaning, tone, and named entities consistent across languages.",
-        "Return only the structured JSON fields. Do not add explanations.",
+        "Return only the requested language-code JSON fields. Do not add explanations.",
     )
 
 
-def multilingual_translation() -> PreparedTask[TranslatedString]:
-    """Create a multilingual translation task."""
+def multilingual_translation(target_languages: Sequence[str] | None = None) -> PreparedTask[BaseModel]:
+    """Create a translation task for selected language codes.
+
+    Args:
+        target_languages (Sequence[str] | None): Language codes to translate into.
+            ``None`` (the default) requests all 51 supported languages. Use ``is``
+            for Icelandic; the Python attribute remains ``is_`` for compatibility.
+
+    Returns:
+        PreparedTask[BaseModel]: Task with exactly the requested response fields.
+
+    Raises:
+        TypeError: If target_languages is a string rather than a sequence.
+        ValueError: If the selection is empty, duplicated, or unsupported.
+    """
+    supported = {field.alias or name: name for name, field in TranslatedString.model_fields.items()}
+    if isinstance(target_languages, str):
+        raise TypeError("target_languages must be a sequence of language codes, not a string")
+    codes = tuple(supported) if target_languages is None else tuple(target_languages)
+    if (
+        not codes
+        or any(not isinstance(code, str) or code not in supported for code in codes)
+        or len(codes) != len(set(codes))
+    ):
+        raise ValueError("target_languages must contain unique supported language codes")
+    response_format = TranslatedString
+    if target_languages is not None:
+        fields: dict[str, Any] = {
+            supported[code]: (str, TranslatedString.model_fields[supported[code]]) for code in codes
+        }
+        response_format = create_model(
+            "SelectedTranslations",
+            __config__=ConfigDict(extra="forbid", populate_by_name=True),
+            __module__=__name__,
+            **fields,
+        )
     return PreparedTask(
-        instructions=_build_instructions(),
-        response_format=TranslatedString,
+        instructions=_build_instructions(codes),
+        response_format=response_format,
     )
 
 
 TASK_SPEC = TaskSpec(
     key="nlp.multilingual_translation",
     domain="nlp",
-    summary="Translate input text into a fixed set of languages.",
+    summary="Translate input text into selected languages (all by default).",
     factory=multilingual_translation,
     response_format=TranslatedString,
 )

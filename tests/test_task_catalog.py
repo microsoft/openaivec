@@ -168,3 +168,161 @@ def test_customer_support_customization_reflected_in_prompt():
     assert "refund_request" in task.instructions
     assert "billing_team" in task.instructions
     assert "chargeback" in task.instructions
+
+
+@pytest.mark.parametrize(
+    ("key", "aligned", "field", "error_field"),
+    [
+        (
+            "nlp.morphological_analysis",
+            {
+                "tokens": ["dogs"],
+                "pos_tags": ["NOUN"],
+                "lemmas": ["dog"],
+                "morphological_features": ["plural"],
+            },
+            "tokens",
+            "pos_tags",
+        ),
+        (
+            "nlp.morphological_analysis",
+            {
+                "tokens": ["dogs"],
+                "pos_tags": ["NOUN"],
+                "lemmas": ["dog"],
+                "morphological_features": ["plural"],
+            },
+            "pos_tags",
+            "pos_tags",
+        ),
+        (
+            "nlp.morphological_analysis",
+            {
+                "tokens": ["dogs"],
+                "pos_tags": ["NOUN"],
+                "lemmas": ["dog"],
+                "morphological_features": ["plural"],
+            },
+            "lemmas",
+            "lemmas",
+        ),
+        (
+            "nlp.morphological_analysis",
+            {
+                "tokens": ["dogs"],
+                "pos_tags": ["NOUN"],
+                "lemmas": ["dog"],
+                "morphological_features": ["plural"],
+            },
+            "morphological_features",
+            "morphological_features",
+        ),
+        (
+            "nlp.sentiment_analysis",
+            {
+                "sentiment": "positive",
+                "confidence": 0.9,
+                "emotions": ["joy"],
+                "emotion_scores": [0.8],
+                "polarity": 0.5,
+                "subjectivity": 0.4,
+            },
+            "emotions",
+            "emotion_scores",
+        ),
+        (
+            "nlp.sentiment_analysis",
+            {
+                "sentiment": "positive",
+                "confidence": 0.9,
+                "emotions": ["joy"],
+                "emotion_scores": [0.8],
+                "polarity": 0.5,
+                "subjectivity": 0.4,
+            },
+            "emotion_scores",
+            "emotion_scores",
+        ),
+    ],
+)
+def test_curated_parallel_arrays_require_matching_lengths(key, aligned, field, error_field):
+    model = get_task_spec(key).response_format
+    assert model.model_validate(aligned)
+    for replacement in ([], [*aligned[field], *aligned[field]]):
+        with pytest.raises(ValidationError, match=error_field):
+            model.model_validate({**aligned, field: replacement})
+    with pytest.raises(ValidationError, match="Field required"):
+        model.model_validate({name: value for name, value in aligned.items() if name != field})
+    assert model.model_validate({key: [] if isinstance(value, list) else value for key, value in aligned.items()})
+
+
+def test_urgency_custom_choices_match_schema():
+    task = customer_support.urgency_analysis(
+        urgency_levels={"urgent": "Outage", "routine": "General question"},
+        response_times={"urgent": "within_15_minutes", "routine": "within_2_days"},
+        customer_tiers={"vip": "Priority customer", "free": "Free customer"},
+    )
+    schema = task.response_format.model_json_schema()["properties"]
+    assert schema["urgency_level"]["enum"] == ["urgent", "routine"]
+    assert schema["response_time"]["enum"] == ["within_15_minutes", "within_2_days"]
+    assert schema["customer_tier"]["enum"] == ["vip", "free"]
+    for choice in ("urgent", "within_15_minutes", "vip"):
+        assert choice in task.instructions
+    assert "within_1_hour:" not in task.instructions
+    assert "- critical:" not in task.instructions
+    default = {
+        "urgency_level": "urgent",
+        "urgency_score": 0.9,
+        "response_time": "within_15_minutes",
+        "escalation_required": True,
+        "urgency_indicators": [],
+        "business_impact": "high",
+        "customer_tier": "vip",
+        "reasoning": "outage",
+        "sla_compliance": True,
+    }
+    assert task.response_format.model_validate(default)
+    with pytest.raises(ValidationError):
+        task.response_format.model_validate({**default, "response_time": "immediate"})
+    with pytest.raises(ValidationError):
+        task.response_format.model_validate({**default, "unrecognized": True})
+
+
+@pytest.mark.parametrize("field", ["urgency_levels", "response_times", "customer_tiers"])
+def test_urgency_rejects_empty_choices(field):
+    with pytest.raises(ValueError, match=field):
+        customer_support.urgency_analysis(**{field: {}})
+
+
+def test_urgency_response_times_can_be_customized_alone():
+    task = customer_support.urgency_analysis(
+        response_times={
+            "critical": "within_15_minutes",
+            "high": "within_2_hours",
+            "medium": "within_8_hours",
+            "low": "within_48_hours",
+        }
+    )
+    assert task.response_format.model_json_schema()["properties"]["response_time"]["enum"] == [
+        "within_15_minutes",
+        "within_2_hours",
+        "within_8_hours",
+        "within_48_hours",
+    ]
+    assert "within_1_hour:" not in task.instructions
+
+
+def test_urgency_rejects_unmapped_levels():
+    with pytest.raises(ValueError, match="response_times"):
+        customer_support.urgency_analysis(urgency_levels={"urgent": "Outage"})
+
+
+def test_response_suggestion_formal_tone_is_valid():
+    task = customer_support.response_suggestion(response_style="formal")
+    assert "formal" in task.instructions
+    assert "formal" in task.response_format.model_json_schema()["properties"]["tone"]["enum"]
+
+
+def test_response_suggestion_rejects_unknown_style():
+    with pytest.raises(ValueError, match="response_style"):
+        customer_support.response_suggestion(response_style="unknown")

@@ -31,8 +31,8 @@ Design constraints (updated):
 * Arrays are homogeneous lists of their base type.
 * Nested objects / arrays of objects are allowed when semantically cohesive; keep
     depth shallow and avoid gratuitous nesting.
-* Enumerations use ``enum_spec`` with explicit ``name`` (UpperCamelCase) and 1–24
-    raw label values (project constant). Values collapse by uppercasing; order not guaranteed.
+* Enumerations use ``enum_spec`` with explicit ``name`` (UpperCamelCase) and
+    exact string label values, preserved in first-seen order.
 * Field names: lower_snake_case; unique per containing object.
 * Boolean names: affirmative 'is_' prefix.
 * Numeric (integer/float) names encode unit / measure suffix (e.g. *_count, *_ratio, *_ms).
@@ -65,7 +65,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from openaivec._model import PreparedTask
 from openaivec._retry import RetryPolicy, call_with_retry, call_with_retry_async, retry_deadline
-from openaivec._schema.spec import ObjectSpec, _build_model
+from openaivec._schema.spec import _MAX_ENUM_VALUES, _MIN_ENUM_VALUES, ObjectSpec, _build_model
 
 # Internal module: explicitly not part of public API
 __all__: list[str] = []
@@ -157,7 +157,7 @@ class SchemaInferenceOutput(BaseModel):
             PreparedTask: Ready for batched structured extraction calls.
         """
         return PreparedTask(
-            instructions=self.inference_prompt,
+            instructions=_contract_prompt(self.object_spec),
             response_format=self.model,
         )
 
@@ -200,7 +200,7 @@ class SchemaInferenceInput(BaseModel):
     )
 
 
-_INFER_INSTRUCTIONS = """
+_INFER_INSTRUCTIONS = f"""
 You are a schema inference engine.
 
 Task:
@@ -217,13 +217,20 @@ Task:
    output only explanatory features (no target restatement).
 
 Rules:
-- Field names: lower snake_case, unique within each object, regex ^[a-z][a-z0-9_]*$, no subjective adjectives.
+- Root and nested objects: UpperCamelCase name and at least one field.
+- Field names: lower snake_case, unique within each object,
+    regex ^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$, no subjective adjectives.
 - Field types: string | integer | float | boolean | enum | object | string_array | integer_array | float_array |
     boolean_array | enum_array | object_array
     * *_array are homogeneous lists of their primitive / enum / object base type.
     * Use object/object_array ONLY for semantically cohesive grouped attributes; avoid gratuitous layers.
-- Enumerations: use enum_spec { name (UpperCamelCase), values [raw_tokens...] }. values length 1–{_MAX_ENUM_VALUES}.
+- Enumerations: use enum_spec {{ name (UpperCamelCase), values [raw_tokens...] }}.
+    values length {_MIN_ENUM_VALUES}–{_MAX_ENUM_VALUES}; preserve exact spelling/case of each string value.
     Use ONLY when closed set is evidenced. Otherwise, use string.
+- Only numeric fields may declare inclusive minimum/maximum; bounds must be finite and ordered.
+    Integer bounds must be whole numbers. Only boolean fields may declare boolean_value (true or false).
+    nullable=true allows null but never makes a field optional or omittable.
+    Descriptions are semantic guidance, not machine-enforced validation constraints.
 - Numeric (integer|float) names encode explicit unit/measure suffix (e.g. *_count, *_seconds, *_usd, *_ratio, *_score).
 - Boolean names start with 'is_' followed by positive predicate (no negations like is_not_*).
 - Array field names SHOULD end with '_array' for primitive/enum arrays; object_array
@@ -256,7 +263,7 @@ def _schema_instructions(previous_errors: list[str]) -> str:
             "Don't hallucinate or broaden enum_values unless enum rule caused failure.",
             "Duplicate names: minimally rename; keep semantics.",
             "Unsupported type: change to string|integer|float|boolean (no new facts).",
-            "Bad enum length: drop enum or constrain to 2–24 evidenced tokens.",
+            f"Bad enum length: drop enum or constrain to {_MIN_ENUM_VALUES}–{_MAX_ENUM_VALUES} evidenced tokens.",
         ]
     )
     return _INFER_INSTRUCTIONS + "\n\n" + "\n".join(feedback_lines)
@@ -266,7 +273,37 @@ def _validated_schema(parsed: SchemaInferenceOutput | None) -> SchemaInferenceOu
     if parsed is None:
         raise ValueError("Schema inference returned no parsed output.")
     parsed.build_model()
+    parsed.inference_prompt = _contract_prompt(parsed.object_spec)
     return parsed
+
+
+def _contract_prompt(spec: ObjectSpec) -> str:
+    lines = [
+        "Extract the described signals from the input. Return exactly the required fields below.",
+        "Never add, remove, rename, or omit a field. Model field descriptions explain semantic meaning only.",
+        "Follow the field types and constraints exactly; do not use integer indices for enum values.",
+    ]
+
+    def add_fields(obj: ObjectSpec, path: str) -> None:
+        for field in obj.fields:
+            field_path = f"{path}.{field.name}" if path else field.name
+            details = [f"{field_path}: {field.type} (required)"]
+            if field.nullable:
+                details.append("null allowed")
+            if field.enum_spec is not None:
+                details.append(f"allowed values: {field.enum_spec.values!r}")
+            if field.minimum is not None:
+                details.append(f"minimum: {field.minimum}")
+            if field.maximum is not None:
+                details.append(f"maximum: {field.maximum}")
+            if field.boolean_value is not None:
+                details.append(f"required value: {field.boolean_value}")
+            lines.append("; ".join(details))
+            if field.object_spec is not None:
+                add_fields(field.object_spec, field_path + ("[]" if field.type == "object_array" else ""))
+
+    add_fields(spec, "")
+    return "\n".join(lines)
 
 
 @dataclass(frozen=True)

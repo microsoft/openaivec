@@ -1,6 +1,6 @@
 """Morphological analysis task definition."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from openaivec._model import PreparedTask
 from openaivec.task._prompt_templates import join_sections, same_language_policy
@@ -20,6 +20,13 @@ class MorphologicalAnalysis(BaseModel):
     morphological_features: list[str] = Field(
         description="Morphological features for each token (for example tense, number, case)"
     )
+
+    @model_validator(mode="after")
+    def _check_alignment(self) -> "MorphologicalAnalysis":
+        for field in ("pos_tags", "lemmas", "morphological_features"):
+            if len(getattr(self, field)) != len(self.tokens):
+                raise ValueError(f"{field} must have the same length as tokens")
+        return self
 
 
 def _build_instructions() -> str:
