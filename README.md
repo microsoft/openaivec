@@ -411,7 +411,33 @@ conn.sql("""
 """)
 ```
 
-All UDFs use Arrow vectorized execution — DuckDB sends batches of rows that are processed with async concurrency and automatic deduplication.
+The OpenAI-backed UDFs use Arrow vectorized execution, async concurrency, and
+automatic deduplication. Token counting is also Arrow vectorized and runs
+locally.
+
+DuckDB also supports schema inference and token counting. `parse_udf` samples
+non-NULL values when it is registered, so its SQL return type is fixed before
+the query runs:
+
+```python
+duckdb_ext.parse_udf(
+    conn,
+    "parse_review",
+    instructions="Extract the product and rating from each review.",
+    example_table_name="reviews",
+    example_field_name="review",
+)
+duckdb_ext.count_tokens_udf(conn, "count_tokens")
+
+conn.sql("SELECT parse_review(review) AS parsed, count_tokens(review) FROM reviews")
+```
+
+For a task that needs every column in a row, pass the row as JSON to an
+existing UDF: `SELECT summarize_row(to_json(t)) FROM orders AS t`. DuckDB's
+`STRUCT` field access expands structured results, and
+`list_cosine_similarity(a, b)` computes similarity between vector columns.
+See the [DuckDB API guide](https://microsoft.github.io/openaivec/api/duckdb_ext/)
+for the pandas feature mapping and examples.
 
 📓 **[DuckDB tutorial →](https://microsoft.github.io/openaivec/examples/duckdb/)**
 

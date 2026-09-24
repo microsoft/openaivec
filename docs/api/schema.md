@@ -15,14 +15,16 @@ methods forward API parameters such as `store`, `timeout`, `temperature`, and
 fields. Schema-less `.aio.parse()` also uses the configured asynchronous client
 for both inference and extraction. Provide an explicit schema to skip inference.
 
-The pandas `parse()` / `parse_with_cache()` methods and Spark `parse_udf()`
+The pandas `parse()` / `parse_with_cache()` methods and Spark and DuckDB `parse_udf()`
 separate `max_retries=8` (total schema inference attempts) from
 `max_validation_retries=3` (additional extraction corrections). Set the latter
 to zero to disable extraction corrections. Neither option is forwarded as an
 OpenAI API parameter. `store`, `timeout`, and other API options apply to both
 inference and extraction; neither validation control changes transport retries.
 Use `retry_policy` to apply [transport limits](retries.md) to both stages.
-Spark `infer_schema()` also accepts `max_retries`, `retry_policy`, and API options.
+Spark and DuckDB `infer_schema()` also accept `max_retries`, `retry_policy`,
+and API options. DuckDB infers from a bounded, non-NULL table column sample
+before registering a UDF because the SQL return type must be known in advance.
 
 ```python
 import openaivec
