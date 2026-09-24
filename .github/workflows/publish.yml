@@ -125,7 +125,8 @@ jobs:
         run: |
           set -euo pipefail
           version="${RELEASE_TAG#v}"
-          test "$(find dist -maxdepth 1 -type f | wc -l)" -eq 2
+          # uv build can create dist/.gitignore alongside the two distributions.
+          test "$(find dist -maxdepth 1 -type f ! -name '.gitignore' | wc -l)" -eq 2
           wheel="dist/openaivec-${version}-py3-none-any.whl"
           sdist="dist/openaivec-${version}.tar.gz"
           test -f "$wheel"
