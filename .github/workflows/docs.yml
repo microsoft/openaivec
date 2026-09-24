@@ -6,9 +6,17 @@ on:
       - ".github/workflows/docs.yml"
       - "docs/**"
       - "mkdocs.yml"
+      - "skills/openaivec-skill/**/*.md"
   push:
+    branches:
+      - "main"
     tags:
       - "v*.*.*"
+    paths:
+      - ".github/workflows/docs.yml"
+      - "docs/**"
+      - "mkdocs.yml"
+      - "skills/openaivec-skill/**/*.md"
   workflow_dispatch:
 
 permissions:
@@ -33,10 +41,10 @@ jobs:
           python-version: "3.10"
 
       - name: Install dependencies via uv
-        run: uv sync --locked --group docs
+        run: uv sync --frozen --group docs
 
       - name: Build with uv
-        run: uv run mkdocs build --strict -d site
+        run: uv run --frozen mkdocs build --strict -d site
 
       - name: Upload to GitHub Pages
         if: github.event_name != 'pull_request'

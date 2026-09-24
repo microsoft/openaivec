@@ -35,45 +35,59 @@ may be used internally around the materialized AI result.
 
 The assistant should keep implementation details in the background and:
 
-1. restate the business outcome, source, fields, and requested destination;
-2. ask one plain-language question at a time when a column meaning is unclear;
-3. show which data may leave the environment, the unique workload, and the
+1. compare the installed Skill version with the latest stable
+   `openaivec-skill-vX.Y.Z` GitHub Release before opening business data;
+2. restate the business outcome, source, fields, and requested destination;
+3. ask one plain-language question at a time when a column meaning is unclear;
+4. show which data may leave the environment, the unique workload, and the
    limits of any cost estimate;
-4. run a small structured preview and agree on acceptance checks;
-5. process duplicate inputs once while restoring every source row;
-6. report regular checkpoints during long work; and
-7. return validated counts, unresolved items, and a human-review-ready result
+5. run a small structured preview and agree on acceptance checks;
+6. process duplicate inputs once while restoring every source row;
+7. report regular checkpoints during long work; and
+8. return validated counts, unresolved items, and a human-review-ready result
    without silently changing the source.
 
 ## Getting started
 
 - [Getting-started guide](GETTING_STARTED.md)
 
-The guide separates Skill installation from runtime setup, provides
-copy-and-paste bootstrap prompts, and walks through high-volume extraction
+The no-command-line guide provides installation bootstrap prompts for GitHub
+Copilot, Claude Code, Codex, Cursor, and managed Gemini environments. It then
+walks business users through readiness checks and high-volume extraction
 examples for customer feedback, support tickets, document folders, contracts,
 sales notes, and quality reports.
 
-## Install from GitHub
+## Business-user installation
 
-Preview the package before installing it:
+Ask the selected assistant to install the Skill for the current project:
+
+```text
+Install the official openaivec-skill from the microsoft/openaivec GitHub
+repository for this project only. First select the highest stable official
+GitHub Release whose tag matches openaivec-skill-vX.Y.Z, excluding drafts and
+prereleases, and report its publication date. Preview it and explain the files
+and scope before changing anything. Ask for my approval before installation.
+Do not open business data, install processing software, configure credentials,
+or make an AI request during this bootstrap step. After approval, use this
+harness's supported Agent Skills mechanism, verify the source, version, and
+project scope, and tell me whether I need to start a new chat. Do not ask me
+to run command-line commands; prepare an administrator handoff if direct
+installation is unavailable.
+```
+
+See the [getting-started guide](GETTING_STARTED.md) for a prompt tailored to
+each supported harness and for the post-installation verification prompt.
+
+## Administrator and automation installation
+
+Administrators and automated environments can preview and install through the
+GitHub CLI:
 
 ```bash
 gh skill preview microsoft/openaivec openaivec-skill
-```
-
-Install it for a supported harness:
-
-```bash
 gh skill install microsoft/openaivec openaivec-skill \
   --agent github-copilot \
   --scope project
-```
-
-Replace `github-copilot` with another supported host such as `claude-code`,
-`codex`, `cursor`, or `gemini-cli`. For an interactive multi-harness installer:
-
-```bash
 npx skills add microsoft/openaivec --skill openaivec-skill
 ```
 
@@ -85,6 +99,13 @@ gh skill install . openaivec-skill --from-local --agent github-copilot
 ```
 
 ## Use
+
+Every invocation starts by comparing the installed `metadata.version` with the
+highest stable official GitHub Release tagged
+`openaivec-skill-vX.Y.Z`. Drafts, prereleases, unrelated package releases, and
+untagged branch content are excluded. The harness reports both versions and
+the publication date. It never updates automatically or claims the Skill is
+current when GitHub cannot be checked.
 
 The harness should load the skill automatically for requests such as:
 
@@ -131,8 +152,8 @@ matching tag on that exact commit:
 ```bash
 git switch main
 git pull --ff-only
-git tag openaivec-skill-v1.1.0
-git push origin openaivec-skill-v1.1.0
+git tag openaivec-skill-v1.2.0
+git push origin openaivec-skill-v1.2.0
 ```
 
 The `Publish Agent Skill` workflow validates the Agent Skills specification,

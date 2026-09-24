@@ -43,6 +43,20 @@ Perfect for **data scientists**, **analysts**, and **ML engineers** who want to 
     uv add "openaivec[spark]"
     ```
 
+## Agent Skill for high-volume information extraction
+
+The portable `openaivec-skill` helps Agent Skills-compatible assistants safely
+extract, classify, and organize information from large file collections and
+table columns. Business users can start with an ordinary-language request,
+review a small pilot, and approve the full run only after the output fields,
+privacy boundary, and human-review rules are clear.
+
+[Open the Agent Skill Getting Started guide](agent-skill/index.md){ .md-button .md-button--primary }
+
+The guide includes installation, a reusable bootstrap prompt, authentication
+help for users without an API key, and examples for customer feedback, support
+tickets, invoices, contracts, sales notes, and quality reports.
+
 ## 🎯 Key Features
 
 - **🚀 Vectorized Processing**: Handle thousands of records in minutes, not hours

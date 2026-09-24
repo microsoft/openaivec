@@ -52,6 +52,15 @@ theme:
 
 nav:
   - Home: index.md
+  - Agent Skill:
+      - Getting Started: agent-skill/index.md
+      - Business Scenarios: agent-skill/references/business-scenarios.md
+      - Safe Data I/O: agent-skill/references/safe-data-io.md
+      - Authentication: agent-skill/references/authentication.md
+      - Excel Support Setup: agent-skill/references/excel-setup.md
+      - Intelligent Fill: agent-skill/references/intelligent-fill.md
+      - Data Shaping and Cross-Tabs: agent-skill/references/data-shaping-and-crosstabs.md
+      - DuckDB Workflows: agent-skill/references/duckdb-workflows.md
   - Authentication: authentication.md
   - GPT-6 Migration: model-migration.md
   - PyPI: https://pypi.org/project/openaivec/
@@ -207,6 +216,11 @@ markdown_extensions:
       repo: openaivec
   - pymdownx.mark
   - pymdownx.smartsymbols
+  - pymdownx.snippets:
+      base_path:
+        - .
+      check_paths: true
+      restrict_base_path: true
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid
