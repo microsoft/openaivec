@@ -5,10 +5,246 @@ import importlib
 import sys
 import time
 import types
+from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+from threading import Event
 
+import httpx
 import pytest
+from openai import APIStatusError, BadRequestError
 
 from openaivec._cache import AsyncBatchCache, BatchCache
+from openaivec._cache import proxy as proxy_module
+
+
+@dataclass
+class BulkOnlyCache:
+    values: OrderedDict[int, int | None] = field(default_factory=OrderedDict)
+    reads: list[list[int]] = field(default_factory=list)
+    writes: list[list[tuple[int, int | None]]] = field(default_factory=list)
+    touches: list[list[int]] = field(default_factory=list)
+
+    def get_many(self, keys):
+        self.reads.append(keys[:])
+        return {key: self.values[key] for key in keys if key in self.values}
+
+    def put_many(self, items):
+        self.writes.append(items[:])
+        for key, value in items:
+            self.values[key] = value
+            self.values.move_to_end(key)
+
+    def touch_many(self, keys):
+        self.touches.append(keys[:])
+        for key in keys:
+            if key in self.values:
+                self.values.move_to_end(key)
+
+    def __contains__(self, key):
+        raise AssertionError("scalar cache lookup used")
+
+    def __getitem__(self, key):
+        raise AssertionError("scalar cache read used")
+
+    def __setitem__(self, key, value):
+        raise AssertionError("scalar cache write used")
+
+    def __len__(self):
+        return len(self.values)
+
+    def pop_oldest(self):
+        return self.values.popitem(last=False)
+
+    def move_to_end(self, key):
+        raise AssertionError("scalar cache touch used")
+
+    def clear(self):
+        self.values.clear()
+
+
+def test_sync_optional_bulk_backend_path_preserves_none_and_order():
+    backend = BulkOnlyCache()
+    proxy = BatchCache[int, int | None](batch_size=3, cache=backend)
+    calls = []
+
+    def mapper(xs):
+        calls.append(xs[:])
+        return [None if x == 2 else x * 10 for x in xs]
+
+    assert proxy.map([1, 2, 1, 3], mapper) == [10, None, 10, 30]
+    assert backend.writes == [[(1, 10), (2, None), (3, 30)]]
+    assert proxy.map([2, 1, 3], mapper) == [None, 10, 30]
+    assert calls == [[1, 2, 3]]
+    assert backend.touches[-1] == [2, 1, 3]
+    assert any(keys == [1, 2, 3] for keys in backend.reads)
+
+
+@pytest.mark.asyncio
+async def test_async_optional_bulk_backend_path_preserves_none_and_order():
+    backend = BulkOnlyCache()
+    proxy = AsyncBatchCache[int, int | None](batch_size=3, max_concurrency=1, cache=backend)
+
+    async def mapper(xs):
+        return [None if x == 2 else x * 10 for x in xs]
+
+    assert await proxy.map([1, 2, 1, 3], mapper) == [10, None, 10, 30]
+    assert backend.writes == [[(1, 10), (2, None), (3, 30)]]
+    assert await proxy.map([2, 1, 3], mapper) == [None, 10, 30]
+    assert backend.touches[-1] == [2, 1, 3]
+
+
+def _size_error(code: str = "context_length_exceeded") -> BadRequestError:
+    return BadRequestError(
+        "request too large",
+        response=httpx.Response(
+            400, request=httpx.Request("POST", "https://example.com"), json={"error": {"code": code}}
+        ),
+        body={"error": {"code": code}},
+    )
+
+
+@pytest.mark.parametrize("failure", [KeyboardInterrupt, SystemExit])
+def test_sync_baseexception_releases_owner_and_waiter(failure):
+    proxy = BatchCache[int, int](batch_size=1)
+    started, release, waiting = Event(), Event(), Event()
+    calls = 0
+
+    class ObservedEvent(Event):
+        def wait(self, timeout=None):
+            waiting.set()
+            return super().wait(timeout)
+
+    def mapper(xs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            started.set()
+            assert release.wait(2)
+            raise failure("stop")
+        return xs
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        owner = pool.submit(proxy.map, [1, 2], mapper)
+        assert started.wait(2)
+        with proxy._lock:
+            proxy._inflight[1] = ObservedEvent()
+        waiter = pool.submit(proxy.map, [1], mapper)
+        assert waiting.wait(2)
+        release.set()
+        with pytest.raises(failure, match="stop"):
+            owner.result(timeout=2)
+        assert waiter.result(timeout=2) == [1]
+        assert pool.submit(proxy.map, [2], mapper).result(timeout=2) == [2]
+    assert proxy._inflight == {}
+
+
+def test_sync_baseexception_releases_rescued_waiter():
+    proxy = BatchCache[int, int](batch_size=1)
+    with proxy._lock:
+        event = Event()
+        proxy._inflight[1] = event
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        waiter = pool.submit(proxy.map, [1], lambda xs: (_ for _ in ()).throw(KeyboardInterrupt("rescued")))
+        with proxy._lock:
+            proxy._inflight.pop(1)
+            event.set()
+        with pytest.raises(KeyboardInterrupt, match="rescued"):
+            waiter.result(timeout=2)
+    assert proxy._inflight == {}
+
+
+def test_sync_size_error_splits_preserving_duplicates_and_order():
+    proxy = BatchCache[int, int](batch_size=None)
+    calls = []
+
+    def mapper(xs):
+        calls.append(xs[:])
+        if len(xs) > 4:
+            raise _size_error()
+        return [x * 10 for x in xs]
+
+    assert proxy.map([*range(10), 3, 1], mapper) == [*[x * 10 for x in range(10)], 30, 10]
+    assert calls[0] == list(range(10))
+    assert all(len(batch) <= 4 for batch in calls[1:] if len(batch) <= 4)
+    assert proxy.suggester.current_batch_size < 10
+    assert proxy._inflight == {}
+
+
+def test_sync_irreducible_size_error_propagates():
+    proxy = BatchCache[int, int](batch_size=8)
+    with pytest.raises(BadRequestError):
+        proxy.map([1, 2], lambda xs: (_ for _ in ()).throw(_size_error()))
+    assert proxy._inflight == {}
+
+
+def test_sync_payload_too_large_is_split():
+    proxy = BatchCache[int, int](batch_size=4)
+    error = APIStatusError(
+        "payload too large",
+        response=httpx.Response(413, request=httpx.Request("POST", "https://example.com")),
+        body=None,
+    )
+
+    def mapper(xs):
+        if len(xs) > 2:
+            raise error
+        return xs
+
+    assert proxy.map([0, 1, 2, 3], mapper) == [0, 1, 2, 3]
+
+
+def test_sync_size_recovery_has_bounded_split_budget(monkeypatch):
+    monkeypatch.setattr(proxy_module, "_MAX_SIZE_SPLITS", 1)
+    proxy = BatchCache[int, int](batch_size=8)
+    calls = []
+
+    def mapper(xs):
+        calls.append(xs)
+        raise _size_error()
+
+    with pytest.raises(BadRequestError):
+        proxy.map(list(range(8)), mapper)
+    assert [len(xs) for xs in calls] == [8, 4]
+    assert proxy._inflight == {}
+
+
+@pytest.mark.parametrize("code", ["invalid_value", "rate_limit_exceeded", "content_filter"])
+def test_sync_unrelated_bad_request_not_split(code):
+    proxy = BatchCache[int, int](batch_size=8)
+    calls = []
+
+    def mapper(xs):
+        calls.append(xs)
+        raise _size_error(code)
+
+    with pytest.raises(BadRequestError):
+        proxy.map([1, 2], mapper)
+    assert calls == [[1, 2]]
+
+
+@pytest.mark.asyncio
+async def test_async_size_error_splits_and_single_item_failure_releases_waiters():
+    proxy = AsyncBatchCache[int, int](batch_size=8, max_concurrency=1)
+    calls = []
+
+    async def mapper(xs):
+        calls.append(xs[:])
+        if len(xs) > 2:
+            raise _size_error()
+        return xs
+
+    assert await proxy.map([1, 2, 3, 4, 1], mapper) == [1, 2, 3, 4, 1]
+    assert calls == [[1, 2, 3, 4], [1, 2], [3, 4]]
+    assert proxy._inflight == {}
+
+    async def fail(xs):
+        raise _size_error()
+
+    with pytest.raises(BadRequestError):
+        await asyncio.wait_for(proxy.map([5], fail), 2)
+    assert proxy._inflight == {}
 
 
 def test_batching_map_proxy_batches_calls_by_batch_size():

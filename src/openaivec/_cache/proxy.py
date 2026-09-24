@@ -2,7 +2,9 @@ import asyncio
 import threading
 from collections.abc import Awaitable, Callable, Hashable
 from dataclasses import dataclass, field
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, TypeVar, cast
+
+from openai import APIStatusError, BadRequestError
 
 from openaivec._cache import BatchSizeSuggester
 from openaivec._cache._backend import CacheBackend, InMemoryCacheBackend
@@ -12,6 +14,25 @@ __all__ = []
 S = TypeVar("S", bound=Hashable)
 T = TypeVar("T")
 DEFAULT_MANAGED_CACHE_SIZE = 4096
+_MAX_SIZE_SPLITS = 16
+_SIZE_ERROR_CODES = frozenset(
+    {"context_length_exceeded", "max_tokens_exceeded", "request_too_large", "input_too_large", "too_many_inputs"}
+)
+
+
+def _is_request_size_error(error: Exception) -> bool:
+    if not isinstance(error, APIStatusError):
+        return False
+    if error.status_code == 413:
+        return True
+    if not isinstance(error, BadRequestError):
+        return False
+    body = error.body
+    if isinstance(body, dict):
+        details = body.get("error", body)
+        if isinstance(details, dict) and details.get("code") in _SIZE_ERROR_CODES:
+            return True
+    return error.code in _SIZE_ERROR_CODES
 
 
 def _default_cache_backend() -> InMemoryCacheBackend:
@@ -42,9 +63,38 @@ class BatchCacheBase(Generic[S, T]):
     @staticmethod
     def _touch_keys_unlocked(cache: CacheBackend[S, T], keys: list[S]) -> None:
         """Mark keys as recently used in an ordered cache."""
-        for key in BatchCacheBase._unique_in_order(keys):
+        unique = BatchCacheBase._unique_in_order(keys)
+        touch_many = getattr(cache, "touch_many", None)
+        if callable(touch_many):
+            touch_many(unique)
+            return
+        for key in unique:
             if key in cache:
                 cache.move_to_end(key)
+
+    @staticmethod
+    def _cached_values_unlocked(cache: CacheBackend[S, T], keys: list[S]) -> dict[S, T]:
+        """Look up keys without changing their recency, using bulk I/O if available."""
+        if not keys:
+            return {}
+        unique = BatchCacheBase._unique_in_order(keys)
+        get_many = getattr(cache, "get_many", None)
+        if callable(get_many):
+            return cast(dict[S, T], get_many(unique))
+        return {key: cache[key] for key in unique if key in cache}
+
+    @staticmethod
+    def _put_values_unlocked(cache: CacheBackend[S, T], items: list[tuple[S, T]]) -> None:
+        """Store results in order, using bulk I/O if available."""
+        if not items:
+            return
+        put_many = getattr(cache, "put_many", None)
+        if callable(put_many):
+            put_many(items)
+            return
+        for key, value in items:
+            cache[key] = value
+            cache.move_to_end(key)
 
     @staticmethod
     def _prune_cache_unlocked(cache: CacheBackend[S, T], max_cache_size: int | None) -> None:
@@ -221,7 +271,8 @@ class BatchCache(BatchCacheBase[S, T], Generic[S, T]):
             bool: True if every item is already cached, False otherwise.
         """
         with self._lock:
-            return all(x in self.cache for x in items)
+            cached = self._cached_values_unlocked(self.cache, items)
+            return all(x in cached for x in items)
 
     def __values(self, items: list[S]) -> list[T]:
         """Fetch cached values for ``items`` preserving the given order.
@@ -236,7 +287,8 @@ class BatchCache(BatchCacheBase[S, T], Generic[S, T]):
             order.
         """
         with self._lock:
-            values = [self.cache[x] for x in items]
+            cached = self._cached_values_unlocked(self.cache, items)
+            values = [cached[x] for x in items]
             self._touch_keys_unlocked(self.cache, items)
             return values
 
@@ -259,8 +311,9 @@ class BatchCache(BatchCacheBase[S, T], Generic[S, T]):
         owned: list[S] = []
         wait_for: list[S] = []
         with self._lock:
+            cached = self._cached_values_unlocked(self.cache, items)
             for x in items:
-                if x in self.cache:
+                if x in cached:
                     continue
                 if x in self._inflight:
                     wait_for.append(x)
@@ -282,9 +335,8 @@ class BatchCache(BatchCacheBase[S, T], Generic[S, T]):
             self.__finalize_failure(to_call)
             raise ValueError("map_func must return a list of results with the same length and order as inputs")
         with self._lock:
-            for x, y in zip(to_call, results):
-                self.cache[x] = y
-                self.cache.move_to_end(x)
+            self._put_values_unlocked(self.cache, list(zip(to_call, results)))
+            for x in to_call:
                 ev = self._inflight.pop(x, None)
                 if ev:
                     ev.set()
@@ -354,7 +406,8 @@ class BatchCache(BatchCacheBase[S, T], Generic[S, T]):
                 batch = owned[i : i + current_batch_size]
                 # Double-check cache right before processing
                 with self._lock:
-                    uncached_in_batch = [x for x in batch if x not in self.cache]
+                    cached = self._cached_values_unlocked(self.cache, batch)
+                    uncached_in_batch = [x for x in batch if x not in cached]
 
                 pending_to_call.extend(uncached_in_batch)
 
@@ -365,13 +418,7 @@ class BatchCache(BatchCacheBase[S, T], Generic[S, T]):
                     to_call = pending_to_call[:current_batch_size]
                     pending_to_call = pending_to_call[current_batch_size:]
 
-                    try:
-                        # Always measure execution time using suggester
-                        with self.suggester.record(len(to_call)):
-                            results = map_func(to_call)
-                    except Exception:
-                        self.__finalize_failure(to_call)
-                        raise
+                    results = self.__map_with_size_recovery(to_call, map_func)
                     self.__finalize_success(to_call, results)
 
                     # Update progress bar
@@ -387,18 +434,32 @@ class BatchCache(BatchCacheBase[S, T], Generic[S, T]):
                 to_call = pending_to_call[:remaining_batch_size]
                 pending_to_call = pending_to_call[remaining_batch_size:]
 
-                try:
-                    with self.suggester.record(len(to_call)):
-                        results = map_func(to_call)
-                except Exception:
-                    self.__finalize_failure(to_call)
-                    raise
+                results = self.__map_with_size_recovery(to_call, map_func)
                 self.__finalize_success(to_call, results)
 
                 # Update progress bar
                 self._update_progress_bar(progress_bar, len(to_call))
         finally:
             self._close_progress_bar(progress_bar)
+
+    def __map_with_size_recovery(
+        self, items: list[S], map_func: Callable[[list[S]], list[T]], splits: int = 0
+    ) -> list[T]:
+        try:
+            with self.suggester.record(len(items)):
+                results = map_func(items)
+            if len(results) != len(items):
+                raise ValueError("map_func must return a list of results with the same length and order as inputs")
+            return results
+        except Exception as error:
+            if not _is_request_size_error(error) or len(items) == 1 or splits >= _MAX_SIZE_SPLITS:
+                raise
+            if self.batch_size is None:
+                self.suggester.reduce_after_size_error(len(items))
+            middle = len(items) // 2
+            return self.__map_with_size_recovery(items[:middle], map_func, splits + 1) + self.__map_with_size_recovery(
+                items[middle:], map_func, splits + 1
+            )
 
     def __wait_for(self, keys: list[S], map_func: Callable[[list[S]], list[T]]) -> None:
         """Wait for other threads to complete computations for the given keys.
@@ -413,28 +474,25 @@ class BatchCache(BatchCacheBase[S, T], Generic[S, T]):
             keys (list[S]): Items whose computations are owned by other threads.
         """
         rescued: list[S] = []  # keys we claim to batch-process
-        for x in keys:
-            while True:
-                waiter: threading.Event | None = None
-                with self._lock:
-                    if x in self.cache:
-                        break
-                    waiter = self._inflight.get(x)
-                    if waiter is None:
-                        # Not cached and no one computing; claim ownership to batch later.
-                        self._inflight[x] = threading.Event()
-                        rescued.append(x)
-                        break
-                # Someone else is computing; wait for completion.
-                waiter.wait()
-        # Batch-process rescued keys, if any
-        if rescued:
-            try:
+        try:
+            for x in keys:
+                while True:
+                    waiter: threading.Event | None = None
+                    with self._lock:
+                        if x in self._cached_values_unlocked(self.cache, [x]):
+                            break
+                        waiter = self._inflight.get(x)
+                        if waiter is None:
+                            # Not cached and no one computing; claim ownership to batch later.
+                            self._inflight[x] = threading.Event()
+                            rescued.append(x)
+                            break
+                    # Someone else is computing; wait for completion.
+                    waiter.wait()
+            if rescued:
                 self.__process_owned(rescued, map_func)
-            except Exception:
-                # Ensure events are released on failure to avoid deadlock
-                self.__finalize_failure(rescued)
-                raise
+        finally:
+            self.__finalize_failure(rescued)
 
     def __enter_map(self) -> None:
         """Track active map calls so cache pruning happens only after quiescence."""
@@ -494,10 +552,8 @@ class BatchCache(BatchCacheBase[S, T], Generic[S, T]):
 
             try:
                 self.__process_owned(owned, map_func)
-            except Exception:
-                # Ensure unresolved owned keys never remain in-flight after failures.
+            finally:
                 self.__finalize_failure(owned)
-                raise
             self.__wait_for(wait_for, map_func)
             return self.__values(items)
         finally:
@@ -586,7 +642,8 @@ class AsyncBatchCache(BatchCacheBase[S, T], Generic[S, T]):
             bool: True if every item in ``items`` is already cached, False otherwise.
         """
         async with self._lock:
-            return all(x in self.cache for x in items)
+            cached = self._cached_values_unlocked(self.cache, items)
+            return all(x in cached for x in items)
 
     async def __values(self, items: list[S]) -> list[T]:
         """Get cached values for ``items`` preserving their given order.
@@ -601,7 +658,8 @@ class AsyncBatchCache(BatchCacheBase[S, T], Generic[S, T]):
             list[T]: Cached values corresponding to ``items`` in the same order.
         """
         async with self._lock:
-            values = [self.cache[x] for x in items]
+            cached = self._cached_values_unlocked(self.cache, items)
+            values = [cached[x] for x in items]
             self._touch_keys_unlocked(self.cache, items)
             return values
 
@@ -618,8 +676,9 @@ class AsyncBatchCache(BatchCacheBase[S, T], Generic[S, T]):
         owned: dict[S, asyncio.Event] = {}
         wait_for: list[S] = []
         async with self._lock:
+            cached = self._cached_values_unlocked(self.cache, items)
             for x in items:
-                if x in self.cache:
+                if x in cached:
                     continue
                 if x in self._inflight:
                     wait_for.append(x)
@@ -638,10 +697,14 @@ class AsyncBatchCache(BatchCacheBase[S, T], Generic[S, T]):
         if len(results) != len(owned):
             raise ValueError("map_func must return a list of results with the same length and order as inputs")
         async with self._lock:
-            for (key, event), result in zip(owned.items(), results):
+            current = [
+                (key, result)
+                for (key, event), result in zip(owned.items(), results)
+                if self._inflight.get(key) is event
+            ]
+            self._put_values_unlocked(self.cache, current)
+            for key, event in owned.items():
                 if self._inflight.get(key) is event:
-                    self.cache[key] = result
-                    self.cache.move_to_end(key)
                     del self._inflight[key]
                 event.set()
 
@@ -735,11 +798,29 @@ class AsyncBatchCache(BatchCacheBase[S, T], Generic[S, T]):
         """Process a single batch with semaphore control."""
         to_call = list(owned)
         async with self.__sema:
-            with self.suggester.record(len(to_call)):
-                results = await map_func(to_call)
+            results = await self.__map_with_size_recovery(to_call, map_func)
             await self.__finalize_success(owned, results)
 
         self._update_progress_bar(progress_bar, len(to_call))
+
+    async def __map_with_size_recovery(
+        self, items: list[S], map_func: Callable[[list[S]], Awaitable[list[T]]], splits: int = 0
+    ) -> list[T]:
+        try:
+            with self.suggester.record(len(items)):
+                results = await map_func(items)
+            if len(results) != len(items):
+                raise ValueError("map_func must return a list of results with the same length and order as inputs")
+            return results
+        except Exception as error:
+            if not _is_request_size_error(error) or len(items) == 1 or splits >= _MAX_SIZE_SPLITS:
+                raise
+            if self.batch_size is None:
+                self.suggester.reduce_after_size_error(len(items))
+            middle = len(items) // 2
+            left = await self.__map_with_size_recovery(items[:middle], map_func, splits + 1)
+            right = await self.__map_with_size_recovery(items[middle:], map_func, splits + 1)
+            return left + right
 
     async def __wait_for(self, keys: list[S], map_func: Callable[[list[S]], Awaitable[list[T]]]) -> None:
         """Wait for computations owned by other coroutines to complete.
@@ -758,7 +839,7 @@ class AsyncBatchCache(BatchCacheBase[S, T], Generic[S, T]):
             for key in keys:
                 while True:
                     async with self._lock:
-                        if key in self.cache:
+                        if key in self._cached_values_unlocked(self.cache, [key]):
                             break
                         waiter = self._inflight.get(key)
                         if waiter is None:
