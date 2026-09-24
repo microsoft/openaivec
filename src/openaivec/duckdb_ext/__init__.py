@@ -7,8 +7,6 @@ Provides helpers that bridge openaivec's batched AI capabilities with DuckDB:
   functions directly as DuckDB scalar UDFs for SQL queries.
 - **Schema inference** – infer a Pydantic response model once from a bounded
   table sample before registering a typed ``parse`` UDF.
-- **Persistent caching** – pass ``DuckDBCacheBackend`` as the ``cache`` field
-  of ``BatchCache`` for cross-session cache persistence.
 - **Vector similarity** – ``similarity_search`` performs top-k cosine similarity
   queries against an embedding table using DuckDB's built-in
   ``list_cosine_similarity``.
@@ -31,7 +29,6 @@ conn.sql("SELECT text, embed(text) FROM documents")
 ```
 """
 
-from openaivec.duckdb_ext._cache import DuckDBCacheBackend
 from openaivec.duckdb_ext._schema import infer_schema, parse_udf
 from openaivec.duckdb_ext._similarity import similarity_search
 from openaivec.duckdb_ext._tokens import count_tokens_udf
@@ -50,7 +47,6 @@ from openaivec.duckdb_ext._types import (
 from openaivec.duckdb_ext._udfs import embeddings_udf, responses_udf, task_udf
 
 __all__ = [
-    "DuckDBCacheBackend",
     "count_tokens_udf",
     "infer_schema",
     "parse_udf",
