@@ -8,6 +8,14 @@ import pytest
 from pydantic import BaseModel
 
 from openaivec._cache._backend import DuckDBCacheBackend, InMemoryCacheBackend
+from openaivec.duckdb_ext import DuckDBCacheBackend as PublicDuckDBCacheBackend
+
+
+def test_duckdb_backend_compatibility_import() -> None:
+    from openaivec._cache import DuckDBCacheBackend as CachePackageDuckDBCacheBackend
+
+    assert DuckDBCacheBackend is PublicDuckDBCacheBackend
+    assert CachePackageDuckDBCacheBackend is PublicDuckDBCacheBackend
 
 
 # Module-level models for pickle compatibility

@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 
 from openaivec import SchemaInferer, duckdb_ext
 from openaivec._provider import CONTAINER
+from openaivec.duckdb_ext import _schema as duckdb_schema
 
 
 class ParsedLabel(BaseModel):
@@ -117,7 +118,7 @@ def test_parse_udf_infers_once_at_registration_and_returns_typed_struct(monkeypa
     seen, parse = _install_async_responses(monkeypatch)
     inferred = SimpleNamespace(model=ParsedLabel, inference_prompt="Resolved instructions")
     inference = Mock(return_value=inferred)
-    monkeypatch.setattr(duckdb_ext, "infer_schema", inference)
+    monkeypatch.setattr(duckdb_schema, "infer_schema", inference)
 
     with duckdb.connect() as connection:
         connection.execute("CREATE TABLE examples (id INTEGER, text VARCHAR)")
@@ -148,7 +149,7 @@ def test_parse_udf_infers_once_at_registration_and_returns_typed_struct(monkeypa
 
 def test_parse_udf_explicit_model_skips_inference(monkeypatch):
     seen, _ = _install_async_responses(monkeypatch)
-    monkeypatch.setattr(duckdb_ext, "infer_schema", Mock(side_effect=AssertionError("unexpected inference")))
+    monkeypatch.setattr(duckdb_schema, "infer_schema", Mock(side_effect=AssertionError("unexpected inference")))
 
     with duckdb.connect() as connection:
         duckdb_ext.parse_udf(
@@ -165,8 +166,8 @@ def test_parse_udf_explicit_model_skips_inference(monkeypatch):
 def test_parse_udf_explicit_str_uses_varchar_response(monkeypatch):
     inference = Mock(side_effect=AssertionError("unexpected inference"))
     register = Mock()
-    monkeypatch.setattr(duckdb_ext, "infer_schema", inference)
-    monkeypatch.setattr(duckdb_ext, "responses_udf", register)
+    monkeypatch.setattr(duckdb_schema, "infer_schema", inference)
+    monkeypatch.setattr(duckdb_schema, "responses_udf", register)
 
     with duckdb.connect() as connection:
         duckdb_ext.parse_udf(connection, "parsed", instructions="Translate", response_format=str)

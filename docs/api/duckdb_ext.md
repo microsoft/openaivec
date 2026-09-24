@@ -22,6 +22,20 @@ and predicts only missing rows. There is no dedicated DuckDB wrapper for that
 table-level operation; `COALESCE` is useful for ordinary SQL defaults but does
 not perform AI imputation.
 
+All DuckDB-specific implementations live in the `openaivec.duckdb_ext`
+package. Its public imports remain available from `openaivec.duckdb_ext`.
+For persistent cache storage, use `DuckDBCacheBackend` from that package:
+
+```python
+from openaivec.duckdb_ext import DuckDBCacheBackend
+
+backend = DuckDBCacheBackend.of("results.duckdb")
+# Pass backend as the cache argument when constructing BatchCache.
+```
+
+The earlier `openaivec._cache` import path for `DuckDBCacheBackend` remains
+available for existing callers.
+
 ## Schema inference and parsing
 
 ```python
