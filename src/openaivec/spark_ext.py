@@ -135,6 +135,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from enum import Enum
 from functools import partial
+from types import UnionType
 from typing import Annotated, TypeVar, Union, cast, get_args, get_origin
 
 import numpy as np
@@ -217,6 +218,13 @@ def _clear_fabric_setup() -> None:
         CONTAINER.register(AsyncOpenAI, provide_async_openai_client)
 
 
+def _clear_provider_credentials(sc: SparkContext, *names: str) -> None:
+    """Remove driver credentials and mask inherited values in Spark Python workers."""
+    for name in names:
+        os.environ.pop(name, None)
+        sc.environment[name] = ""
+
+
 def setup_fabric(
     spark: SparkSession,
     *,
@@ -270,7 +278,8 @@ def setup(
     """Setup OpenAI authentication and default model names in Spark environment.
     1. Configures OpenAI API key in SparkContext environment.
     2. Configures OpenAI API key in local process environment.
-    3. Optionally registers default model names for responses and embeddings in the DI container.
+    3. Clears Azure OpenAI credentials on the driver and masks inherited worker credentials.
+    4. Optionally registers default model names for responses and embeddings in the DI container.
 
     Args:
         spark (SparkSession): The Spark session to configure.
@@ -300,6 +309,7 @@ def setup(
     CONTAINER.register(SparkContext, lambda: CONTAINER.resolve(SparkSession).sparkContext)
 
     sc = CONTAINER.resolve(SparkContext)
+    _clear_provider_credentials(sc, "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_BASE_URL")
     sc.environment["OPENAI_API_KEY"] = api_key
 
     os.environ["OPENAI_API_KEY"] = api_key
@@ -325,7 +335,8 @@ def setup_azure(
     2. Optionally configures Azure OpenAI API key in SparkContext environment.
     3. Configures Azure OpenAI base URL in local process environment.
     4. Optionally configures Azure OpenAI API key in local process environment.
-    5. Optionally registers default model names for responses and embeddings in the DI container.
+    5. Clears the OpenAI key on the driver and masks inherited worker credentials.
+    6. Optionally registers default model names for responses and embeddings in the DI container.
 
     Note:
         For API-key authentication, provide ``api_key``. For Entra ID authentication,
@@ -365,10 +376,11 @@ def setup_azure(
     CONTAINER.register(SparkContext, lambda: CONTAINER.resolve(SparkSession).sparkContext)
 
     sc = CONTAINER.resolve(SparkContext)
+    _clear_provider_credentials(sc, "OPENAI_API_KEY")
     if api_key:
         sc.environment["AZURE_OPENAI_API_KEY"] = api_key
     else:
-        sc.environment.pop("AZURE_OPENAI_API_KEY", None)
+        _clear_provider_credentials(sc, "AZURE_OPENAI_API_KEY")
     sc.environment["AZURE_OPENAI_BASE_URL"] = base_url
 
     if api_key:
@@ -487,10 +499,7 @@ def setup_entra_id(
 
     sc = CONTAINER.resolve(SparkContext)
 
-    # Clear stale API-key auth to ensure Entra ID path is used
-    for key in ("OPENAI_API_KEY", "AZURE_OPENAI_API_KEY"):
-        sc.environment.pop(key, None)
-        os.environ.pop(key, None)
+    _clear_provider_credentials(sc, "OPENAI_API_KEY", "AZURE_OPENAI_API_KEY")
 
     sc.environment["AZURE_OPENAI_BASE_URL"] = base_url
     sc.environment["AZURE_TENANT_ID"] = tenant_id
@@ -525,13 +534,12 @@ def _python_type_to_spark(python_type):
         inner_type = get_args(python_type)[0]
         return ArrayType(_python_type_to_spark(inner_type))
 
-    # For Optional types (T | None via Union internally)
-    elif origin is Union:
-        non_none_args = [arg for arg in get_args(python_type) if arg is not type(None)]
-        if len(non_none_args) == 1:
+    elif origin in (Union, UnionType):
+        args = get_args(python_type)
+        non_none_args = [arg for arg in args if arg is not type(None)]
+        if len(args) == 2 and len(non_none_args) == 1:
             return _python_type_to_spark(non_none_args[0])
-        else:
-            raise ValueError(f"Unsupported Union type with multiple non-None types: {python_type}")
+        raise ValueError(f"Unsupported Union type: {python_type}")
 
     # For Literal types - treat as StringType since Spark doesn't have enum types
     elif origin is Literal:
@@ -803,12 +811,9 @@ def task_udf(
             separate from transport retries. Defaults to 3; 0 disables correction.
             Must be nonnegative.
         retry_policy (RetryPolicy | None): Transport limits. ``None`` preserves SDK retries.
-
-        Additional Keyword Args:
-        Arbitrary OpenAI Responses API parameters (e.g. ``temperature``, ``top_p``,
-        ``frequency_penalty``, ``presence_penalty``, ``seed``, ``max_output_tokens``, etc.)
-        are forwarded verbatim to the underlying API calls. These parameters are applied to
-        all API requests made by the UDF.
+        **api_kwargs (Any): Additional OpenAI Responses API parameters (e.g.,
+            ``temperature``, ``top_p``, ``frequency_penalty``, ``presence_penalty``,
+            ``seed``, ``max_output_tokens``) forwarded to all requests made by the UDF.
 
     Returns:
         UserDefinedFunction: A Spark pandas UDF configured to execute the specified task

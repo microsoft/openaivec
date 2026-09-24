@@ -11,15 +11,10 @@ from openaivec._model import ResponseFormat
 from openaivec._provider import CONTAINER
 from openaivec._retry import RetryPolicy
 from openaivec._schema import SchemaInferenceInput, SchemaInferenceOutput, SchemaInferer
+from openaivec.duckdb_ext._identifiers import _quote_identifier
 from openaivec.duckdb_ext._udfs import responses_udf
 
 __all__ = ["infer_schema", "parse_udf"]
-
-def _quote_identifier(name: str) -> str:
-    """Quote a single DuckDB column name, including embedded double quotes."""
-    if not isinstance(name, str) or not name:
-        raise ValueError("example_field_name must be a non-empty string")
-    return '"' + name.replace('"', '""') + '"'
 
 
 def infer_schema(

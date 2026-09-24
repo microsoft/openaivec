@@ -33,6 +33,21 @@ backend = DuckDBCacheBackend.of("results.duckdb")
 # Pass backend as the cache argument when constructing BatchCache.
 ```
 
+Cache table names are single unqualified SQL identifiers matching
+`[A-Za-z_][A-Za-z_0-9]*`; reserved words are supported. Keys can be strings,
+integers, booleans, floats, bytes, or tuples of those types. Keys are encoded
+with type tags, so `1` and `"1"` persist independently; other key types raise
+`TypeError`. The current typed-key table schema is incompatible with tables
+created by older releases. Opening an old cache table raises `ValueError`
+instead of silently misreading its entries; choose a new table name or
+explicitly migrate/rebuild the old data. The backend also provides `get_many`,
+`put_many`, and `touch_many` for bounded bulk SQL operations. `get_many` does
+not update LRU order; call `touch_many` after consuming the fetched keys.
+Because `get_many` returns a Python dictionary, requesting distinct keys that
+compare equal in Python (for example, `1` and `True`) together raises
+`ValueError` rather than silently combining them; individual lookups remain
+distinct.
+
 ## Schema inference and parsing
 
 ```python
@@ -106,5 +121,23 @@ accessor and returns SQL `NULL` for SQL `NULL` input. Structured outputs from
 `responses_udf`, `task_udf`, and `parse_udf` are native DuckDB `STRUCT` values;
 read fields with `my_udf(text).field_name` or expand a stored STRUCT column
 with `parsed.*`.
+
+## Similarity search and generated DDL
+
+`similarity_search(conn, "documents", "queries", top_k=3)` returns
+`query_id`, `query_text`, `target_text`, and `score`, ordered by query row and
+descending score. `query_id` is a 1-based position assigned during the query
+table scan (not a persistent key or a guaranteed order across scans); duplicate
+query text still receives an independent top-k ranking. `top_k` must be a
+positive integer and is passed as a SQL parameter.
+
+`pydantic_to_duckdb_ddl(Model, "schema.table")` quotes each table/column
+identifier, including nested STRUCT fields. Table names may be unqualified or
+qualified as `schema.table` or `catalog.schema.table`; use DuckDB double quotes
+around a part to include a literal dot (for example, `"my.schema".items`).
+Spaces and reserved words are supported. Embedded double quotes in field names
+are escaped; SQL expressions and statement separators in identifiers are
+rejected. Both `typing.Optional[T]` and `T | None` map to the same DuckDB and
+Spark type; unions of distinct non-null types are unsupported.
 
 ::: openaivec.duckdb_ext

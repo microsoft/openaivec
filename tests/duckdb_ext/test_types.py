@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import typing
 from enum import Enum
+from types import SimpleNamespace
+from typing import Optional
 
 import duckdb
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, create_model
 
 from openaivec.duckdb_ext import (
     _pydantic_to_struct_type,
@@ -45,26 +48,26 @@ class ModelWithNested(BaseModel):
 class TestPydanticToDuckDBDDL:
     def test_simple_model(self):
         ddl = pydantic_to_duckdb_ddl(SimpleModel, "simple")
-        assert "CREATE TABLE IF NOT EXISTS simple" in ddl
-        assert "name VARCHAR" in ddl
-        assert "age INTEGER" in ddl
-        assert "score DOUBLE" in ddl
-        assert "active BOOLEAN" in ddl
+        assert 'CREATE TABLE IF NOT EXISTS "simple"' in ddl
+        assert '"name" VARCHAR' in ddl
+        assert '"age" INTEGER' in ddl
+        assert '"score" DOUBLE' in ddl
+        assert '"active" BOOLEAN' in ddl
 
     def test_list_field(self):
         ddl = pydantic_to_duckdb_ddl(NestedModel, "nested")
-        assert "label VARCHAR" in ddl
-        assert "tags VARCHAR[]" in ddl
+        assert '"label" VARCHAR' in ddl
+        assert '"tags" VARCHAR[]' in ddl
 
     def test_optional_field(self):
         ddl = pydantic_to_duckdb_ddl(ModelWithOptional, "opt")
-        assert "required_field VARCHAR" in ddl
-        assert "optional_field VARCHAR" in ddl
+        assert '"required_field" VARCHAR' in ddl
+        assert '"optional_field" VARCHAR' in ddl
 
     def test_nested_struct(self):
         ddl = pydantic_to_duckdb_ddl(ModelWithNested, "with_nested")
-        assert "info STRUCT" in ddl
-        assert "count INTEGER" in ddl
+        assert '"info" STRUCT' in ddl
+        assert '"count" INTEGER' in ddl
 
     def test_ddl_is_executable(self):
         """Verify the generated DDL runs without error in DuckDB."""
@@ -95,8 +98,8 @@ class TestPydanticToDuckDBDDL:
             event_date: date
 
         ddl = pydantic_to_duckdb_ddl(Event, "events")
-        assert "occurred_at TIMESTAMP" in ddl
-        assert "event_date DATE" in ddl
+        assert '"occurred_at" TIMESTAMP' in ddl
+        assert '"event_date" DATE' in ddl
 
         conn = duckdb.connect(":memory:")
         conn.execute(ddl)
@@ -135,8 +138,8 @@ class TestPydanticToDuckDBDDL:
             amount: Decimal
 
         ddl = pydantic_to_duckdb_ddl(Payment, "payments")
-        assert "transaction_id UUID" in ddl
-        assert "amount DECIMAL" in ddl
+        assert '"transaction_id" UUID' in ddl
+        assert '"amount" DECIMAL' in ddl
 
         st = _pydantic_to_struct_type(Payment)
         conn = duckdb.connect(":memory:")
@@ -152,6 +155,63 @@ class TestPydanticToDuckDBDDL:
         assert row[0] == test_uuid
         assert row[1] == Decimal("99.99")
         conn.close()
+
+    def test_optional_annotation_spellings(self):
+        class NullableModel(BaseModel):
+            old: Optional[int]
+            new: int | None
+            nested: list[Optional[int]]
+
+        ddl = pydantic_to_duckdb_ddl(NullableModel, "nullable")
+        assert '"old" INTEGER' in ddl
+        assert '"new" INTEGER' in ddl
+        assert '"nested" INTEGER[]' in ddl
+        assert _python_type_to_duckdb(Optional[int]) == _python_type_to_duckdb(int | None) == "INTEGER"
+
+    def test_pep604_union_origin_on_older_python(self, monkeypatch):
+        import openaivec.duckdb_ext._types as duckdb_types
+
+        monkeypatch.setattr(
+            duckdb_types,
+            "typing",
+            SimpleNamespace(
+                get_origin=typing.get_origin,
+                get_args=typing.get_args,
+                Union=object(),
+                Literal=typing.Literal,
+            ),
+        )
+        assert duckdb_types._python_type_to_duckdb(int | None) == "INTEGER"
+
+    def test_nonoptional_union_fails(self):
+        with pytest.raises(ValueError, match="Unsupported Union"):
+            _python_type_to_duckdb(int | str)
+        with pytest.raises(ValueError, match="Unsupported Union"):
+            _python_type_to_duckdb(Optional[int | str])
+
+    def test_quoted_ddl_and_nested_struct(self):
+        inner = create_model("Inner", **{'a"b': (int, ...)})
+        outer = create_model("Outer", **{"select": (inner, ...), "field name": (str, ...)})
+
+        conn = duckdb.connect(":memory:")
+        conn.execute('CREATE SCHEMA "my schema"')
+        ddl = pydantic_to_duckdb_ddl(outer, '"my schema"."table name"')
+        assert '"select" STRUCT("a""b" INTEGER)' in ddl
+        conn.execute(ddl)
+        conn.execute('INSERT INTO "my schema"."table name" VALUES (?, ?)', ({'a"b': 3}, "ok"))
+        assert conn.execute('SELECT "field name" FROM "my schema"."table name"').fetchone() == ("ok",)
+        conn.close()
+
+    @pytest.mark.parametrize("name", ["", "table; DROP TABLE x", "schema..table", "table -- comment"])
+    def test_invalid_ddl_table_name(self, name):
+        with pytest.raises(ValueError, match="identifier"):
+            pydantic_to_duckdb_ddl(SimpleModel, name)
+
+    def test_invalid_ddl_field_name(self):
+        model = create_model("BadField", **{"field; DROP TABLE x": (int, ...)})
+        with pytest.raises(ValueError, match="identifier"):
+            pydantic_to_duckdb_ddl(model, "safe")
+
 
 # ---------------------------------------------------------------------------
 # Pydantic → DuckDB STRUCT type mapping

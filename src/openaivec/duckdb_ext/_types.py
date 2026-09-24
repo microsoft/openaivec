@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import types
 import typing
 from datetime import date, datetime, time
 from decimal import Decimal
@@ -13,7 +14,10 @@ import duckdb
 from duckdb.sqltypes import DuckDBPyType
 from pydantic import BaseModel
 
+from openaivec.duckdb_ext._identifiers import _quote_identifier, _quote_table_name
+
 __all__ = ["pydantic_to_duckdb_ddl"]
+
 
 def _pydantic_to_struct_type(model: type[BaseModel]) -> DuckDBPyType:
     """Convert a Pydantic model to a DuckDB STRUCT type for UDF return values."""
@@ -21,6 +25,7 @@ def _pydantic_to_struct_type(model: type[BaseModel]) -> DuckDBPyType:
     for field_name, field_info in model.model_fields.items():
         fields[field_name] = _python_type_to_duckdb(field_info.annotation) if field_info.annotation else "VARCHAR"
     return duckdb.struct_type(fields)
+
 
 _PRIMITIVE_TYPE_MAP: dict[type, str] = {
     str: "VARCHAR",
@@ -41,7 +46,7 @@ def _python_type_to_duckdb(py_type: Any) -> str:
     if py_type in _PRIMITIVE_TYPE_MAP:
         return _PRIMITIVE_TYPE_MAP[py_type]
 
-    origin = getattr(py_type, "__origin__", None)
+    origin = typing.get_origin(py_type)
 
     if isinstance(py_type, type) and issubclass(py_type, Enum):
         if issubclass(py_type, int):
@@ -51,25 +56,28 @@ def _python_type_to_duckdb(py_type: Any) -> str:
         return "VARCHAR"
 
     if origin is list:
-        args = getattr(py_type, "__args__", ())
+        args = typing.get_args(py_type)
         inner = args[0] if args else Any
         return f"{_python_type_to_duckdb(inner)}[]"
 
     if origin is dict or py_type is dict:
         return "JSON"
 
-    if origin is type(int | str):  # types.UnionType
-        args = [a for a in py_type.__args__ if a is not type(None)]
-        return _python_type_to_duckdb(args[0]) if len(args) == 1 else "VARCHAR"
+    if origin in (typing.Union, types.UnionType):
+        args = typing.get_args(py_type)
+        non_none = [arg for arg in args if arg is not type(None)]
+        if len(args) == 2 and len(non_none) == 1:
+            return _python_type_to_duckdb(non_none[0])
+        raise ValueError(f"Unsupported Union type: {py_type}")
 
     if isinstance(py_type, type) and issubclass(py_type, BaseModel):
         fields = [
-            f"{name} {_python_type_to_duckdb(info.annotation) if info.annotation else 'VARCHAR'}"
+            f"{_quote_identifier(name)} {_python_type_to_duckdb(info.annotation) if info.annotation else 'VARCHAR'}"
             for name, info in py_type.model_fields.items()
         ]
         return f"STRUCT({', '.join(fields)})"
 
-    if hasattr(py_type, "__origin__") and py_type.__origin__ is typing.Literal:
+    if origin is typing.Literal:
         return "VARCHAR"
 
     return "VARCHAR"
@@ -104,15 +112,16 @@ def pydantic_to_duckdb_ddl(model: type[BaseModel], table_name: str) -> str:
         ...     rating: int
         ...     tags: list[str]
         >>> print(pydantic_to_duckdb_ddl(Review, "reviews"))
-        CREATE TABLE IF NOT EXISTS reviews (
-            sentiment VARCHAR,
-            rating INTEGER,
-            tags VARCHAR[]
+        CREATE TABLE IF NOT EXISTS "reviews" (
+            "sentiment" VARCHAR,
+            "rating" INTEGER,
+            "tags" VARCHAR[]
         )
     """
+    table = _quote_table_name(table_name)
     columns: list[str] = []
     for field_name, field_info in model.model_fields.items():
         col_type = _python_type_to_duckdb(field_info.annotation) if field_info.annotation else "VARCHAR"
-        columns.append(f"    {field_name} {col_type}")
+        columns.append(f"    {_quote_identifier(field_name)} {col_type}")
     body = ",\n".join(columns)
-    return f"CREATE TABLE IF NOT EXISTS {table_name} (\n{body}\n)"
+    return f"CREATE TABLE IF NOT EXISTS {table} (\n{body}\n)"

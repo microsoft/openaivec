@@ -1,5 +1,17 @@
 # Spark Extension
 
+## Switching providers
+
+Call `setup(spark, api_key=...)` for OpenAI or
+`setup_azure(spark, base_url=..., api_key=...)` for an Azure OpenAI resource
+before creating AI UDFs. Calling either after the other clears the unused
+provider credentials from the driver and masks keys inherited by Spark Python
+workers. An Azure setup without an API key also masks any inherited Azure API
+key, allowing Entra ID authentication. The worker environment uses empty
+values to override credentials that a running executor JVM may have inherited;
+restart Spark if the executor JVM itself must forget previously configured
+secrets. Recreate UDFs after switching if their model/deployment names change.
+
 ## Concurrency and Cache Scope
 
 `max_concurrency=8` limits concurrent batch requests within one partition
