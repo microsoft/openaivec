@@ -13,10 +13,16 @@ from openaivec._provider import (
     _build_client_kwargs,
     _build_missing_credentials_error,
     _ensure_v1,
+    get_client,
+    get_embeddings_model,
+    get_responses_model,
     provide_async_openai_client,
     provide_openai_client,
+    set_client,
     set_default_registrations,
+    set_responses_model,
 )
+from openaivec._schema import SchemaInferer
 
 _ENV_KEYS = [
     "OPENAI_API_KEY",
@@ -49,6 +55,47 @@ def _env(reset_environment):
     yield
     _clear_env()
     set_default_registrations()
+
+
+def test_default_models():
+    assert get_responses_model() == "gpt-6-luna"
+    assert get_embeddings_model() == "text-embedding-3-small"
+
+
+@pytest.mark.parametrize("change", ["model", "client"])
+def test_configuration_change_preserves_custom_schema_provider(change):
+    with OpenAI(api_key="test") as first, OpenAI(api_key="test") as second:
+        set_client(first)
+        unrelated = object()
+        CONTAINER.register_instance(object, unrelated)
+        provider = MagicMock(side_effect=lambda: SchemaInferer(get_client(), get_responses_model()))
+        CONTAINER.register(SchemaInferer, provider)
+        previous = CONTAINER.resolve(SchemaInferer)
+
+        if change == "model":
+            set_responses_model("custom-model")
+        else:
+            set_client(second)
+
+        current = CONTAINER.resolve(SchemaInferer)
+        assert current is not previous
+        assert current.client is (second if change == "client" else first)
+        assert current.model_name == get_responses_model()
+        assert provider.call_count == 2
+        assert CONTAINER.resolve(object) is unrelated
+        assert not first.is_closed()
+        assert not second.is_closed()
+
+
+def test_configuration_change_preserves_explicit_schema_instance():
+    with OpenAI(api_key="test") as client:
+        custom = SchemaInferer(client, "custom-inference-model")
+        CONTAINER.register_instance(SchemaInferer, custom)
+
+        set_client(client)
+        set_responses_model("custom-extraction-model")
+
+        assert CONTAINER.resolve(SchemaInferer) is custom
 
 
 # ---------------------------------------------------------------------------

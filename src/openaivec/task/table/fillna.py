@@ -48,8 +48,9 @@ Example:
     # Process with BatchResponses
     filler = BatchResponses.of_task(
         client=client,
-        model_name="gpt-4.1-mini",
-        task=task
+        model_name="gpt-6-luna",
+        task=task,
+        reasoning={"effort": "none"},
     )
 
     # Generate inputs for missing rows

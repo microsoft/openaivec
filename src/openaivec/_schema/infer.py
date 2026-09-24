@@ -41,12 +41,13 @@ Design constraints (updated):
 Example (conceptual):
         from openai import OpenAI
         client = OpenAI()
-        inferer = SchemaInferer(client=client, model_name="gpt-4.1-mini")
+        inferer = SchemaInferer(client=client, model_name="gpt-6-luna")
         schema = inferer.infer_schema(
                 SchemaInferenceInput(
                         examples=["Order #123 delayed due to weather", "Order #456 delivered"],
                         instructions="Extract operational status signals for logistics analytics",
-                )
+                ),
+                reasoning={"effort": "none"},
         )
         Model = schema.model  # dynamic Pydantic model
         task = schema.task    # PreparedTask for batch extraction

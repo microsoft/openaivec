@@ -20,11 +20,16 @@ from openaivec import pandas_ext
 os.environ["OPENAI_API_KEY"] = "your-api-key"
 
 fruits = pd.Series(["apple", "banana", "cherry"])
-french_names = fruits.ai.responses("Translate this fruit name to French.")
+french_names = fruits.ai.responses(
+    "Translate this fruit name to French.",
+    reasoning={"effort": "none"},
+)
 print(french_names.tolist())
 # ['pomme', 'banane', 'cerise']
 
 ```
+
+The OpenAI Responses default is `gpt-6-luna`. These examples explicitly disable reasoning for routine row processing; omitting `reasoning` uses the model's `medium` default. See the [GPT-6 migration guide](https://microsoft.github.io/openaivec/model-migration/) for request settings, cache isolation, and rollback. Fabric built-in model defaults remain unchanged.
 
 For Azure OpenAI and custom client setup, see [pandas authentication options](#pandas-authentication-options).
 
@@ -32,7 +37,7 @@ For Azure OpenAI and custom client setup, see [pandas authentication options](#p
 
 ## Benchmarks
 
-Simple task benchmark from [benchmark.ipynb](https://github.com/microsoft/openaivec/blob/main/docs/examples/benchmark.ipynb) (100 numeric strings → integer literals, `Series.aio.responses`, model `gpt-5.1`):
+Historical simple task benchmark from [benchmark.ipynb](https://github.com/microsoft/openaivec/blob/main/docs/examples/benchmark.ipynb) (100 numeric strings → integer literals, `Series.aio.responses`, model `gpt-5.1`):
 
 | Mode                | Settings                                        | Time (s) |
 | ------------------- | ----------------------------------------------- | -------- |
@@ -40,7 +45,7 @@ Simple task benchmark from [benchmark.ipynb](https://github.com/microsoft/openai
 | Batching            | default `batch_size`, `max_concurrency=1`       | ~15      |
 | Concurrent batching | default `batch_size`, default `max_concurrency` | ~6       |
 
-Batching alone removes most HTTP overhead, and letting batching overlap with concurrency cuts total runtime to a few seconds while still yielding one output per input.
+These are previously recorded measurements, not GPT-6 results. Batching alone removes most HTTP overhead, and letting batching overlap with concurrency cuts total runtime to a few seconds while still yielding one output per input.
 
 <img alt="image" src="https://github.com/user-attachments/assets/8ace9bcd-bcae-4023-a37e-13082cd645e5" />
 
@@ -49,6 +54,7 @@ Batching alone removes most HTTP overhead, and letting batching overlap with con
 - [Why openaivec?](#why-openaivec)
 - [Overview](#overview)
 - [Core Workflows](#core-workflows)
+- [GPT-6 migration guide](https://microsoft.github.io/openaivec/model-migration/)
 - [Pandas authentication options](#pandas-authentication-options)
 - [Using with Apache Spark UDFs](#using-with-apache-spark-udfs)
 - [Spark authentication options](#spark-authentication-options)
@@ -86,15 +92,13 @@ from openaivec import BatchResponses
 # Initialize the batch client
 client = BatchResponses.of(
     client=OpenAI(),
-    model_name="gpt-5.1",
+    model_name="gpt-6-luna",
     system_message="Please answer only with 'xx family' and do not output anything else.",
+    reasoning={"effort": "none"},
     # batch_size defaults to None (automatic optimization)
 )
 
-result = client.parse(
-    ["panda", "rabbit", "koala"],
-    reasoning={"effort": "none"},
-)
+result = client.parse(["panda", "rabbit", "koala"])
 print(result)  # Expected output: ['bear family', 'rabbit family', 'koala family']
 ```
 
@@ -158,7 +162,7 @@ import openaivec
 import pandas as pd
 from openaivec import pandas_ext
 
-openaivec.set_responses_model("gpt-5.1")
+openaivec.set_responses_model("gpt-6-luna")
 
 df = pd.DataFrame({"name": ["panda", "rabbit", "koala"]})
 
@@ -180,22 +184,22 @@ result = df.assign(
 
 ### Using with reasoning models
 
-Reasoning models (o1-preview, o1-mini, o3-mini, etc.) follow OpenAI SDK semantics. Pass `reasoning` when you want to override model defaults.
+For more complex analysis, evaluate `gpt-6-sol` with `low` reasoning against Luna on representative data. Pass `reasoning` explicitly to control the quality, cost, and latency tradeoff.
 
 ```python
 import openaivec
 
-openaivec.set_responses_model("o1-mini")  # Set your reasoning model
+openaivec.set_responses_model("gpt-6-sol")
 
 result = df.assign(
     analysis=lambda df: df.text.ai.responses(
-        "Analyze this text step by step",
-        reasoning={"effort": "none"},  # Optional: mirrors the OpenAI SDK argument
+        "Analyze the key issues in this text and give a concise conclusion",
+        reasoning={"effort": "low"},
     )
 )
 ```
 
-You can omit `reasoning` to use the model defaults or tune it per request with the same shape (`dict` with effort) as the OpenAI SDK.
+Luna and Sol default to `medium` reasoning when the option is omitted. `openaivec` forwards request options unchanged. With reasoning other than `none`, omit `temperature`, `top_p`, and logprobs-related options. See the [official migration guide](https://developers.openai.com/api/docs/guides/latest-model/gpt-6-astra.md#migration-quickstart). Configure the selected model before creating wrappers or UDFs.
 
 ### Using pre-configured tasks
 
@@ -237,7 +241,7 @@ import openaivec
 import pandas as pd
 from openaivec import pandas_ext
 
-openaivec.set_responses_model("gpt-5.1")
+openaivec.set_responses_model("gpt-6-luna")
 
 df = pd.DataFrame({"text": [
     "This product is amazing!",
@@ -249,7 +253,7 @@ df = pd.DataFrame({"text": [
 async def process_data():
     return await df["text"].aio.responses(
         "Analyze sentiment and classify as positive/negative/neutral",
-        reasoning={"effort": "none"},  # Recommended for reasoning models
+        reasoning={"effort": "none"},  # Explicit setting for routine classification
         max_concurrency=12    # Allow up to 12 concurrent requests
     )
 
@@ -278,7 +282,7 @@ spark = SparkSession.builder.getOrCreate()
 setup(
     spark,
     api_key="your-openai-api-key",
-    responses_model_name="gpt-5.1",
+    responses_model_name="gpt-6-luna",
     embeddings_model_name="text-embedding-3-small",
 )
 ```
@@ -355,7 +359,7 @@ from pydantic import BaseModel
 from typing import Literal
 from openaivec import duckdb_ext
 
-openaivec.set_responses_model("gpt-5.4")
+openaivec.set_responses_model("gpt-6-luna")
 
 
 class Sentiment(BaseModel):
@@ -371,6 +375,7 @@ duckdb_ext.responses_udf(
     "analyze_sentiment",
     instructions="Analyze customer sentiment. Return label, confidence (0-1), and a one-sentence summary.",
     response_format=Sentiment,
+    reasoning={"effort": "none"},
 )
 
 # Query CSV directly — structured fields, no JSON parsing
@@ -423,7 +428,7 @@ prompt = (
     .caution("Never use proper nouns as categories")
     .example("Apple", "Fruit")
     .example("Car", "Vehicle")
-    .improve(max_iter=1)  # optional
+    .improve(reasoning={"effort": "none"})  # optional API call
     .build()
 )
 ```

@@ -15,8 +15,9 @@ from openaivec import BatchResponses, RetryPolicy
 with OpenAI() as client:
     responses = BatchResponses.of(
         client,
-        "gpt-4.1-mini",
+        "gpt-6-luna",
         "Summarize each input",
+        reasoning={"effort": "none"},
         retry_policy=RetryPolicy(
             max_attempts=3,
             initial_delay=0.5,
@@ -42,9 +43,17 @@ status retries. Other API errors propagate immediately.
 
 Explicit policies use full-jitter exponential delays, starting with a ceiling
 of `min(initial_delay, max_delay)` and doubling up to `max_delay`. Both delay
-limits are finite and nonnegative. Zero disables the delay. Unlike SDK-owned
-retries, explicit policies use these local delay limits, not `Retry-After`.
-Exhaustion logs only the exception type and attempt count, not prompts or keys.
+limits are finite and nonnegative. Setting `initial_delay=0` disables fallback
+jitter delays. A valid `Retry-After` response header takes precedence: numeric
+seconds and HTTP dates are honored without shortening the server's wait with
+jitter. Malformed, negative, or non-finite values fall back to local jitter;
+a past HTTP date allows an immediate retry.
+
+If the server wait exceeds `max_delay`, the original API error is raised without
+retrying early. Otherwise, if that wait reaches or exceeds the remaining batch deadline,
+`TimeoutError` is raised with the API error as its cause. Setting `max_delay=0`
+therefore stops retries on a positive server-requested wait. Exhaustion logs
+only the exception type and attempt count, not prompts or keys.
 
 ## Deadlines
 

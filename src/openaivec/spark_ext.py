@@ -27,7 +27,7 @@ spark = SparkSession.builder.getOrCreate()
 setup(
     spark,
     api_key="your-openai-api-key",
-    responses_model_name="gpt-4.1-mini",  # Optional: set default model
+    responses_model_name="gpt-6-luna",  # Optional: set default model
     embeddings_model_name="text-embedding-3-small"  # Optional: set default model
 )
 
@@ -63,9 +63,10 @@ spark.udf.register(
     responses_udf(
         instructions="Translate the text to multiple languages.",
         response_format=Translation,
-        model_name="gpt-4.1-mini",  # For Azure: deployment name, for OpenAI: model name
+        model_name="gpt-6-luna",  # For Azure: deployment name, for OpenAI: model name
         batch_size=64,              # Rows per API request within partition
-        max_concurrency=1           # Concurrent requests per partition invocation
+        max_concurrency=1,          # Concurrent requests per partition invocation
+        reasoning={"effort": "none"},
     ),
 )
 
@@ -288,7 +289,7 @@ def setup(
         setup(
             spark,
             api_key="sk-***",
-            responses_model_name="gpt-4.1-mini",
+            responses_model_name="gpt-6-luna",
             embeddings_model_name="text-embedding-3-small",
         )
         ```
@@ -629,7 +630,7 @@ def responses_udf(
         response_format (type[ResponseFormat]): The desired output format. Either `str` for plain text
             or a Pydantic `BaseModel` for structured JSON output. Defaults to `str`.
         model_name (str | None): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
-            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to configured model in DI container
+            For OpenAI, use the model name (e.g., "gpt-6-luna"). Defaults to configured model in DI container
             via ResponsesModelName if not provided.
         batch_size (int | None): Number of rows per async batch request within each partition.
             Larger values reduce API call overhead but increase memory usage.
@@ -662,8 +663,8 @@ def responses_udf(
         from openaivec.spark_ext import responses_udf, setup
 
         spark = SparkSession.builder.getOrCreate()
-        setup(spark, api_key="sk-***", responses_model_name="gpt-4.1-mini")
-        udf = responses_udf("Reply with one word.")
+        setup(spark, api_key="sk-***", responses_model_name="gpt-6-luna")
+        udf = responses_udf("Reply with one word.", reasoning={"effort": "none"})
         spark.udf.register("short_answer", udf)
         df = spark.createDataFrame([("hello",), ("bye",)], ["text"])
         df.selectExpr("short_answer(text) as reply").show()
@@ -786,7 +787,7 @@ def task_udf(
         task (PreparedTask): A predefined task configuration containing instructions
             and response format.
         model_name (str | None): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
-            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to configured model in DI container
+            For OpenAI, use the model name (e.g., "gpt-6-luna"). Defaults to configured model in DI container
             via ResponsesModelName if not provided.
         batch_size (int | None): Number of rows per async batch request within each partition.
             Larger values reduce API call overhead but increase memory usage.
@@ -933,7 +934,7 @@ def parse_udf(
         max_examples (int): Maximum number of examples to retrieve for schema inference.
             Defaults to 100.
         model_name (str | None): For Azure OpenAI, use your deployment name (e.g., "my-gpt4-deployment").
-            For OpenAI, use the model name (e.g., "gpt-4.1-mini"). Defaults to configured model in DI container
+            For OpenAI, use the model name (e.g., "gpt-6-luna"). Defaults to configured model in DI container
             via ResponsesModelName if not provided.
         batch_size (int | None): Number of rows per async batch request within each partition.
             Larger values reduce API call overhead but increase memory usage.

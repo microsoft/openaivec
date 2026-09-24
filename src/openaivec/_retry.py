@@ -5,6 +5,8 @@ import time
 from asyncio import TimeoutError as AsyncTimeoutError
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import timezone
+from email.utils import parsedate_to_datetime
 from logging import getLogger
 from typing import Any, TypeVar
 
@@ -25,9 +27,10 @@ class RetryPolicy:
         max_attempts (int): Total HTTP attempts, including the initial attempt.
             Set to 1 for fail-fast behavior. Defaults to 3.
         initial_delay (float): Initial full-jitter delay ceiling in seconds.
-            Defaults to 0.5. Set to zero to disable retry delays.
+            Defaults to 0.5. Set to zero to disable fallback retry delays.
         max_delay (float): Fixed ceiling for each retry delay in seconds.
-            Defaults to 8.0.
+            A longer server ``Retry-After`` stops retries and propagates the
+            original API error. Defaults to 8.0.
         max_elapsed (float | None): Optional elapsed-time budget in seconds.
             Async calls are cancelled at the deadline. Sync calls cap HTTP
             timeouts and reject late results but cannot forcibly interrupt
@@ -81,6 +84,26 @@ def _request_options(client: OpenAI | AsyncOpenAI, options: dict[str, Any], rema
     return {**options, "timeout": httpx.Timeout(**bounded)}
 
 
+def _retry_after(error: APIConnectionError | APIStatusError) -> float | None:
+    """Read a finite, nonnegative server delay in seconds or HTTP-date format."""
+    if not isinstance(error, APIStatusError):
+        return None
+    value = error.response.headers.get("retry-after")
+    if value is None:
+        return None
+    try:
+        interval = float(value)
+    except ValueError:
+        try:
+            retry_at = parsedate_to_datetime(value)
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=timezone.utc)
+            interval = max(0.0, retry_at.timestamp() - time.time())
+        except (ValueError, TypeError, OverflowError):
+            return None
+    return interval if math.isfinite(interval) and interval >= 0 else None
+
+
 def _retry_delay(
     policy: RetryPolicy, delay: float, attempt: int, error: APIConnectionError | APIStatusError, deadline: float | None
 ) -> float:
@@ -90,7 +113,14 @@ def _retry_delay(
     if attempt + 1 == policy.max_attempts:
         _LOGGER.warning("Transport retries exhausted after %d attempt(s): %s", attempt + 1, type(error).__name__)
         raise error
-    interval = random.uniform(0, delay)
+    interval = _retry_after(error)
+    if interval is None:
+        interval = random.uniform(0, delay)
+    elif interval > policy.max_delay:
+        _LOGGER.warning(
+            "Server retry delay exceeds max_delay after %d attempt(s): %s", attempt + 1, type(error).__name__
+        )
+        raise error
     if remaining is not None and interval >= remaining:
         raise TimeoutError("Next transport retry would exceed the deadline") from error
     return interval

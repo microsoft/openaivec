@@ -12,9 +12,67 @@ import openaivec
 from openaivec import SchemaInferer, pandas_ext  # noqa: F401
 from openaivec._cache import AsyncBatchCache, BatchCache
 from openaivec._di import ProviderError
-from openaivec._provider import CONTAINER
+from openaivec._provider import CONTAINER, set_default_registrations
 from openaivec._schema import SchemaInferenceOutput
 from openaivec._schema.spec import FieldSpec, ObjectSpec
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("change", ["model", "client"])
+async def test_pandas_inference_uses_updated_configuration(monkeypatch, asynchronous, change):
+    # Preserve existing registrations while exercising the default provider graph.
+    monkeypatch.setattr(CONTAINER, "_providers", CONTAINER._providers.copy())
+    monkeypatch.setattr(CONTAINER, "_instances", CONTAINER._instances.copy())
+    set_default_registrations()
+    schema = SchemaInferenceOutput(
+        instructions="extract",
+        examples_summary="names",
+        examples_instructions_alignment="extract names",
+        object_spec=ObjectSpec(name="Result", fields=[FieldSpec(name="name", type="string", description="Name")]),
+        inference_prompt="extract name",
+    )
+    client_type = AsyncOpenAI if asynchronous else OpenAI
+    first = client_type(api_key="test")
+    second = client_type(api_key="test")
+    mock_type = AsyncMock if asynchronous else Mock
+    first_parse = mock_type(return_value=SimpleNamespace(output_parsed=schema))
+    second_parse = mock_type(return_value=SimpleNamespace(output_parsed=schema))
+    monkeypatch.setattr(first.responses, "parse", first_parse)
+    monkeypatch.setattr(second.responses, "parse", second_parse)
+    set_client = openaivec.set_async_client if asynchronous else openaivec.set_client
+    set_client(first)
+    openaivec.set_responses_model("gpt-6-luna")
+    series = pd.Series(["first"])
+    accessor = series.aio if asynchronous else series.ai
+
+    async def infer():
+        result = accessor.infer_schema("extract", reasoning={"effort": "none"}, store=False)
+        return await result if asynchronous else result
+
+    try:
+        assert await infer() is schema
+        assert first_parse.call_args.kwargs["model"] == "gpt-6-luna"
+        if change == "model":
+            openaivec.set_responses_model("gpt-6-sol")
+        else:
+            set_client(second)
+        assert await infer() is schema
+        current_parse = first_parse if change == "model" else second_parse
+        assert current_parse.call_args.kwargs["model"] == ("gpt-6-sol" if change == "model" else "gpt-6-luna")
+        assert current_parse.call_args.kwargs["reasoning"] == {"effort": "none"}
+        assert current_parse.call_args.kwargs["store"] is False
+        assert first_parse.call_count == (2 if change == "model" else 1)
+        assert second_parse.call_count == (0 if change == "model" else 1)
+        assert not first.is_closed()
+        assert not second.is_closed()
+    finally:
+        if asynchronous:
+            await first.close()
+            await second.close()
+        else:
+            first.close()
+            second.close()
 
 
 @pytest.mark.parametrize("max_retries", [1, 2])

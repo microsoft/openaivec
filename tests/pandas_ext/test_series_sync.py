@@ -62,7 +62,7 @@ class TestSeriesSync:
 
         task = PreparedTask(instructions="Translate to French", response_format=str)
         series = pd.Series(["cat", "dog"])
-        results = series.ai.task(task=task, batch_size=2, show_progress=False, temperature=0.0, top_p=1.0)
+        results = series.ai.task(task=task, batch_size=2, show_progress=False, reasoning={"effort": "none"})
         assert len(results) == 2
         assert results.index.equals(series.index)
         assert all(isinstance(result, str) for result in results)

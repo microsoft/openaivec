@@ -21,7 +21,7 @@ import duckdb
 from openaivec.duckdb_ext import responses_udf, embeddings_udf
 
 conn = duckdb.connect()
-responses_udf(conn, "translate", instructions="Translate to French")
+responses_udf(conn, "translate", instructions="Translate to French", reasoning={"effort": "none"})
 embeddings_udf(conn, "embed")
 
 conn.sql("SELECT translate(review) FROM products")

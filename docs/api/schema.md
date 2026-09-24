@@ -30,13 +30,14 @@ from openai import AsyncOpenAI
 
 async def infer():
     async with AsyncOpenAI() as client:
-        inferer = openaivec.AsyncSchemaInferer(client=client, model_name="gpt-4.1-mini")
+        inferer = openaivec.AsyncSchemaInferer(client=client, model_name="gpt-6-luna")
         return await inferer.infer_schema(
             openaivec.SchemaInferenceInput(
                 examples=["Order 42 has shipped"],
                 instructions="Extract order status",
             ),
             max_retries=2,
+            reasoning={"effort": "none"},
             store=False,
         )
 ```

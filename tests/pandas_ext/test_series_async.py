@@ -51,8 +51,7 @@ class TestSeriesAsync:
                 batch_size=2,
                 max_concurrency=2,
                 show_progress=False,
-                temperature=0.0,
-                top_p=1.0,
+                reasoning={"effort": "none"},
             )
 
         results = asyncio.run(run_test())
