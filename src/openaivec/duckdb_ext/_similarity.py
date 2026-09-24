@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import duckdb
 
+from openaivec.duckdb_ext._identifiers import _quote_identifier, _quote_table_name
+
 __all__ = ["similarity_search"]
+
 
 def similarity_search(
     conn: duckdb.DuckDBPyConnection,
@@ -33,8 +36,12 @@ def similarity_search(
         top_k (int): Number of results per query.
 
     Returns:
-        duckdb.DuckDBPyRelation: A DuckDB relation with columns ``query_text``,
-        ``target_text``, ``score`` ordered by descending similarity.
+        duckdb.DuckDBPyRelation: A DuckDB relation with ``query_id`` (1-based
+        query row position), ``query_text``, ``target_text``, and ``score``,
+        ordered by query row and descending similarity.
+
+    Raises:
+        ValueError: If an identifier or ``top_k`` is invalid.
 
     Example:
         >>> import duckdb
@@ -44,23 +51,34 @@ def similarity_search(
         >>> results = similarity_search(conn, "docs", "queries", top_k=5)
         >>> results.df()
     """
+    if isinstance(top_k, bool) or not isinstance(top_k, int) or top_k < 1:
+        raise ValueError("top_k must be a positive integer")
+    target = _quote_table_name(target_table)
+    query = _quote_table_name(query_table)
+    target_vector = _quote_identifier(target_column)
+    query_vector = _quote_identifier(query_column)
+    target_text = _quote_identifier(target_text_column)
+    query_text = _quote_identifier(query_text_column)
+
     sql = f"""
+        WITH queries AS (
+            SELECT row_number() OVER () AS query_id,
+                   q.{query_text} AS query_text,
+                   q.{query_vector} AS query_vector
+            FROM {query} AS q
+        ), candidates AS (
+            SELECT q.query_id, q.query_text, t.{target_text} AS target_text,
+                   list_cosine_similarity(t.{target_vector}::FLOAT[], q.query_vector::FLOAT[]) AS score
+            FROM queries AS q
+            CROSS JOIN {target} AS t
+        )
         SELECT
-            q.{query_text_column} AS query_text,
-            t.{target_text_column} AS target_text,
-            list_cosine_similarity(
-                t.{target_column}::FLOAT[],
-                q.{query_column}::FLOAT[]
-            ) AS score
-        FROM {query_table} q
-        CROSS JOIN {target_table} t
+            query_id, query_text, target_text, score
+        FROM candidates
         QUALIFY row_number() OVER (
-            PARTITION BY q.{query_text_column}
-            ORDER BY list_cosine_similarity(
-                t.{target_column}::FLOAT[],
-                q.{query_column}::FLOAT[]
-            ) DESC
-        ) <= {top_k}
-        ORDER BY q.{query_text_column}, score DESC
+            PARTITION BY query_id
+            ORDER BY score DESC
+        ) <= ?
+        ORDER BY query_id, score DESC
     """
-    return conn.sql(sql)
+    return conn.sql(sql, params=[top_k])

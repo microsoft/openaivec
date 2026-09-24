@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from pyspark.sql.types import ArrayType, FloatType, IntegerType, StringType, StructField, StructType
 
 from openaivec._model import PreparedTask
-from openaivec._provider import set_default_registrations
+from openaivec._provider import _build_client_kwargs, set_default_registrations
 from openaivec._util import run_partition_async
 from openaivec.spark_ext import (
     _pydantic_to_spark_schema,
@@ -18,6 +18,7 @@ from openaivec.spark_ext import (
     responses_udf,
     setup,
     setup_azure,
+    setup_entra_id,
     similarity_udf,
     split_to_chunks_udf,
     task_udf,
@@ -429,6 +430,35 @@ class TestSchemaMapping:
         assert len(schema.fields) == 1
         assert schema.fields[0].dataType == FloatType()
 
+    def test_nullable_annotation_spellings(self):
+        from typing import Optional
+
+        from openaivec.spark_ext import _python_type_to_spark
+
+        assert _python_type_to_spark(Optional[int]) == _python_type_to_spark(int | None) == IntegerType()
+
+        class NullableModel(BaseModel):
+            legacy: Optional[int]
+            modern: int | None
+
+        schema = _pydantic_to_spark_schema(NullableModel)
+        assert [field.dataType for field in schema.fields] == [IntegerType(), IntegerType()]
+
+    def test_rejects_nonoptional_union(self):
+        from openaivec.spark_ext import _python_type_to_spark
+
+        with pytest.raises(ValueError, match="Unsupported Union"):
+            _python_type_to_spark(int | str)
+
+    def test_pep604_union_origin_on_older_python(self, monkeypatch):
+        import openaivec.spark_ext as spark_ext
+
+        # Python 3.14 aliases typing.Union to types.UnionType; older versions do not.
+        monkeypatch.setattr(spark_ext, "Union", object())
+        assert spark_ext._python_type_to_spark(int | None) == IntegerType()
+        with pytest.raises(ValueError, match="Unsupported Union"):
+            spark_ext._python_type_to_spark(int | str)
+
 
 class TestSparkConfigAndValidation:
     def test_parse_udf_requires_response_format_or_example_source(self):
@@ -498,6 +528,8 @@ class TestSparkNonApiUdfs:
 
     def test_setup_azure_sets_spark_and_local_environment(self, spark_session, reset_environment):
         set_default_registrations()
+        spark_session.sparkContext.environment["OPENAI_API_KEY"] = "stale-openai-key"
+        os.environ["OPENAI_API_KEY"] = "stale-openai-key"
 
         setup_azure(
             spark=spark_session,
@@ -508,16 +540,24 @@ class TestSparkNonApiUdfs:
         )
 
         sc_env = spark_session.sparkContext.environment
+        assert sc_env["OPENAI_API_KEY"] == ""
         assert sc_env["AZURE_OPENAI_API_KEY"] == "azure-key"
         assert sc_env["AZURE_OPENAI_BASE_URL"] == "https://example.services.ai.azure.com/openai/v1/"
 
+        assert "OPENAI_API_KEY" not in os.environ
         assert os.environ["AZURE_OPENAI_API_KEY"] == "azure-key"
         assert os.environ["AZURE_OPENAI_BASE_URL"] == "https://example.services.ai.azure.com/openai/v1/"
+        assert _build_client_kwargs() == {
+            "api_key": "azure-key",
+            "base_url": "https://example.services.ai.azure.com/openai/v1/",
+        }
 
     def test_setup_azure_without_api_key_clears_azure_key(self, spark_session, reset_environment):
         set_default_registrations()
 
+        spark_session.sparkContext.environment["OPENAI_API_KEY"] = "stale-openai-key"
         spark_session.sparkContext.environment["AZURE_OPENAI_API_KEY"] = "stale-key"
+        os.environ["OPENAI_API_KEY"] = "stale-openai-key"
         os.environ["AZURE_OPENAI_API_KEY"] = "stale-key"
 
         setup_azure(
@@ -528,15 +568,123 @@ class TestSparkNonApiUdfs:
         )
 
         sc_env = spark_session.sparkContext.environment
-        assert "AZURE_OPENAI_API_KEY" not in sc_env
+        assert sc_env["OPENAI_API_KEY"] == ""
+        assert sc_env["AZURE_OPENAI_API_KEY"] == ""
         assert sc_env["AZURE_OPENAI_BASE_URL"] == "https://example.services.ai.azure.com/openai/v1/"
 
+        assert "OPENAI_API_KEY" not in os.environ
         assert "AZURE_OPENAI_API_KEY" not in os.environ
         assert os.environ["AZURE_OPENAI_BASE_URL"] == "https://example.services.ai.azure.com/openai/v1/"
+
+    def test_setup_openai_clears_azure_credentials(self, spark_session, reset_environment):
+        set_default_registrations()
+        sc_env = spark_session.sparkContext.environment
+        sc_env["AZURE_OPENAI_API_KEY"] = "stale-azure-key"
+        sc_env["AZURE_OPENAI_BASE_URL"] = "https://old.services.ai.azure.com/openai/v1/"
+        os.environ["AZURE_OPENAI_API_KEY"] = "stale-azure-key"
+        os.environ["AZURE_OPENAI_BASE_URL"] = "https://old.services.ai.azure.com/openai/v1/"
+
+        setup(spark_session, api_key="openai-key")
+
+        assert sc_env["OPENAI_API_KEY"] == "openai-key"
+        assert sc_env["AZURE_OPENAI_API_KEY"] == ""
+        assert sc_env["AZURE_OPENAI_BASE_URL"] == ""
+        assert os.environ["OPENAI_API_KEY"] == "openai-key"
+        assert "AZURE_OPENAI_API_KEY" not in os.environ
+        assert "AZURE_OPENAI_BASE_URL" not in os.environ
+        assert _build_client_kwargs() == {"api_key": "openai-key"}
 
     def test_setup_azure_requires_base_url(self, spark_session):
         with pytest.raises(ValueError, match="base_url is required"):
             setup_azure(spark=spark_session, api_key="azure-key")
+
+    def test_setup_entra_id_masks_stale_keys_on_workers(self, spark_session, reset_environment):
+        set_default_registrations()
+        sc = spark_session.sparkContext
+        names = (
+            "OPENAI_API_KEY",
+            "AZURE_OPENAI_API_KEY",
+            "AZURE_OPENAI_BASE_URL",
+            "AZURE_TENANT_ID",
+            "AZURE_CLIENT_ID",
+            "AZURE_CLIENT_SECRET",
+        )
+        original = {name: sc.environment.get(name) for name in names}
+        url = "https://example.services.ai.azure.com/openai/v1/"
+
+        def worker_provider(_):
+            import os
+
+            from openaivec._provider import _build_client_kwargs
+
+            kwargs = _build_client_kwargs()
+            return (
+                kwargs["base_url"],
+                callable(kwargs["api_key"]),
+                os.environ.get("OPENAI_API_KEY"),
+                os.environ.get("AZURE_OPENAI_API_KEY"),
+            )
+
+        try:
+            sc.environment["OPENAI_API_KEY"] = "stale-openai-key"
+            sc.environment["AZURE_OPENAI_API_KEY"] = "stale-azure-key"
+            os.environ["OPENAI_API_KEY"] = "stale-openai-key"
+            os.environ["AZURE_OPENAI_API_KEY"] = "stale-azure-key"
+
+            setup_entra_id(spark_session, url, "example-tenant", "example-client", "example-secret")
+            assert "OPENAI_API_KEY" not in os.environ
+            assert "AZURE_OPENAI_API_KEY" not in os.environ
+            assert sc.environment["OPENAI_API_KEY"] == ""
+            assert sc.environment["AZURE_OPENAI_API_KEY"] == ""
+            assert callable(_build_client_kwargs()["api_key"])
+            assert sc.parallelize([0], 1).map(worker_provider).first() == (url, True, "", "")
+        finally:
+            for name, previous in original.items():
+                if previous is None:
+                    sc.environment.pop(name, None)
+                else:
+                    sc.environment[name] = previous
+
+    def test_setup_switches_providers_on_workers(self, spark_session, reset_environment):
+        set_default_registrations()
+        sc = spark_session.sparkContext
+        names = ("OPENAI_API_KEY", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_BASE_URL")
+        original = {name: sc.environment.get(name) for name in names}
+        url = "https://example.services.ai.azure.com/openai/v1/"
+
+        def worker_provider(_):
+            import os
+
+            from openaivec._provider import _build_client_kwargs
+
+            return (
+                _build_client_kwargs().get("base_url"),
+                os.environ.get("OPENAI_API_KEY"),
+                os.environ.get("AZURE_OPENAI_API_KEY"),
+                os.environ.get("AZURE_OPENAI_BASE_URL"),
+            )
+
+        try:
+            setup(spark_session, api_key="openai-before")
+            setup_azure(spark_session, api_key="azure-after", base_url=url)
+            assert "OPENAI_API_KEY" not in os.environ
+            assert sc.environment["OPENAI_API_KEY"] == ""
+            assert _build_client_kwargs()["base_url"] == url
+            assert sc.parallelize([0], 1).map(worker_provider).first() == (url, "", "azure-after", url)
+
+            setup(spark_session, api_key="openai-after")
+            assert "AZURE_OPENAI_API_KEY" not in os.environ
+            assert "AZURE_OPENAI_BASE_URL" not in os.environ
+            assert sc.environment["AZURE_OPENAI_API_KEY"] == ""
+            assert sc.environment["AZURE_OPENAI_BASE_URL"] == ""
+            assert _build_client_kwargs() == {"api_key": "openai-after"}
+            assert sc.parallelize([0], 1).map(worker_provider).first() == (None, "openai-after", "", "")
+        finally:
+            for name, previous in original.items():
+                if previous is None:
+                    sc.environment.pop(name, None)
+                else:
+                    sc.environment[name] = previous
 
     def test_split_to_chunks_udf(self, spark_session):
         spark_session.udf.register("split_chunks", split_to_chunks_udf(max_tokens=8, sep=[".", " "]))
