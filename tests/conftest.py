@@ -50,14 +50,14 @@ def pytest_collection_modifyitems(config, items):
 @pytest.fixture(scope="session")
 def openai_client() -> Generator[OpenAI, None, None]:
     """Provide an OpenAI client for live and mocked tests."""
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY") or "test")
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY") or "test", timeout=90)
     yield client
 
 
 @pytest.fixture(scope="session")
 def async_openai_client() -> Generator[AsyncOpenAI, None, None]:
     """Provide an async OpenAI client for live and mocked tests."""
-    client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY") or "test")
+    client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY") or "test", timeout=90)
     yield client
 
 
