@@ -7,7 +7,14 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from openaivec._schema import SchemaInferenceInput, SchemaInferenceOutput, SchemaInferer  # type: ignore
-from openaivec._schema.spec import EnumSpec, FieldSpec, ObjectSpec  # internal types for constructing test schemas
+from openaivec._schema.infer import _schema_instructions, _validated_schema
+from openaivec._schema.spec import (  # internal types for constructing test schemas
+    _MAX_ENUM_VALUES,
+    _MIN_ENUM_VALUES,
+    EnumSpec,
+    FieldSpec,
+    ObjectSpec,
+)
 
 
 @pytest.fixture(scope="session")
@@ -257,15 +264,8 @@ class TestInferredSchemaBuildModel:
             inference_prompt="Test prompt",
         )
 
-        model_cls = schema.build_model()
-        assert len(model_cls.model_fields) == 0
-
-        # Should still be a valid BaseModel
-        assert issubclass(model_cls, BaseModel)
-
-        # Should be able to instantiate with no arguments
-        instance = model_cls()
-        assert isinstance(instance, BaseModel)
+        with pytest.raises(ValueError, match="at least one field"):
+            schema.build_model()
 
     def test_build_model_mixed_enum_and_regular_fields(self):
         """Test a complex scenario with both enum and regular fields of all types."""
@@ -504,6 +504,68 @@ def test_schema_inference_output_task_uses_prompt_and_model():
 
     task = schema.task
 
-    assert task.instructions == schema.inference_prompt
+    assert "category: string (required)" in task.instructions
+    assert "score: float (required)" in task.instructions
     assert issubclass(task.response_format, BaseModel)
     assert set(task.response_format.model_fields) == {"category", "score"}
+
+
+def test_inference_prompt_limits_match_validators():
+    initial = _schema_instructions([])
+    retry = _schema_instructions(["invalid enum"])
+    for prompt in (initial, retry):
+        assert f"{_MIN_ENUM_VALUES}–{_MAX_ENUM_VALUES}" in prompt
+        assert "{_MAX_ENUM_VALUES}" not in prompt
+        assert "2–24" not in prompt
+
+
+def test_inference_replaces_contradictory_prompt_with_nested_enum_contract():
+    output = _minimal_schema_output()
+    output.object_spec = ObjectSpec(
+        name="Root",
+        fields=[
+            FieldSpec(
+                name="state",
+                type="enum",
+                description="State label; omit state from the output.",
+                enum_spec=EnumSpec(name="State", values=["active", "inactive"]),
+            ),
+            FieldSpec(
+                name="child",
+                type="object",
+                description="Child details",
+                object_spec=ObjectSpec(
+                    name="Child",
+                    fields=[
+                        FieldSpec(name="is_active", type="boolean", description="Whether active", boolean_value=True)
+                    ],
+                ),
+            ),
+        ],
+    )
+    output.inference_prompt = "Return only b; omit state and child."
+
+    result = _validated_schema(output)
+    assert result is output
+    assert "Return only b" not in result.task.instructions
+    assert "omit state from the output" not in result.task.instructions
+    assert "state: enum (required)" in result.task.instructions
+    assert "['active', 'inactive']" in result.task.instructions
+    assert "child.is_active: boolean (required)" in result.task.instructions
+    assert "required value: True" in result.task.instructions
+    assert result.task.response_format.model_json_schema()["additionalProperties"] is False
+
+
+def test_infer_schema_retries_malformed_object_before_returning_task():
+    invalid = _minimal_schema_output()
+    invalid.object_spec = ObjectSpec(name="Empty", fields=[])
+    valid = _minimal_schema_output()
+    parse = Mock(side_effect=[SimpleNamespace(output_parsed=invalid), SimpleNamespace(output_parsed=valid)])
+    client = SimpleNamespace(responses=SimpleNamespace(parse=parse))
+    inferer = SchemaInferer(client=client, model_name="test")  # type: ignore[arg-type]
+
+    result = inferer.infer_schema(SchemaInferenceInput(examples=["a"], instructions="Extract category"), max_retries=2)
+
+    assert parse.call_count == 2
+    assert "at least one field" in parse.call_args_list[1].kwargs["instructions"]
+    assert "category: string (required)" in result.task.instructions

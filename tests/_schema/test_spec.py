@@ -4,7 +4,7 @@ from enum import Enum
 from typing import get_args, get_origin
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from openaivec._schema.spec import _MAX_ENUM_VALUES, EnumSpec, FieldSpec, ObjectSpec, _build_model
 
@@ -125,7 +125,8 @@ def test_build_model_enum_case_insensitive_dedup():
     Model = _build_model(spec)
     enum_type = _as_enum(Model.model_fields["mixed"].annotation)
     members = {m.name for m in enum_type}
-    assert members == {"OK"}
+    assert members == {"OK", "OK_2", "OK_3"}
+    assert [member.value for member in enum_type] == ["ok", "OK", "Ok"]
 
 
 def test_build_model_enum_size_boundary():
@@ -486,6 +487,145 @@ def test_enum_case_insensitive_dedup():
     )
     Model = _build_model(spec)
     enum_type = _as_enum(Model.model_fields["code"].annotation)
-    # After upper + set, only one member expected
-    assert len(list(enum_type)) == 1
-    assert list(enum_type)[0].name == "OK"
+    assert [member.value for member in enum_type] == ["ok", "OK", "Ok"]
+
+
+def test_enum_values_roundtrip_scalar_array_and_nested():
+    nested = ObjectSpec(
+        name="Nested",
+        fields=[
+            FieldSpec(
+                name="state",
+                type="enum",
+                description="State",
+                enum_spec=EnumSpec(name="State", values=["active", "inactive"]),
+            )
+        ],
+    )
+    model = _build_model(
+        ObjectSpec(
+            name="Statuses",
+            fields=[
+                FieldSpec(
+                    name="state",
+                    type="enum",
+                    description="State",
+                    enum_spec=EnumSpec(name="State", values=["active", "inactive"]),
+                ),
+                FieldSpec(
+                    name="optional_state",
+                    type="enum",
+                    description="Nullable state",
+                    enum_spec=EnumSpec(name="State", values=["active", "inactive"]),
+                    nullable=True,
+                ),
+                FieldSpec(
+                    name="states",
+                    type="enum_array",
+                    description="States",
+                    enum_spec=EnumSpec(name="State", values=["active", "inactive"]),
+                ),
+                FieldSpec(name="nested", type="object", description="Nested", object_spec=nested),
+            ],
+        )
+    )
+    schema = model.model_json_schema()
+    assert schema["$defs"]["State"]["enum"] == ["active", "inactive"]
+    parsed = model.model_validate(
+        {"state": "active", "optional_state": None, "states": ["inactive"], "nested": {"state": "active"}}
+    )
+    assert parsed.model_dump(mode="json") == {
+        "state": "active",
+        "optional_state": None,
+        "states": ["inactive"],
+        "nested": {"state": "active"},
+    }
+    assert "optional_state" in schema["required"]
+    assert {"$ref": "#/$defs/State"} in schema["properties"]["optional_state"]["anyOf"]
+    for invalid in (
+        {"state": 1, "optional_state": None, "states": ["inactive"], "nested": {"state": "active"}},
+        {"state": "active", "optional_state": 1, "states": ["inactive"], "nested": {"state": "active"}},
+        {"state": "active", "optional_state": None, "states": [2], "nested": {"state": "active"}},
+        {"state": "active", "optional_state": None, "states": ["inactive"], "nested": {"state": 1}},
+    ):
+        with pytest.raises(ValidationError):
+            model.model_validate(invalid)
+
+
+def test_enum_invalid_member_names_preserve_values_and_order():
+    model = _build_model(
+        ObjectSpec(
+            name="Codes",
+            fields=[
+                FieldSpec(
+                    name="code",
+                    type="enum",
+                    description="Code",
+                    enum_spec=EnumSpec(name="Code", values=["a-b", "a-b", "a b", "A_B"]),
+                )
+            ],
+        )
+    )
+    enum_type = _as_enum(model.model_fields["code"].annotation)
+    assert [member.value for member in enum_type] == ["a-b", "a b", "A_B"]
+    assert len({member.name for member in enum_type}) == 3
+
+
+def test_generated_models_forbid_extra_fields_recursively():
+    nested = ObjectSpec(name="Child", fields=[FieldSpec(name="label", type="string", description="Label")])
+    model = _build_model(
+        ObjectSpec(
+            name="Root", fields=[FieldSpec(name="child", type="object", description="Child", object_spec=nested)]
+        )
+    )
+    assert model.model_json_schema()["additionalProperties"] is False
+    assert model.model_json_schema()["$defs"]["Child"]["additionalProperties"] is False
+    with pytest.raises(ValidationError, match="extra_forbidden"):
+        model.model_validate({"child": {"label": "yes"}, "unexpected": "ignored"})
+    with pytest.raises(ValidationError, match="extra_forbidden"):
+        model.model_validate({"child": {"label": "yes", "unexpected": "ignored"}})
+
+
+def test_explicit_models_keep_their_own_extra_policy():
+    class ExplicitOutput(BaseModel):
+        label: str
+
+    assert ExplicitOutput.model_validate({"label": "yes", "unexpected": "ignored"}).model_dump() == {"label": "yes"}
+
+
+def test_numeric_boolean_constraints_enforced_in_schema_and_validation():
+    model = _build_model(
+        ObjectSpec(
+            name="Measurements",
+            fields=[
+                FieldSpec(name="count", type="integer", description="Count", minimum=1, maximum=3),
+                FieldSpec(name="is_active", type="boolean", description="Active", boolean_value=True),
+            ],
+        )
+    )
+    schema = model.model_json_schema()
+    assert schema["properties"]["count"]["minimum"] == 1
+    assert schema["properties"]["count"]["maximum"] == 3
+    assert schema["properties"]["is_active"]["const"] is True
+    model.model_validate({"count": 2, "is_active": True})
+    for count, active in ((0, True), (4, True), (2, False)):
+        with pytest.raises(ValidationError):
+            model.model_validate({"count": count, "is_active": active})
+
+
+@pytest.mark.parametrize(
+    "spec",
+    [
+        ObjectSpec(name="badRoot", fields=[FieldSpec(name="a", type="string", description="A")]),
+        ObjectSpec(name="Empty", fields=[]),
+        ObjectSpec(
+            name="InvalidBounds", fields=[FieldSpec(name="a", type="integer", description="A", minimum=2, maximum=1)]
+        ),
+        ObjectSpec(name="Fraction", fields=[FieldSpec(name="a", type="integer", description="A", minimum=0.5)]),
+        ObjectSpec(name="WrongType", fields=[FieldSpec(name="a", type="string", description="A", minimum=0)]),
+        ObjectSpec(name="WrongBool", fields=[FieldSpec(name="a", type="integer", description="A", boolean_value=True)]),
+    ],
+)
+def test_invalid_structures_and_constraints_fail_before_model_creation(spec):
+    with pytest.raises(ValueError):
+        _build_model(spec)

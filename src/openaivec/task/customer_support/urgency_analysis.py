@@ -3,7 +3,7 @@
 from collections.abc import Mapping
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, create_model
 
 from openaivec._model import PreparedTask
 from openaivec.task._prompt_templates import (
@@ -92,6 +92,13 @@ def _default_sla_rules() -> dict[str, str]:
     }
 
 
+def _choices(name: str, options: Mapping[str, str]) -> tuple[str, ...]:
+    choices = tuple(options)
+    if not choices or any(not isinstance(choice, str) or not choice.strip() for choice in choices):
+        raise ValueError(f"{name} must contain nonempty choices")
+    return choices
+
+
 def _build_instructions(
     urgency_levels: Mapping[str, str],
     response_times: Mapping[str, str],
@@ -131,13 +138,55 @@ def urgency_analysis(
     business_hours: str = "24/7 support",
     sla_rules: Mapping[str, str] | None = None,
 ) -> PreparedTask[UrgencyAnalysis]:
-    """Create an urgency analysis task."""
-    resolved_urgency_levels = dict(urgency_levels or _default_urgency_levels())
-    resolved_response_times = dict(response_times or _default_response_times())
-    resolved_customer_tiers = dict(customer_tiers or _default_customer_tiers())
-    resolved_escalation_rules = dict(escalation_rules or _default_escalation_rules())
-    resolved_urgency_keywords = dict(urgency_keywords or _default_urgency_keywords())
-    resolved_sla_rules = dict(sla_rules or _default_sla_rules())
+    """Create an urgency task with schema choices matching configured prompt options.
+
+    Args:
+        urgency_levels (Mapping[str, str] | None): Level names and descriptions.
+        response_times (Mapping[str, str] | None): Level-to-response-time choices.
+        customer_tiers (Mapping[str, str] | None): Tier names and descriptions.
+        escalation_rules (Mapping[str, str] | None): Escalation guidance.
+        urgency_keywords (Mapping[str, list[str]] | None): Keywords per level.
+        business_context (str): Customer-support context.
+        business_hours (str): Operating hours.
+        sla_rules (Mapping[str, str] | None): SLA guidance by tier.
+
+    Returns:
+        PreparedTask[UrgencyAnalysis]: Configured task and response schema.
+
+    Raises:
+        ValueError: If a choice set is empty or response-time levels do not match urgency levels.
+    """
+    resolved_urgency_levels = dict(_default_urgency_levels() if urgency_levels is None else urgency_levels)
+    resolved_response_times = dict(_default_response_times() if response_times is None else response_times)
+    resolved_customer_tiers = dict(_default_customer_tiers() if customer_tiers is None else customer_tiers)
+    levels = _choices("urgency_levels", resolved_urgency_levels)
+    _choices("response_times", resolved_response_times)
+    tiers = _choices("customer_tiers", resolved_customer_tiers)
+    if set(resolved_response_times) != set(levels):
+        raise ValueError("response_times must define exactly the configured urgency_levels")
+    times = tuple(dict.fromkeys(resolved_response_times.values()))
+    if any(not isinstance(value, str) or not value.strip() for value in times):
+        raise ValueError("response_times must contain nonempty response-time values")
+    default_escalation_rules = {
+        key: value
+        for key, value in _default_escalation_rules().items()
+        if key not in _default_response_times().values() or key in times
+    }
+    resolved_escalation_rules = dict(default_escalation_rules if escalation_rules is None else escalation_rules)
+    default_keywords = {key: value for key, value in _default_urgency_keywords().items() if key in levels}
+    resolved_urgency_keywords = dict(default_keywords if urgency_keywords is None else urgency_keywords)
+    default_sla_rules = {key: value for key, value in _default_sla_rules().items() if key in tiers}
+    resolved_sla_rules = dict(default_sla_rules if sla_rules is None else sla_rules)
+    response_format = UrgencyAnalysis
+    if urgency_levels is not None or response_times is not None or customer_tiers is not None:
+        response_format = create_model(
+            "ConfiguredUrgencyAnalysis",
+            __base__=UrgencyAnalysis,
+            __module__=__name__,
+            urgency_level=(getattr(Literal, "__getitem__")(levels), Field(description="Urgency level")),
+            response_time=(getattr(Literal, "__getitem__")(times), Field(description="Recommended response time")),
+            customer_tier=(getattr(Literal, "__getitem__")(tiers), Field(description="Inferred customer tier")),
+        )
     return PreparedTask(
         instructions=_build_instructions(
             urgency_levels=resolved_urgency_levels,
@@ -149,7 +198,7 @@ def urgency_analysis(
             business_hours=business_hours,
             sla_rules=resolved_sla_rules,
         ),
-        response_format=UrgencyAnalysis,
+        response_format=response_format,
     )
 
 

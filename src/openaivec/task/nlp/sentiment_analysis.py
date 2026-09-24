@@ -2,7 +2,7 @@
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from openaivec._model import PreparedTask
 from openaivec.task._prompt_templates import english_categorical_policy, join_sections, same_language_policy
@@ -28,6 +28,12 @@ class SentimentAnalysis(BaseModel):
     )
     polarity: float = Field(ge=-1, le=1, description="Polarity score from -1.0 (negative) to 1.0 (positive)")
     subjectivity: float = Field(ge=0, le=1, description="Subjectivity score from 0.0 (objective) to 1.0 (subjective)")
+
+    @model_validator(mode="after")
+    def _check_alignment(self) -> "SentimentAnalysis":
+        if len(self.emotions) != len(self.emotion_scores):
+            raise ValueError("emotion_scores must have the same length as emotions")
+        return self
 
 
 def _build_instructions() -> str:

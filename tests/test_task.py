@@ -125,3 +125,43 @@ class TestMultilingualTranslationTask:
 
         for field_info in fields.values():
             assert field_info.annotation is str
+
+    @pytest.mark.parametrize(
+        ("languages", "expected"),
+        [
+            (["ja"], {"ja"}),
+            (["en", "is", "zh_tw"], {"en", "is", "zh_tw"}),
+            (
+                [name if name != "is_" else "is" for name in TranslatedString.model_fields],
+                set(TranslatedString.model_fields) - {"is_"} | {"is"},
+            ),
+        ],
+    )
+    def test_selected_language_schema(self, languages, expected):
+        task = multilingual_translation(target_languages=languages)
+        schema = task.response_format.model_json_schema()
+        assert set(schema["properties"]) == expected
+        assert set(schema["required"]) == expected
+        assert schema["additionalProperties"] is False
+        assert task.response_format.model_validate({code: "translated" for code in expected})
+        with pytest.raises(ValidationError):
+            task.response_format.model_validate({code: "translated" for code in list(expected)[1:]})
+        assert all(code in task.instructions for code in expected)
+
+    def test_icelandic_alias_and_legacy_python_attribute(self):
+        task = multilingual_translation(target_languages=["is"])
+        translated = task.response_format.model_validate({"is": "Halló"})
+        assert translated.is_ == "Halló"
+        assert translated.model_dump(by_alias=True) == {"is": "Halló"}
+        assert TranslatedString.model_fields["is_"].alias == "is"
+        assert (
+            TranslatedString.model_validate(
+                {**{name: "x" for name in TranslatedString.model_fields if name != "is_"}, "is_": "Halló"}
+            ).is_
+            == "Halló"
+        )
+
+    @pytest.mark.parametrize("languages", [[], ["xx"], ["ja", "ja"], [["ja"]], "ja"])
+    def test_invalid_language_selection(self, languages):
+        with pytest.raises((TypeError, ValueError)):
+            multilingual_translation(target_languages=languages)

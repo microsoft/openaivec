@@ -10,6 +10,15 @@ from openaivec.task._registry import TaskSpec
 
 __all__ = ["response_suggestion"]
 
+_STYLE_GUIDANCE = {
+    "professional": "Maintain professional tone with clear, direct communication.",
+    "friendly": "Use warm, approachable language while staying professional.",
+    "empathetic": "Show clear understanding and compassion for customer concerns.",
+    "formal": "Use formal business language appropriate for official communications.",
+    "apologetic": "Acknowledge the problem and apologize for the inconvenience.",
+    "solution_focused": "Emphasize actionable steps to resolve the issue.",
+}
+
 
 class ResponseSuggestion(BaseModel):
     """Response suggestion output."""
@@ -17,7 +26,7 @@ class ResponseSuggestion(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     suggested_response: str = Field(description="Professional response draft for the customer inquiry")
-    tone: Literal["empathetic", "professional", "friendly", "apologetic", "solution_focused"] = Field(
+    tone: Literal["empathetic", "professional", "friendly", "formal", "apologetic", "solution_focused"] = Field(
         description="Recommended tone"
     )
     priority: Literal["immediate", "high", "medium", "low"] = Field(description="Response priority")
@@ -36,17 +45,11 @@ class ResponseSuggestion(BaseModel):
 
 
 def _build_instructions(response_style: str, company_name: str, business_context: str) -> str:
-    style_guidance = {
-        "professional": "Maintain professional tone with clear, direct communication.",
-        "friendly": "Use warm, approachable language while staying professional.",
-        "empathetic": "Show clear understanding and compassion for customer concerns.",
-        "formal": "Use formal business language appropriate for official communications.",
-    }
     return join_sections(
         "Generate a helpful response suggestion for the customer inquiry.",
         f"Business context: {business_context}",
         f"Company name for context: {company_name}",
-        style_guidance.get(response_style, style_guidance["professional"]),
+        _STYLE_GUIDANCE[response_style],
         (
             "Provide suggested response, tone, priority, response type, key points, follow-up/escalation flags, "
             "resources needed, estimated resolution time, alternatives, and personalization notes."
@@ -61,7 +64,21 @@ def response_suggestion(
     company_name: str = "our company",
     business_context: str = "general customer support",
 ) -> PreparedTask[ResponseSuggestion]:
-    """Create a response suggestion task."""
+    """Create a response suggestion task.
+
+    Args:
+        response_style (str): One of the supported response tones.
+        company_name (str): Company name used in the prompt.
+        business_context (str): Customer-support context.
+
+    Returns:
+        PreparedTask[ResponseSuggestion]: Response-suggestion task.
+
+    Raises:
+        ValueError: If the response style is not a supported tone.
+    """
+    if response_style not in _STYLE_GUIDANCE:
+        raise ValueError(f"Unsupported response_style: {response_style}")
     return PreparedTask(
         instructions=_build_instructions(
             response_style=response_style,
