@@ -1,0 +1,205 @@
+name: Publish Agent Skill
+
+on:
+  push:
+    tags:
+      - "openaivec-skill-v*.*.*"
+
+concurrency:
+  group: publish-agent-skill-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      RELEASE_TAG: ${{ github.ref_name }}
+      SKILL_PATH: skills/openaivec-skill/SKILL.md
+
+    steps:
+      - name: Checkout tagged commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Verify tag and skill version
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/tags/$RELEASE_TAG"
+          test "$(git rev-list -n 1 "refs/tags/$RELEASE_TAG")" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -n "$DEFAULT_BRANCH"
+          git fetch --no-tags origin \
+            "+refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}"
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/$DEFAULT_BRANCH"; then
+            echo "::error::Tagged commit $GITHUB_SHA is not merged into $DEFAULT_BRANCH"
+            exit 1
+          fi
+
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          tag = os.environ["RELEASE_TAG"]
+          match = re.fullmatch(
+              r"openaivec-skill-v((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))",
+              tag,
+          )
+          if match is None:
+              raise SystemExit(f"Invalid skill release tag: {tag}")
+
+          requested_version = match.group(1)
+          text = Path(os.environ["SKILL_PATH"]).read_text(encoding="utf-8")
+          frontmatter = text.split("---", 2)[1]
+          version_match = re.search(r"(?m)^  version:\s*['\"]?([^'\"\s]+)['\"]?\s*$", frontmatter)
+          if version_match is None:
+              raise SystemExit("metadata.version is missing from SKILL.md")
+
+          declared_version = version_match.group(1)
+          if declared_version != requested_version:
+              raise SystemExit(
+                  f"Tag version {requested_version} does not match SKILL.md metadata.version {declared_version}"
+              )
+
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as env_file:
+              env_file.write(f"SKILL_VERSION={requested_version}\n")
+          PY
+
+      - name: Validate Agent Skill
+        run: |
+          set -euo pipefail
+          gh --version
+          gh skill publish --dry-run
+
+      - name: Build portable skill archives
+        run: |
+          set -euo pipefail
+          mkdir -p skill-dist
+
+          git archive \
+            --format=tar \
+            --prefix=openaivec-skill/ \
+            "$GITHUB_SHA:skills/openaivec-skill" \
+            | gzip -n > "skill-dist/openaivec-skill-${SKILL_VERSION}.tar.gz"
+
+          git archive \
+            --format=zip \
+            --prefix=openaivec-skill/ \
+            --output="skill-dist/openaivec-skill-${SKILL_VERSION}.zip" \
+            "$GITHUB_SHA:skills/openaivec-skill"
+
+          (
+            cd skill-dist
+            sha256sum \
+              "openaivec-skill-${SKILL_VERSION}.tar.gz" \
+              "openaivec-skill-${SKILL_VERSION}.zip" \
+              > SHA256SUMS
+          )
+
+      - name: Verify packaged skill installs
+        run: |
+          set -euo pipefail
+          source_dir="$RUNNER_TEMP/openaivec-skill-source"
+          install_dir="$RUNNER_TEMP/openaivec-skill-installed"
+          mkdir -p "$source_dir" "$install_dir"
+
+          tar -xzf "skill-dist/openaivec-skill-${SKILL_VERSION}.tar.gz" -C "$source_dir"
+          test -f "$source_dir/openaivec-skill/LICENSE"
+          test -f "$source_dir/openaivec-skill/SKILL.md"
+          test -f "$source_dir/openaivec-skill/references/data-shaping-and-crosstabs.md"
+          test -f "$source_dir/openaivec-skill/references/excel-setup.md"
+          test -f "$source_dir/openaivec-skill/scripts/manage_excel_extension.py"
+
+          gh skill install \
+            "$source_dir" \
+            openaivec-skill \
+            --from-local \
+            --dir "$install_dir"
+          test -f "$install_dir/openaivec-skill/LICENSE"
+          test -f "$install_dir/openaivec-skill/SKILL.md"
+          test -f "$install_dir/openaivec-skill/references/data-shaping-and-crosstabs.md"
+          test -f "$install_dir/openaivec-skill/references/excel-setup.md"
+          test -f "$install_dir/openaivec-skill/scripts/manage_excel_extension.py"
+
+          python - <<'PY'
+          import os
+          import zipfile
+
+          archive = f"skill-dist/openaivec-skill-{os.environ['SKILL_VERSION']}.zip"
+          with zipfile.ZipFile(archive) as package:
+              members = set(package.namelist())
+              expected = {
+                  "openaivec-skill/LICENSE",
+                  "openaivec-skill/SKILL.md",
+                  "openaivec-skill/references/data-shaping-and-crosstabs.md",
+                  "openaivec-skill/references/excel-setup.md",
+                  "openaivec-skill/scripts/manage_excel_extension.py",
+              }
+              missing = sorted(expected - members)
+              if missing:
+                  raise SystemExit(f"ZIP package is missing required files: {missing}")
+          PY
+
+      - name: Add discovery topic
+        run: |
+          set -euo pipefail
+          if ! gh repo edit "$GITHUB_REPOSITORY" --add-topic agent-skills; then
+            echo "::warning::Could not add the agent-skills topic with GITHUB_TOKEN; add it once in repository settings."
+          fi
+          if ! gh api "repos/$GITHUB_REPOSITORY/topics" --jq '.names[]' | grep -Fxq agent-skills; then
+            echo "::warning::The repository is not discoverable through the agent-skills topic."
+          fi
+
+      - name: Create GitHub skill release
+        run: |
+          set -euo pipefail
+          expected_assets="$(
+            printf '%s\n' \
+              "openaivec-skill-${SKILL_VERSION}.tar.gz" \
+              "openaivec-skill-${SKILL_VERSION}.zip" \
+              "SHA256SUMS"
+          )"
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            existing_assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
+            while IFS= read -r asset; do
+              grep -Fxq "$asset" <<<"$existing_assets" || {
+                echo "::error::Release $RELEASE_TAG exists but is missing $asset"
+                exit 1
+              }
+            done <<<"$expected_assets"
+            echo "Release $RELEASE_TAG already exists with all expected assets."
+          else
+            gh release create "$RELEASE_TAG" \
+              --verify-tag \
+              --title "openaivec-skill ${SKILL_VERSION}" \
+              --generate-notes \
+              "skill-dist/openaivec-skill-${SKILL_VERSION}.tar.gz" \
+              "skill-dist/openaivec-skill-${SKILL_VERSION}.zip" \
+              "skill-dist/SHA256SUMS"
+          fi
+
+          gh release view "$RELEASE_TAG" \
+            --json tagName,url,isDraft,isPrerelease \
+            --jq '{tagName, url, isDraft, isPrerelease}'
+
+      - name: Verify published release assets
+        run: |
+          set -euo pipefail
+          release_dir="$RUNNER_TEMP/openaivec-skill-release"
+          mkdir -p "$release_dir"
+          gh release download "$RELEASE_TAG" --dir "$release_dir"
+          cmp skill-dist/SHA256SUMS "$release_dir/SHA256SUMS"
+          (
+            cd "$release_dir"
+            sha256sum --check SHA256SUMS
+          )

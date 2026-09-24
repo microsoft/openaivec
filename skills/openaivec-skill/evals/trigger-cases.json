@@ -1,0 +1,226 @@
+[
+  {
+    "query": "顧客アンケートのExcelにある自由記述を、感情、主な話題、解約の兆候、担当者による確認が必要かどうかに整理してください。元の回答番号は残してください。",
+    "should_trigger": true
+  },
+  {
+    "query": "Every month we receive store-review CSV files from all branches. Summarize recurring praise and complaints by branch and keep each original review ID.",
+    "should_trigger": true
+  },
+  {
+    "query": "20万件のお問い合わせを、内容、緊急度、担当チーム、折り返しが必要かどうかに分類し、受付番号を失わないようにしてください。",
+    "should_trigger": true
+  },
+  {
+    "query": "Turn thousands of past support conversations into a short issue summary and a proposed reply for an agent to review before sending.",
+    "should_trigger": true
+  },
+  {
+    "query": "Analyze guest comments from every hotel, group the recurring service and room issues, and show which properties need a manager to follow up.",
+    "should_trigger": true
+  },
+  {
+    "query": "営業担当者が残した数千件の商談メモから、顧客の課題、関心のある製品、約束した次の対応、確認が必要な期限を整理してください。",
+    "should_trigger": true
+  },
+  {
+    "query": "Group all open-ended campaign responses into themes, explain the evidence for each theme, and retain the respondent code for later review.",
+    "should_trigger": true
+  },
+  {
+    "query": "製品への要望一覧を、要望の種類、対象機能、利用場面、困りごとに整理し、同じ内容が何件あるか分かるようにしてください。",
+    "should_trigger": true
+  },
+  {
+    "query": "Normalize the titles, brands, and categories in our quarterly product-catalog Parquet files, but leave uncertain specifications blank instead of guessing.",
+    "should_trigger": true
+  },
+  {
+    "query": "Translate every product description into English, Japanese, and German, preserve each SKU, and use consistent terminology across duplicate descriptions.",
+    "should_trigger": true
+  },
+  {
+    "query": "Extract supplier name, invoice number, dates, totals, tax, and line items from all invoice PDFs so the accounting team can reconcile them manually.",
+    "should_trigger": true
+  },
+  {
+    "query": "Compare hundreds of supplier quotes by extracting lead time, minimum quantity, delivery terms, and quoted price into a review table; do not choose a supplier.",
+    "should_trigger": true
+  },
+  {
+    "query": "契約書フォルダから、契約当事者、開始日、更新日、解約通知期限、該当箇所を抜き出し、法務担当者が原文を確認できる一覧にしてください。",
+    "should_trigger": true
+  },
+  {
+    "query": "Classify delivery-delay notes from every warehouse by likely cause, affected step, and suggested owner for an operations coordinator to review.",
+    "should_trigger": true
+  },
+  {
+    "query": "各工場の数年分の日報にある不具合記述を、部品、現象、発生工程、再発かどうかに整理し、品質担当者の確認対象を一覧化してください。",
+    "should_trigger": true
+  },
+  {
+    "query": "Review all packaging inspection photos and notes, flag visible damage or label problems for a human inspector, and preserve the photo filename.",
+    "should_trigger": true
+  },
+  {
+    "query": "Route all office maintenance requests by location and issue type, and flag wording that may need urgent coordinator review without dispatching anyone automatically.",
+    "should_trigger": true
+  },
+  {
+    "query": "Summarize thousands of redacted incident reports into affected service, observed evidence, customer impact, and the team that should review the case.",
+    "should_trigger": true
+  },
+  {
+    "query": "Use our entire internal knowledge library so that each employee question returns the five articles closest in meaning, not only exact word matches.",
+    "should_trigger": true
+  },
+  {
+    "query": "匿名化済みの従業員サーベイを部門単位で要約し、働きやすさに関する共通テーマを出してください。個人の評価や順位付けには使わないでください。",
+    "should_trigger": true
+  },
+  {
+    "query": "Analyze all course-feedback forms by topic, clarity, pace, and requested improvements so the training team can revise the next session.",
+    "should_trigger": true
+  },
+  {
+    "query": "Sort thousands of resident inquiry messages into service area and requested action for staff review, without deciding anyone's eligibility for a benefit.",
+    "should_trigger": true
+  },
+  {
+    "query": "Extract energy use, emissions, reporting period, unit, and source page from every supplier sustainability report for an analyst to verify.",
+    "should_trigger": true
+  },
+  {
+    "query": "月次決算の差異説明を、価格、数量、時期、一時要因などの共通テーマに整理し、各説明文への参照を残してください。",
+    "should_trigger": true
+  },
+  {
+    "query": "Some product categories are blank. Use the completed rows as examples, test the accuracy on values we already know, and fill only the blanks that meet the agreed quality target.",
+    "should_trigger": true
+  },
+  {
+    "query": "保守記録の故障区分が一部空欄です。既存の記入済み記録で必要な例の数と精度を確かめ、不確かな行は空欄のままにしてください。",
+    "should_trigger": true
+  },
+  {
+    "query": "Read open cases from our customer-service database, add topic, urgency, and a short summary to a new results table, and leave the source table unchanged.",
+    "should_trigger": true
+  },
+  {
+    "query": "Before analyzing 300,000 comments, tell me how many unique comments may be sent for processing and estimate the workload so I can approve the cost.",
+    "should_trigger": true
+  },
+  {
+    "query": "このExcelアンケートを分析したいです。必要な追加機能があれば、PCに何が追加されるかと代替案を説明し、私が選んだ後でだけ導入してください。",
+    "should_trigger": true
+  },
+  {
+    "query": "openaivec says it cannot find valid credentials before analyzing the files. Help me connect without asking me to paste a key or password here.",
+    "should_trigger": true
+  },
+  {
+    "query": "Our company-approved Azure OpenAI connection returns 403 before any survey rows are processed. Help me fix access without exposing credentials.",
+    "should_trigger": true
+  },
+  {
+    "query": "Summarize every incident row and replace the original CSV with the result; warn me about any risk to the source before doing it.",
+    "should_trigger": true
+  },
+  {
+    "query": "After categorizing the archived support cases and saving a new result table, delete only the source rows that were successfully migrated.",
+    "should_trigger": true
+  },
+  {
+    "query": "Summarize hundreds of store-visit reports into observed issue, supporting evidence, proposed owner, and due-date candidate while retaining each source filename.",
+    "should_trigger": true
+  },
+  {
+    "query": "アンケートの自由記述を感情と話題に分類し、部門別・月別にクロス集計してください。dept_codeが回答者の所属部門か対応部門か曖昧なら、候補から一つ選べて自由入力もできる形で、一問ずつ確認してください。",
+    "should_trigger": true
+  },
+  {
+    "query": "Classify all return comments, then cross-tab the reasons by market and month. If market could mean shipping country, selling organization, or reporting region, ask me to choose one with a free-text alternative before grouping.",
+    "should_trigger": true
+  },
+  {
+    "query": "30万件の問い合わせを分類してください。長時間かかる場合は、一件ずつではなく効率的にまとめて処理し、完了件数、全体に占める割合、経過時間、失敗件数を定期的に知らせてください。",
+    "should_trigger": true
+  },
+  {
+    "query": "Show me the first ten rows of this file without analyzing or changing the text.",
+    "should_trigger": false
+  },
+  {
+    "query": "Create a cross-tab of the existing numeric unit-sales column by region and month; no classification, extraction, summarization, or other language analysis is needed.",
+    "should_trigger": false
+  },
+  {
+    "query": "Convert this CSV file to Parquet without classifying, summarizing, extracting, or enriching anything.",
+    "should_trigger": false
+  },
+  {
+    "query": "Replace every blank discount value with the fixed number 0.",
+    "should_trigger": false
+  },
+  {
+    "query": "Sort this spreadsheet by date and filter it to the East region.",
+    "should_trigger": false
+  },
+  {
+    "query": "Change the formulas, colors, charts, and print layout in this workbook.",
+    "should_trigger": false
+  },
+  {
+    "query": "Set up a new company database and configure user permissions for the analytics team.",
+    "should_trigger": false
+  },
+  {
+    "query": "Copy these rows unchanged into our order system.",
+    "should_trigger": false
+  },
+  {
+    "query": "Install an Excel-reading library globally, but do not process any workbook or table.",
+    "should_trigger": false
+  },
+  {
+    "query": "Transcribe all audio recordings in this directory.",
+    "should_trigger": false
+  },
+  {
+    "query": "Download these websites and load their pages into our search server.",
+    "should_trigger": false
+  },
+  {
+    "query": "Train a custom language model from these example files.",
+    "should_trigger": false
+  },
+  {
+    "query": "Rewrite this single email so it sounds friendlier.",
+    "should_trigger": false
+  },
+  {
+    "query": "Sum monthly sales by region and draw a bar chart.",
+    "should_trigger": false
+  },
+  {
+    "query": "Rank all job applicants and automatically recommend who should receive an interview.",
+    "should_trigger": false
+  },
+  {
+    "query": "Decide which customers qualify for a loan and set their credit limits from these records.",
+    "should_trigger": false
+  },
+  {
+    "query": "Read patient notes and automatically diagnose each person and select their treatment.",
+    "should_trigger": false
+  },
+  {
+    "query": "Deploy and configure the network for a new cloud AI service.",
+    "should_trigger": false
+  },
+  {
+    "query": "Run a Spark UDF over my Fabric Lakehouse table.",
+    "should_trigger": false
+  }
+]
