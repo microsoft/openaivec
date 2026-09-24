@@ -49,31 +49,41 @@ The assistant should keep implementation details in the background and:
 
 - [Getting-started guide](GETTING_STARTED.md)
 
-The guide separates Skill installation from runtime setup, provides
-copy-and-paste bootstrap prompts, and walks through high-volume extraction
+The no-command-line guide provides installation bootstrap prompts for GitHub
+Copilot, Claude Code, Codex, Cursor, and managed Gemini environments. It then
+walks business users through readiness checks and high-volume extraction
 examples for customer feedback, support tickets, document folders, contracts,
 sales notes, and quality reports.
 
-## Install from GitHub
+## Business-user installation
 
-Preview the package before installing it:
+Ask the selected assistant to install the Skill for the current project:
+
+```text
+Install the official openaivec-skill from the microsoft/openaivec GitHub
+repository for this project only. Preview it and explain the files and scope
+before changing anything. Ask for my approval before installation. Do not
+open business data, install processing software, configure credentials, or
+make an AI request during this bootstrap step. After approval, use this
+harness's supported Agent Skills mechanism, verify the source, version, and
+project scope, and tell me whether I need to start a new chat. Do not ask me
+to run command-line commands; prepare an administrator handoff if direct
+installation is unavailable.
+```
+
+See the [getting-started guide](GETTING_STARTED.md) for a prompt tailored to
+each supported harness and for the post-installation verification prompt.
+
+## Administrator and automation installation
+
+Administrators and automated environments can preview and install through the
+GitHub CLI:
 
 ```bash
 gh skill preview microsoft/openaivec openaivec-skill
-```
-
-Install it for a supported harness:
-
-```bash
 gh skill install microsoft/openaivec openaivec-skill \
   --agent github-copilot \
   --scope project
-```
-
-Replace `github-copilot` with another supported host such as `claude-code`,
-`codex`, `cursor`, or `gemini-cli`. For an interactive multi-harness installer:
-
-```bash
 npx skills add microsoft/openaivec --skill openaivec-skill
 ```
 
@@ -131,8 +141,8 @@ matching tag on that exact commit:
 ```bash
 git switch main
 git pull --ff-only
-git tag openaivec-skill-v1.1.0
-git push origin openaivec-skill-v1.1.0
+git tag openaivec-skill-v1.2.0
+git push origin openaivec-skill-v1.2.0
 ```
 
 The `Publish Agent Skill` workflow validates the Agent Skills specification,

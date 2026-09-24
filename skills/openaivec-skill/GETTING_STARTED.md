@@ -1,19 +1,19 @@
 # Getting started with openaivec-skill
 
-Use this guide when you need to extract, classify, or organize information
-from many rows or files with an Agent Skills-compatible assistant. You can
-describe the business outcome in ordinary language. The skill keeps the
+This is a no-command-line guide for business users who need to extract,
+classify, or organize information from many rows or files with an
+Agent Skills-compatible assistant. You describe the business outcome in
+ordinary language. The assistant handles installation, environment checks,
 efficient batching, duplicate reuse, consistent output fields, and local data
-preparation in the background.
+preparation after explaining any change and receiving your approval.
 
-The main pattern is:
+Most users need only three copy-and-paste prompts:
 
-1. inspect the source without changing it;
-2. count the rows, usable inputs, and unique inputs locally;
-3. agree on the fields and categories to extract;
-4. test a representative sample;
-5. process each unique input once and restore every source row; and
-6. validate the result before creating a separately named output.
+1. an **installation bootstrap prompt** for their assistant;
+2. a **readiness prompt** that checks the environment without opening business
+   data; and
+3. a **task prompt** that defines the source, information to extract, pilot,
+   review rules, and output.
 
 ## What it is useful for
 
@@ -37,129 +37,194 @@ The skill is not intended for ordinary sorting, arithmetic, file conversion,
 or workbook formatting. It must not make automated employment, credit,
 medical, insurance, payment, legal, or public-benefit decisions.
 
-## Before you install
+## Install by asking your assistant
 
-There are two separate pieces:
+You do not need to download an archive, choose an installation directory, or
+run an installer command yourself. Open the project or workspace containing
+the data task, start your assistant, and paste the prompt for that harness.
 
-1. **The Agent Skill** gives your assistant the workflow and safety rules.
-2. **The runtime**, meaning the computing environment where the work runs,
-   needs Python 3.10 or newer, `openaivec`, DuckDB, and an approved
-   OpenAI-compatible service.
+Every installation prompt below requires the assistant to:
 
-Installing the skill does not create an API account or send any data. Ask the
-assistant to inspect the runtime before approving package or Excel-component
-installation.
+- use only the official `microsoft/openaivec` repository and the
+  `openaivec-skill` package;
+- install for the current project or workspace, not for every project on the
+  computer;
+- preview the Skill and explain the exact files and location before changing
+  anything;
+- stop if an existing Skill would be replaced;
+- ask for approval before running an installer or creating files;
+- perform an approved installation itself instead of asking the business user
+  to run command-line commands;
+- verify the installed Skill and report its source, version, and scope; and
+- avoid opening business data, configuring credentials, or installing
+  processing software during this bootstrap step.
 
-Supported sources include CSV/TSV, Parquet, JSON/NDJSON, tabular `.xlsx`, and
-database connections available in the installed DuckDB version. Supported
-local documents and images can also be processed when the selected model can
-accept them. Legacy `.xls`, workbook formatting, macros, and unsupported
-database connections are outside the scope.
+If the harness cannot install Agent Skills itself, it must not guess a folder
+or use an unrelated download script. It should instead prepare a short handoff
+for the user's IT administrator that names the official repository, Skill,
+requested project-only scope, and missing harness capability.
 
-## Install the Agent Skill
+### GitHub Copilot in VS Code
 
-### Recommended: GitHub CLI
+1. Open the VS Code workspace where the future data task will run.
+2. Open GitHub Copilot Chat and select an agent-capable mode.
+3. Paste:
 
-Preview the package:
+```text
+Install the official openaivec-skill from the microsoft/openaivec GitHub
+repository for this VS Code workspace only.
 
-```bash
-gh skill preview microsoft/openaivec openaivec-skill
+Before changing anything, preview the Skill, confirm that the source is the
+official Microsoft repository, explain which project-local files will be
+created, and tell me whether an existing Skill would be replaced. Do not use
+user-wide or system-wide scope. Do not open business data, install Python
+packages or Excel support, configure credentials, or make an AI request.
+
+Ask for my approval before performing the installation. After approval, use
+the supported GitHub Agent Skills installer, verify that openaivec-skill is
+available to this workspace, and report the installed source, version, scope,
+and whether I need to start a new Copilot chat or reload the workspace.
+Do not ask me to run command-line commands.
+
+If this Copilot environment cannot install Agent Skills, stop and give me an
+administrator handoff instead of inventing another installation method.
 ```
 
-Install it for GitHub Copilot in the current project:
+### Claude Code
 
-```bash
-gh skill install microsoft/openaivec openaivec-skill \
-  --agent github-copilot \
-  --scope project
+1. Open the intended project in Claude Code.
+2. Start a new project conversation.
+3. Paste:
+
+```text
+Install the official openaivec-skill from the microsoft/openaivec GitHub
+repository using Claude Code's supported project-local Agent Skills mechanism.
+
+Before changing anything, preview the Skill, verify the official source,
+explain the files and project location that will be created, and stop if an
+existing Skill would be replaced. Do not install it for every project. Do not
+open business data, install runtime packages or Excel support, configure
+credentials, or call an AI service during installation.
+
+Ask for my approval before installing. After approval, verify the Skill,
+report its source, version, and project-only scope, and tell me whether a new
+Claude Code session is required. Do not ask me to run command-line commands.
+If project-local Agent Skill installation is not supported, stop and prepare
+an administrator handoff.
 ```
 
-Replace `github-copilot` with a supported host such as `claude-code`, `codex`,
-`cursor`, or `gemini-cli`.
+### OpenAI Codex
 
-### Interactive multi-harness installer
+1. Open the workspace in Codex.
+2. Start a new task or chat for that workspace.
+3. Paste:
 
-```bash
-npx skills add microsoft/openaivec --skill openaivec-skill
+```text
+Install the official openaivec-skill from the microsoft/openaivec GitHub
+repository for this Codex workspace only, using Codex's supported Agent Skills
+installation mechanism.
+
+First preview the Skill, verify the official source, explain every
+project-local file that would be created, and check for an existing Skill.
+Do not use global scope. Do not open business data, add runtime packages or
+Excel support, configure secrets, or make a model request.
+
+Ask for approval before installation. After approval, verify the source,
+version, and workspace scope and tell me whether I should begin a new Codex
+task before using the Skill. Do not ask me to run command-line commands. If
+Codex cannot install it directly, stop and prepare an administrator handoff
+without using an improvised method.
 ```
 
-Review the requested scope and destination before accepting an installation.
+### Cursor
 
-### Install a release archive
+1. Open the intended project in Cursor.
+2. Open an agent-capable Cursor chat.
+3. Paste:
 
-Release archives and `SHA256SUMS` are available from the
-[openaivec-skill 1.1.0 release](https://github.com/microsoft/openaivec/releases/tag/openaivec-skill-v1.1.0).
-After downloading them, verify the checksum before installation:
+```text
+Install the official openaivec-skill from the microsoft/openaivec GitHub
+repository for this Cursor project only, using Cursor's supported project
+Agent Skills mechanism.
 
-```bash
-gh release download openaivec-skill-v1.1.0 \
-  --repo microsoft/openaivec \
-  --pattern "openaivec-skill-1.1.0.*" \
-  --pattern SHA256SUMS
+Before changing files, preview the Skill, verify the official source, explain
+the project-local destination and files, and stop if anything would be
+replaced. Do not install globally. Do not open business data, install runtime
+packages or Excel support, configure credentials, or send an AI request.
+
+Ask for my approval before installation. After approval, verify the source,
+version, and project scope and explain whether Cursor must reload or start a
+new chat. Do not ask me to run command-line commands. If direct project Skill
+installation is unavailable, stop and give me an administrator handoff rather
+than guessing another method.
 ```
 
-Then verify the downloaded files:
+### Gemini CLI in a managed environment
 
-```bash
-# Linux
-sha256sum --check SHA256SUMS
+Use this option only when an administrator has already provided and opened the
+Gemini CLI chat environment. The business user still pastes a natural-language
+prompt and does not type installation commands.
 
-# macOS
-shasum -a 256 -c SHA256SUMS
+```text
+Install the official openaivec-skill from the microsoft/openaivec GitHub
+repository for this Gemini project only, using Gemini's supported Agent Skills
+mechanism.
+
+Before changing anything, preview the Skill, verify the official source,
+explain the project-local files and destination, and stop if an existing Skill
+would be replaced. Do not install globally. Do not open business data, add
+runtime packages or Excel support, configure credentials, or call a model.
+
+Ask for approval before installation. After approval, verify the source,
+version, and project scope and tell me whether a new Gemini session is needed.
+Do not ask me to run command-line commands. If this managed environment cannot
+install project Agent Skills, stop and prepare an administrator handoff.
 ```
 
-Extract the archive, then install from its parent directory:
+## Confirm that installation succeeded
 
-```bash
-mkdir openaivec-skill-release
-tar -xzf openaivec-skill-*.tar.gz -C openaivec-skill-release
-gh skill install openaivec-skill-release openaivec-skill \
-  --from-local \
-  --agent github-copilot \
-  --scope project
+After the assistant reports that installation completed, start a fresh chat
+or reload the workspace if it asks you to. Then paste:
+
+```text
+Confirm that openaivec-skill is available in this project. Report its source,
+version, and project-only scope. Do not open business files, install or change
+anything, inspect secret values, or make a network request. If the Skill is
+not available, stop and explain the missing installation step in plain
+language.
 ```
 
-## Prepare the runtime after approval
+The assistant should name `microsoft/openaivec`, `openaivec-skill`, the
+installed version, and a project or workspace scope. It should not claim
+success merely because it can read this documentation.
 
-This step is separate from installing the Skill. If `openaivec` is missing,
-the assistant should explain that adding it changes the current project's
-Python environment and obtain approval first. A developer-managed project
-using `uv` can add the package with:
+## Prepare the processing environment
 
-```bash
-uv add openaivec
-```
-
-From a repository checkout, inspect the package and authentication
-configuration without making a network request:
-
-```bash
-uv run python skills/openaivec-skill/scripts/check_environment.py
-```
-
-The same script can be run from the installed Skill directory as
-`scripts/check_environment.py`. It reports package versions and the selected
-authentication route, never secret values. It does not test the network or
-send business data. A one-row synthetic request is a separate, billable check
-and should run only after the authentication route is configured.
-
-## Start without changing anything
-
-Paste this prompt first. It asks the assistant to inspect only the
-configuration, not your business data:
+Skill installation and processing readiness are separate. The following
+prompt lets the assistant check required processing software and
+authentication without opening the user's business data:
 
 ```text
 Use openaivec-skill for this work.
 
-Before opening any business file or sending any data to an AI service, check
-whether this project can run the skill. Do not install packages, add Excel
-support, change credentials, or make a network request yet. Explain any
-missing requirement in plain language, including what would change, and give
-me choices one question at a time.
+Before opening any business file or sending data to an AI service, check
+whether this project is ready to run the Skill. Do not install processing
+software, add Excel support, change credentials, or make a network request
+yet.
+
+Explain each missing requirement in plain language, including why it is
+needed, whether it downloads software, which project files or local settings
+would change, and what would remain unchanged. Offer a no-install alternative
+when one exists. Ask one approval question at a time and perform no change
+until I approve that exact change.
+
+Do not ask me to run command-line commands. Perform an approved setup action
+yourself. If that is not possible in this environment, stop and prepare a
+plain-language administrator handoff.
 ```
 
-If the client supports explicit skill invocation, place
-`/openaivec-skill` before the prompt.
+The user does not need to know package names or installation commands. The
+assistant performs an approved setup action and reports the result.
 
 ### If you do not have an API key
 
@@ -180,14 +245,14 @@ OpenAI API account is required; there is no anonymous fallback. See
 
 ### If the source is Excel
 
-Reading `.xlsx` may require DuckDB's official Excel component. Its
+Reading `.xlsx` may require the Skill's official Excel support component. Its
 installation downloads code and changes the local environment, so the
 assistant must first explain the impact and offer CSV or Parquet as an
 alternative. Approval to install it is separate from approval to read a
 workbook, send selected cells to a model, or write a result. See
 [Excel support setup](references/excel-setup.md).
 
-## General bootstrap prompt
+## Start the first data task
 
 Replace the bracketed values. It is fine to write "I do not know"; the
 assistant should ask one plain-language question at a time.

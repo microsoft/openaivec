@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires Python 3.10+, openaivec, DuckDB, and network access to the selected OpenAI-compatible service. Excel and relational sources require support in the installed DuckDB version and an available extension; installing one requires explicit approval. Fabric built-in models require a supported Fabric notebook runtime.
 metadata:
   author: microsoft
-  version: "1.1.0"
+  version: "1.2.0"
   repository: https://github.com/microsoft/openaivec
 ---
 
