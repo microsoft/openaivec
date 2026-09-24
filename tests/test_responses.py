@@ -1,16 +1,326 @@
+import asyncio
+import base64
+import json
+import os
 from logging import Handler, StreamHandler, basicConfig
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
+import tiktoken
 from pydantic import BaseModel, ValidationError
 
-from openaivec import BatchResponses
-from openaivec._responses import AsyncBatchResponses, Request
+from openaivec import BatchResponses, ResponseLimits, _responses
+from openaivec._responses import AsyncBatchResponses, Message, Request, _plan_response_batches
+from openaivec._retry import RetryPolicy
 
 _h: Handler = StreamHandler()
 
 basicConfig(handlers=[_h], level="DEBUG")
+
+
+class TestResponseTokenPlanning:
+    @pytest.mark.asyncio
+    async def test_every_sync_and_async_request_fits_measured_token_budget(self):
+        inputs = ["one " * 300, "short", "two " * 230, "short"]
+        limits = ResponseLimits(
+            max_request_tokens=900,
+            max_inputs=3,
+            expected_output_tokens_per_item=64,
+            validation_feedback_tokens=48,
+        )
+        sync_calls = []
+        async_calls = []
+
+        def response_for(kwargs):
+            envelope = json.loads(kwargs["input"])
+            return SimpleNamespace(
+                output_parsed=SimpleNamespace(
+                    assistant_messages=[
+                        SimpleNamespace(id=message["id"], body=message["body"])
+                        for message in reversed(envelope["user_messages"])
+                    ]
+                )
+            )
+
+        def sync_parse(**kwargs):
+            sync_calls.append(kwargs)
+            return response_for(kwargs)
+
+        async def async_parse(**kwargs):
+            async_calls.append(kwargs)
+            return response_for(kwargs)
+
+        sync_client = BatchResponses.of(
+            SimpleNamespace(responses=SimpleNamespace(parse=sync_parse)),
+            "gpt-4.1-mini",
+            "Echo.",
+            batch_size=0,
+            limits=limits,
+            max_validation_retries=1,
+            max_output_tokens=70,
+        )
+        async_client = AsyncBatchResponses.of(
+            SimpleNamespace(responses=SimpleNamespace(parse=async_parse)),
+            "gpt-4.1-mini",
+            "Echo.",
+            batch_size=0,
+            limits=limits,
+            max_validation_retries=1,
+            max_output_tokens=70,
+        )
+        assert sync_client.parse(inputs) == inputs
+        assert await async_client.parse(inputs) == inputs
+        assert len(sync_calls) > 1
+        assert [[m["id"] for m in json.loads(c["input"])["user_messages"]] for c in sync_calls] == [
+            [m["id"] for m in json.loads(c["input"])["user_messages"]] for c in async_calls
+        ]
+
+        encoding = tiktoken.encoding_for_model("gpt-4.1-mini")
+        for call in [*sync_calls, *async_calls]:
+            request = json.loads(call["input"])
+            schema = call["text_format"].model_json_schema()
+            measured_cost = (
+                len(encoding.encode_ordinary(call["instructions"]))
+                + len(encoding.encode_ordinary(json.dumps(schema, separators=(",", ":"))))
+                + len(encoding.encode_ordinary(json.dumps(request, ensure_ascii=False, separators=(",", ":"))))
+                + max(70, limits.expected_output_tokens_per_item * len(request["user_messages"]))
+                + limits.validation_feedback_tokens
+                + 32
+            )
+            assert len(request["user_messages"]) <= limits.max_inputs
+            assert measured_cost <= limits.max_request_tokens, (measured_cost, limits.max_request_tokens)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("async_mode", [False, True])
+    async def test_validation_feedback_cannot_exceed_request_budget(self, async_mode):
+        validation_error = _build_validation_error()
+        parse = AsyncMock(side_effect=validation_error) if async_mode else Mock(side_effect=validation_error)
+        client = SimpleNamespace(responses=SimpleNamespace(parse=parse))
+        high_limits = ResponseLimits(expected_output_tokens_per_item=16, validation_feedback_tokens=0)
+        if async_mode:
+            probe = AsyncBatchResponses.of(
+                client, "gpt-4.1-mini", "Echo.", max_validation_retries=0, limits=high_limits
+            )
+            with pytest.raises(ValidationError):
+                await probe.parse(["fruit"])
+        else:
+            probe = BatchResponses.of(client, "gpt-4.1-mini", "Echo.", max_validation_retries=0, limits=high_limits)
+            with pytest.raises(ValidationError):
+                probe.parse(["fruit"])
+
+        call = parse.call_args.kwargs
+        encoding = tiktoken.encoding_for_model("gpt-4.1-mini")
+        estimated_initial = (
+            len(encoding.encode_ordinary(call["instructions"]))
+            + len(encoding.encode_ordinary(json.dumps(call["text_format"].model_json_schema(), separators=(",", ":"))))
+            + len(
+                encoding.encode_ordinary(
+                    json.dumps(json.loads(call["input"]), ensure_ascii=False, separators=(",", ":"))
+                )
+            )
+            + high_limits.expected_output_tokens_per_item
+            + 32
+        )
+        limits = ResponseLimits(
+            max_request_tokens=estimated_initial + 1,
+            expected_output_tokens_per_item=high_limits.expected_output_tokens_per_item,
+            validation_feedback_tokens=0,
+        )
+        parse.reset_mock()
+        if async_mode:
+            wrapper = AsyncBatchResponses.of(client, "gpt-4.1-mini", "Echo.", limits=limits, max_validation_retries=1)
+            with pytest.raises(ValueError, match="budget"):
+                await wrapper.parse(["fruit"])
+        else:
+            wrapper = BatchResponses.of(client, "gpt-4.1-mini", "Echo.", limits=limits, max_validation_retries=1)
+            with pytest.raises(ValueError, match="budget"):
+                wrapper.parse(["fruit"])
+        assert parse.call_count == 1
+        assert not wrapper.cache._inflight
+
+    def test_split_by_tokens_and_count_preserves_ids_and_order(self, monkeypatch):
+        inputs = ["short", "long " * 500, "middle", "another", "short"]
+        limits = ResponseLimits(
+            max_request_tokens=1200,
+            max_inputs=2,
+            expected_output_tokens_per_item=32,
+            validation_feedback_tokens=0,
+        )
+        calls = []
+
+        def request(self, batch):
+            calls.append([message.id for message in batch])
+            return SimpleNamespace(
+                output_parsed=SimpleNamespace(
+                    assistant_messages=[
+                        SimpleNamespace(id=message.id, body=message.body) for message in reversed(batch)
+                    ]
+                )
+            )
+
+        monkeypatch.setattr(BatchResponses, "_request_llm", request)
+        client = BatchResponses.of(
+            SimpleNamespace(),
+            "gpt-4.1-mini",
+            "Echo.",
+            batch_size=0,
+            max_validation_retries=0,
+            limits=limits,
+        )
+        assert client.parse(inputs) == inputs
+        assert [identity for batch in calls for identity in batch] == [0, 1, 2, 3]
+        assert len(calls) >= 2
+        assert all(len(batch) <= 2 for batch in calls)
+        planned = _plan_response_batches(
+            [Message(id=i, body=text) for i, text in enumerate(inputs[:-1])],
+            client.model_name,
+            client._vectorized_system_message,
+            str,
+            limits,
+            0,
+            {},
+        )
+        assert calls == [[message.id for message in batch] for batch in planned]
+
+    @pytest.mark.asyncio
+    async def test_async_split_matches_sync(self, monkeypatch):
+        inputs = ["short", "long " * 500, "middle", "another", "short"]
+        limits = ResponseLimits(
+            max_request_tokens=1200,
+            max_inputs=2,
+            expected_output_tokens_per_item=32,
+            validation_feedback_tokens=0,
+        )
+        calls = []
+
+        async def request(self, batch):
+            calls.append([message.id for message in batch])
+            return SimpleNamespace(
+                output_parsed=SimpleNamespace(
+                    assistant_messages=[
+                        SimpleNamespace(id=message.id, body=message.body) for message in reversed(batch)
+                    ]
+                )
+            )
+
+        monkeypatch.setattr(AsyncBatchResponses, "_request_llm", request)
+        client = AsyncBatchResponses.of(
+            SimpleNamespace(),
+            "gpt-4.1-mini",
+            "Echo.",
+            batch_size=0,
+            max_validation_retries=0,
+            limits=limits,
+        )
+        assert await client.parse(inputs) == inputs
+        assert calls == [
+            [message.id for message in batch]
+            for batch in _plan_response_batches(
+                [Message(id=i, body=text) for i, text in enumerate(inputs[:-1])],
+                client.model_name,
+                client._vectorized_system_message,
+                str,
+                limits,
+                0,
+                {},
+            )
+        ]
+
+    @pytest.mark.parametrize("async_mode", [False, True])
+    @pytest.mark.asyncio
+    async def test_oversized_item_fails_before_request(self, monkeypatch, async_mode):
+        limits = ResponseLimits(
+            max_request_tokens=800,
+            expected_output_tokens_per_item=32,
+            validation_feedback_tokens=0,
+        )
+        sync_request = Mock()
+        async_request = AsyncMock()
+        monkeypatch.setattr(BatchResponses, "_request_llm", sync_request)
+        monkeypatch.setattr(AsyncBatchResponses, "_request_llm", async_request)
+        inputs = ["short", "long " * 2000]
+        if async_mode:
+            client = AsyncBatchResponses.of(
+                SimpleNamespace(),
+                "gpt-4.1-mini",
+                "Echo.",
+                batch_size=0,
+                max_validation_retries=0,
+                limits=limits,
+            )
+            with pytest.raises(ValueError, match="Response input ID 1 exceeds"):
+                await client.parse(inputs)
+        else:
+            client = BatchResponses.of(
+                SimpleNamespace(),
+                "gpt-4.1-mini",
+                "Echo.",
+                batch_size=0,
+                max_validation_retries=0,
+                limits=limits,
+            )
+            with pytest.raises(ValueError, match="Response input ID 1 exceeds"):
+                client.parse(inputs)
+        sync_request.assert_not_called()
+        async_request.assert_not_called()
+
+    def test_schema_instructions_and_output_allowance_reduce_capacity(self):
+        class RichResult(BaseModel):
+            title: str
+            explanation: str
+            category: str
+
+        messages = [Message(id=i, body="hello") for i in range(3)]
+
+        def plan(instructions, response_format, allowance, budget=1000, kwargs=None):
+            return _plan_response_batches(
+                messages,
+                "gpt-4.1-mini",
+                instructions,
+                response_format,
+                ResponseLimits(
+                    max_request_tokens=budget,
+                    max_inputs=3,
+                    expected_output_tokens_per_item=allowance,
+                    validation_feedback_tokens=0,
+                ),
+                0,
+                kwargs or {},
+            )
+
+        assert len(plan("short", str, 32)) == 1
+        assert len(plan("short", RichResult, 32, budget=300)) > 1
+        assert len(plan("short", str, 32, budget=300)) == 1
+        assert len(plan("long " * 80, str, 32, budget=300)) > 1
+        assert len(plan("short", str, 400)) > 1
+        assert len(plan("short", str, 32, kwargs={"max_output_tokens": 850})) > 1
+
+    @pytest.mark.parametrize(
+        "field,value,error",
+        [
+            ("max_inputs", 0, ValueError),
+            ("max_request_tokens", -1, ValueError),
+            ("expected_output_tokens_per_item", True, TypeError),
+            ("validation_feedback_tokens", -1, ValueError),
+        ],
+    )
+    def test_invalid_limits(self, field, value, error):
+        with pytest.raises(error):
+            ResponseLimits(**{field: value})
+
+    @pytest.mark.parametrize("invalid_cap", [False, 0, 0.0, None])
+    def test_invalid_max_output_tokens_is_rejected(self, invalid_cap):
+        with pytest.raises(ValueError, match="max_output_tokens"):
+            _plan_response_batches(
+                [Message(id=0, body="hello")],
+                "gpt-4.1-mini",
+                "short",
+                str,
+                ResponseLimits(),
+                0,
+                {"max_output_tokens": invalid_cap},
+            )
 
 
 def _build_validation_error() -> ValidationError:
@@ -684,3 +994,580 @@ class TestMultimodalRouting:
 
         with pytest.raises(ValueError, match="exceeding the 20 MB limit"):
             encode_file_to_data_uri(str(big_file))
+
+
+class _MediaResult(BaseModel):
+    name: str
+    color: str
+
+
+def _media_validation_error() -> ValidationError:
+    try:
+        _MediaResult.model_validate({"name": "apple"})
+    except ValidationError as error:
+        return error
+    raise AssertionError("Expected missing color to fail validation")
+
+
+class TestMultimodalAcceptance:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("async_mode", [False, True])
+    @pytest.mark.parametrize("suffix", [".txt", ".png", ".pdf"])
+    async def test_cache_tracks_local_content_and_uses_matching_bytes(self, tmp_path, suffix, async_mode):
+        path = tmp_path / f"document{suffix}"
+        path.write_bytes(b"first")
+        uploads: dict[str, bytes] = {}
+
+        def upload(*, file, purpose):
+            assert purpose == "assistants"
+            file_id = f"file-{len(uploads) + 1}"
+            uploads[file_id] = file.read()
+            return SimpleNamespace(id=file_id)
+
+        def text_response(**kwargs):
+            messages = json.loads(kwargs["input"])["user_messages"]
+            return SimpleNamespace(
+                output_parsed=SimpleNamespace(
+                    assistant_messages=[
+                        SimpleNamespace(id=message["id"], body=message["body"].splitlines()[-1]) for message in messages
+                    ]
+                )
+            )
+
+        def media_response(**kwargs):
+            content = kwargs["input"][0]["content"][0]
+            if suffix == ".pdf":
+                body = uploads[content["file_id"]]
+            else:
+                body = base64.b64decode(content["image_url"].split(",", 1)[1])
+            return SimpleNamespace(output_text=body.decode())
+
+        files = SimpleNamespace(
+            create=AsyncMock(side_effect=upload) if async_mode else Mock(side_effect=upload),
+            delete=AsyncMock() if async_mode else Mock(),
+        )
+        responses = SimpleNamespace(
+            parse=AsyncMock(side_effect=text_response) if async_mode else Mock(side_effect=text_response),
+            create=AsyncMock(side_effect=media_response) if async_mode else Mock(side_effect=media_response),
+        )
+        client = SimpleNamespace(files=files, responses=responses)
+        if async_mode:
+            wrapper = AsyncBatchResponses.of(client, "gpt-4.1-mini", "Echo.", batch_size=0, multimodal=True)
+
+            async def predict(values):
+                return await wrapper.parse(values)
+
+        else:
+            wrapper = BatchResponses.of(client, "gpt-4.1-mini", "Echo.", batch_size=0, multimodal=True)
+
+            async def predict(values):
+                return wrapper.parse(values)
+
+        assert await predict([str(path), str(path)]) == ["first", "first"]
+        assert await predict([str(path)]) == ["first"]
+        timestamp = path.stat().st_mtime_ns
+        path.write_bytes(b"other")
+        os.utime(path, ns=(timestamp, timestamp))
+        assert await predict([str(path)]) == ["other"]
+        assert responses.parse.call_count == (2 if suffix == ".txt" else 0)
+        assert responses.create.call_count == (0 if suffix == ".txt" else 2)
+        assert list(uploads.values()) == ([b"first", b"other"] if suffix == ".pdf" else [])
+        assert files.delete.call_count == (2 if suffix == ".pdf" else 0)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("async_mode", [False, True])
+    async def test_file_changed_after_cache_lookup_cannot_return_stale_hit(self, tmp_path, monkeypatch, async_mode):
+        path = tmp_path / "message.txt"
+        path.write_text("first")
+
+        def echo(**kwargs):
+            body = json.loads(kwargs["input"])["user_messages"][0]["body"]
+            return SimpleNamespace(output_parsed=SimpleNamespace(assistant_messages=[SimpleNamespace(id=0, body=body)]))
+
+        parse = AsyncMock(side_effect=echo) if async_mode else Mock(side_effect=echo)
+        client = SimpleNamespace(responses=SimpleNamespace(parse=parse))
+        if async_mode:
+            wrapper = AsyncBatchResponses.of(client, "gpt-4.1-mini", "Echo.", multimodal=True)
+
+            async def predict():
+                return await wrapper.parse([str(path)])
+
+        else:
+            wrapper = BatchResponses.of(client, "gpt-4.1-mini", "Echo.", multimodal=True)
+
+            async def predict():
+                return wrapper.parse([str(path)])
+
+        assert await predict() == ["[File: message.txt]\nfirst"]
+        original_cache_key = _responses.local_file_cache_key
+        changed = False
+
+        def mutate_on_lookup(value):
+            nonlocal changed
+            key = original_cache_key(value)
+            if not changed:
+                path.write_text("other")
+                changed = True
+            return key
+
+        monkeypatch.setattr(_responses, "local_file_cache_key", mutate_on_lookup)
+        with pytest.raises(ValueError, match="changed"):
+            await predict()
+        assert parse.call_count == 1
+        assert not wrapper.cache._inflight
+        assert await predict() == ["[File: message.txt]\nother"]
+        assert parse.call_count == 2
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("async_mode", [False, True])
+    async def test_literal_nul_content_cannot_collide_with_local_file_key(self, tmp_path, async_mode):
+        path = tmp_path / "message.txt"
+        path.write_text("first")
+        literal = _responses.local_file_cache_key(str(path))
+
+        def echo(**kwargs):
+            messages = json.loads(kwargs["input"])["user_messages"]
+            return SimpleNamespace(
+                output_parsed=SimpleNamespace(
+                    assistant_messages=[SimpleNamespace(id=message["id"], body=message["body"]) for message in messages]
+                )
+            )
+
+        parse = AsyncMock(side_effect=echo) if async_mode else Mock(side_effect=echo)
+        client = SimpleNamespace(responses=SimpleNamespace(parse=parse))
+        if async_mode:
+            wrapper = AsyncBatchResponses.of(client, "gpt-4.1-mini", "Echo.", multimodal=True)
+            result = await wrapper.parse([str(path), literal])
+        else:
+            wrapper = BatchResponses.of(client, "gpt-4.1-mini", "Echo.", multimodal=True)
+            result = wrapper.parse([str(path), literal])
+        assert result == ["[File: message.txt]\nfirst", literal]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("async_mode", [False, True])
+    @pytest.mark.parametrize("suffix", [".txt", ".pdf"])
+    async def test_mutation_between_digest_and_file_read_fails_without_upload(
+        self, tmp_path, monkeypatch, async_mode, suffix
+    ):
+        path = tmp_path / f"document{suffix}"
+        path.write_bytes(b"first")
+        original_cache_key = _responses.local_file_cache_key
+
+        def mutate_after_digest(value):
+            key = original_cache_key(value)
+            path.write_bytes(b"other")
+            return key
+
+        monkeypatch.setattr(_responses, "local_file_cache_key", mutate_after_digest)
+        client = SimpleNamespace(
+            files=SimpleNamespace(create=AsyncMock() if async_mode else Mock()),
+            responses=SimpleNamespace(parse=AsyncMock() if async_mode else Mock()),
+        )
+        if async_mode:
+            wrapper = AsyncBatchResponses.of(client, "gpt-4.1-mini", "Echo.", batch_size=0, multimodal=True)
+            with pytest.raises(ValueError, match="changed"):
+                await wrapper.parse([str(path)])
+        else:
+            wrapper = BatchResponses.of(client, "gpt-4.1-mini", "Echo.", batch_size=0, multimodal=True)
+            with pytest.raises(ValueError, match="changed"):
+                wrapper.parse([str(path)])
+        client.files.create.assert_not_called()
+        client.responses.parse.assert_not_called()
+        assert not wrapper.cache._inflight
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("async_mode", [False, True])
+    async def test_structured_retry_reuses_upload_and_deletes_after_last_attempt(self, tmp_path, async_mode):
+        path = tmp_path / "document.pdf"
+        path.write_bytes(b"pdf content")
+        events = []
+        instructions = []
+
+        def upload(*, file, purpose):
+            events.append(("upload", file.read()))
+            return SimpleNamespace(id="uploaded-1")
+
+        def parse_media(**kwargs):
+            part = kwargs["input"][0]["content"][0]
+            events.append(("parse", part["file_id"]))
+            instructions.append(kwargs["instructions"])
+            if len(instructions) == 1:
+                raise _media_validation_error()
+            return SimpleNamespace(output_parsed=_MediaResult(name="apple", color="red"))
+
+        def delete(file_id):
+            events.append(("delete", file_id))
+
+        files = SimpleNamespace(
+            create=AsyncMock(side_effect=upload) if async_mode else Mock(side_effect=upload),
+            delete=AsyncMock(side_effect=delete) if async_mode else Mock(side_effect=delete),
+        )
+        responses = SimpleNamespace(
+            parse=AsyncMock(side_effect=parse_media) if async_mode else Mock(side_effect=parse_media)
+        )
+        client = SimpleNamespace(files=files, responses=responses)
+        if async_mode:
+            wrapper = AsyncBatchResponses.of(
+                client,
+                "gpt-4.1-mini",
+                "Extract fruit",
+                _MediaResult,
+                batch_size=0,
+                multimodal=True,
+                max_validation_retries=1,
+            )
+            result = await wrapper.parse([str(path)])
+        else:
+            wrapper = BatchResponses.of(
+                client,
+                "gpt-4.1-mini",
+                "Extract fruit",
+                _MediaResult,
+                batch_size=0,
+                multimodal=True,
+                max_validation_retries=1,
+            )
+            result = wrapper.parse([str(path)])
+
+        assert result == [_MediaResult(name="apple", color="red")]
+        assert events == [
+            ("upload", b"pdf content"),
+            ("parse", "uploaded-1"),
+            ("parse", "uploaded-1"),
+            ("delete", "uploaded-1"),
+        ]
+        assert "--- PRIOR VALIDATION FEEDBACK ---" not in instructions[0]
+        assert "color" in instructions[1]
+        assert "assistant_messages" not in instructions[1]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("async_mode", [False, True])
+    async def test_structured_retry_exhaustion_still_deletes_upload(self, tmp_path, async_mode):
+        path = tmp_path / "document.pdf"
+        path.write_bytes(b"pdf")
+        files = SimpleNamespace(
+            create=AsyncMock(return_value=SimpleNamespace(id="uploaded-1"))
+            if async_mode
+            else Mock(return_value=SimpleNamespace(id="uploaded-1")),
+            delete=AsyncMock() if async_mode else Mock(),
+        )
+        responses = SimpleNamespace(
+            parse=AsyncMock(side_effect=_media_validation_error())
+            if async_mode
+            else Mock(side_effect=_media_validation_error())
+        )
+        client = SimpleNamespace(files=files, responses=responses)
+        if async_mode:
+            wrapper = AsyncBatchResponses.of(
+                client,
+                "gpt-4.1-mini",
+                "Extract fruit",
+                _MediaResult,
+                batch_size=0,
+                multimodal=True,
+                max_validation_retries=2,
+            )
+            with pytest.raises(ValidationError):
+                await wrapper.parse([str(path)])
+        else:
+            wrapper = BatchResponses.of(
+                client,
+                "gpt-4.1-mini",
+                "Extract fruit",
+                _MediaResult,
+                batch_size=0,
+                multimodal=True,
+                max_validation_retries=2,
+            )
+            with pytest.raises(ValidationError):
+                wrapper.parse([str(path)])
+        assert responses.parse.call_count == 3
+        files.create.assert_called_once()
+        files.delete.assert_called_once_with("uploaded-1")
+        assert not wrapper.cache._inflight
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("async_mode", [False, True])
+    @pytest.mark.parametrize("parse_failure", [False, True])
+    async def test_cleanup_failure_is_explicit_after_success_or_parse_error(self, tmp_path, async_mode, parse_failure):
+        path = tmp_path / "document.pdf"
+        path.write_bytes(b"pdf")
+        files = SimpleNamespace(
+            create=AsyncMock(return_value=SimpleNamespace(id="uploaded-1"))
+            if async_mode
+            else Mock(return_value=SimpleNamespace(id="uploaded-1")),
+            delete=AsyncMock(side_effect=RuntimeError("delete failed"))
+            if async_mode
+            else Mock(side_effect=RuntimeError("delete failed")),
+        )
+        parse_result = SimpleNamespace(output_parsed=_MediaResult(name="apple", color="red"))
+        responses = SimpleNamespace(
+            parse=AsyncMock(side_effect=_media_validation_error() if parse_failure else None, return_value=parse_result)
+            if async_mode
+            else Mock(side_effect=_media_validation_error() if parse_failure else None, return_value=parse_result)
+        )
+        client = SimpleNamespace(files=files, responses=responses)
+        if async_mode:
+            wrapper = AsyncBatchResponses.of(
+                client,
+                "gpt-4.1-mini",
+                "Extract fruit",
+                _MediaResult,
+                batch_size=0,
+                multimodal=True,
+                max_validation_retries=0,
+            )
+            with pytest.raises(RuntimeError, match="delete failed") as caught:
+                await wrapper.parse([str(path)])
+        else:
+            wrapper = BatchResponses.of(
+                client,
+                "gpt-4.1-mini",
+                "Extract fruit",
+                _MediaResult,
+                batch_size=0,
+                multimodal=True,
+                max_validation_retries=0,
+            )
+            with pytest.raises(RuntimeError, match="delete failed") as caught:
+                wrapper.parse([str(path)])
+        assert isinstance(caught.value.__context__, ValidationError) == parse_failure
+        files.delete.assert_called_once_with("uploaded-1")
+        assert not wrapper.cache._inflight
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("async_mode", [False, True])
+    async def test_multimodal_validation_attempts_share_one_transport_deadline(self, monkeypatch, async_mode):
+        policy = RetryPolicy(max_attempts=1, max_elapsed=5)
+        deadlines = []
+        deadline_policies = []
+
+        def deadline_for(current):
+            deadline_policies.append(current)
+            return 42.0
+
+        def sync_transport(client, current, operation, options, *, deadline=None):
+            assert current is policy
+            deadlines.append(deadline)
+            return operation(client, options)
+
+        async def async_transport(client, current, operation, options, *, deadline=None):
+            assert current is policy
+            deadlines.append(deadline)
+            return await operation(client, options)
+
+        monkeypatch.setattr(_responses, "retry_deadline", deadline_for)
+        monkeypatch.setattr(_responses, "call_with_retry", sync_transport)
+        monkeypatch.setattr(_responses, "call_with_retry_async", async_transport)
+        result = SimpleNamespace(output_parsed=_MediaResult(name="apple", color="red"))
+        parse = (
+            AsyncMock(side_effect=[_media_validation_error(), result])
+            if async_mode
+            else Mock(side_effect=[_media_validation_error(), result])
+        )
+        client = SimpleNamespace(responses=SimpleNamespace(parse=parse))
+        input_messages = [
+            {"role": "user", "content": [{"type": "input_image", "image_url": "https://example.com/a.png"}]}
+        ]
+        if async_mode:
+            wrapper = AsyncBatchResponses(
+                client=client,
+                model_name="gpt-4.1-mini",
+                system_message="Extract fruit",
+                response_format=_MediaResult,
+                retry_policy=policy,
+                max_validation_retries=1,
+            )
+            parsed = await wrapper._request_multimodal(input_messages)
+        else:
+            wrapper = BatchResponses(
+                client=client,
+                model_name="gpt-4.1-mini",
+                system_message="Extract fruit",
+                response_format=_MediaResult,
+                retry_policy=policy,
+                max_validation_retries=1,
+            )
+            parsed = wrapper._request_multimodal(input_messages)
+        assert parsed == _MediaResult(name="apple", color="red")
+        assert deadlines == [42.0, 42.0]
+        assert deadline_policies == [policy]
+        assert parse.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_async_media_concurrency_is_bounded_and_results_keep_input_order(self):
+        urls = [f"https://example.com/photo-{i}.png?sig=abc" for i in range(8)]
+        release = asyncio.Event()
+        at_limit = asyncio.Event()
+        active = 0
+        peak = 0
+
+        async def create(**kwargs):
+            nonlocal active, peak
+            active += 1
+            peak = max(peak, active)
+            if active == 3:
+                at_limit.set()
+            try:
+                await release.wait()
+                return SimpleNamespace(output_text=kwargs["input"][0]["content"][0]["image_url"])
+            finally:
+                active -= 1
+
+        client = SimpleNamespace(responses=SimpleNamespace(create=AsyncMock(side_effect=create)))
+        wrapper = AsyncBatchResponses.of(
+            client, "gpt-4.1-mini", "Describe image", batch_size=0, max_concurrency=3, multimodal=True
+        )
+        pending = asyncio.create_task(wrapper.parse(urls))
+        try:
+            await asyncio.wait_for(at_limit.wait(), timeout=2)
+            assert peak == 3
+            assert active == 3
+        finally:
+            release.set()
+        assert await asyncio.wait_for(pending, timeout=2) == urls
+        assert peak == 3
+        assert active == 0
+
+    @pytest.mark.asyncio
+    async def test_parallel_media_error_cancels_peers_and_cleans_their_uploads(self, tmp_path):
+        path = tmp_path / "pending.pdf"
+        path.write_bytes(b"pdf")
+        waiting_on_document = asyncio.Event()
+        document_cancelled = asyncio.Event()
+
+        async def create(**kwargs):
+            content = kwargs["input"][0]["content"][0]
+            if content["type"] == "input_file":
+                waiting_on_document.set()
+                try:
+                    await asyncio.Future()
+                except asyncio.CancelledError:
+                    document_cancelled.set()
+                    raise
+            await waiting_on_document.wait()
+            raise RuntimeError("image failed")
+
+        client = SimpleNamespace(
+            files=SimpleNamespace(
+                create=AsyncMock(return_value=SimpleNamespace(id="uploaded-1")),
+                delete=AsyncMock(),
+            ),
+            responses=SimpleNamespace(create=AsyncMock(side_effect=create)),
+        )
+        wrapper = AsyncBatchResponses.of(
+            client, "gpt-4.1-mini", "Describe", batch_size=0, max_concurrency=2, multimodal=True
+        )
+        with pytest.raises(RuntimeError, match="image failed"):
+            await asyncio.wait_for(wrapper.parse([str(path), "https://example.com/fail.png"]), timeout=2)
+        assert document_cancelled.is_set()
+        client.files.delete.assert_awaited_once_with("uploaded-1")
+        assert not wrapper.cache._inflight
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("cleanup_fails", [False, True])
+    async def test_cancel_during_multimodal_parse_cleans_uploads_and_waiters(self, tmp_path, cleanup_fails):
+        path = tmp_path / "document.pdf"
+        path.write_bytes(b"pdf")
+        started = asyncio.Event()
+        delete = AsyncMock(side_effect=RuntimeError("delete failed")) if cleanup_fails else AsyncMock()
+
+        async def parse_media(**kwargs):
+            started.set()
+            await asyncio.Future()
+
+        client = SimpleNamespace(
+            files=SimpleNamespace(create=AsyncMock(return_value=SimpleNamespace(id="uploaded-1")), delete=delete),
+            responses=SimpleNamespace(parse=AsyncMock(side_effect=parse_media)),
+        )
+        wrapper = AsyncBatchResponses.of(
+            client,
+            "gpt-4.1-mini",
+            "Extract fruit",
+            _MediaResult,
+            batch_size=0,
+            max_concurrency=2,
+            multimodal=True,
+        )
+        pending = asyncio.create_task(wrapper.parse([str(path)]))
+        await asyncio.wait_for(started.wait(), timeout=2)
+        pending.cancel()
+        if cleanup_fails:
+            with pytest.raises(RuntimeError, match="delete failed"):
+                await asyncio.wait_for(pending, timeout=2)
+        else:
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(pending, timeout=2)
+        delete.assert_awaited_once_with("uploaded-1")
+        assert not wrapper.cache._inflight
+
+        client.responses.parse = AsyncMock(
+            return_value=SimpleNamespace(output_parsed=_MediaResult(name="apple", color="red"))
+        )
+        client.files.delete = AsyncMock()
+        assert await asyncio.wait_for(wrapper.parse([str(path)]), timeout=2) == [
+            _MediaResult(name="apple", color="red")
+        ]
+
+    @pytest.mark.asyncio
+    async def test_cancel_during_async_upload_deletes_created_file(self, tmp_path):
+        path = tmp_path / "document.pdf"
+        path.write_bytes(b"pdf")
+        upload_started = asyncio.Event()
+        finish_upload = asyncio.Event()
+
+        async def upload(*, file, purpose):
+            upload_started.set()
+            await finish_upload.wait()
+            return SimpleNamespace(id="uploaded-1")
+
+        client = SimpleNamespace(
+            files=SimpleNamespace(create=AsyncMock(side_effect=upload), delete=AsyncMock()),
+            responses=SimpleNamespace(create=AsyncMock()),
+        )
+        wrapper = AsyncBatchResponses.of(client, "gpt-4.1-mini", "Describe", batch_size=0, multimodal=True)
+        pending = asyncio.create_task(wrapper.parse([str(path)]))
+        await asyncio.wait_for(upload_started.wait(), timeout=2)
+        pending.cancel()
+        finish_upload.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(pending, timeout=2)
+        client.files.delete.assert_awaited_once_with("uploaded-1")
+        client.responses.create.assert_not_called()
+        assert not wrapper.cache._inflight
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("cleanup_fails", [False, True])
+    async def test_cancel_during_cleanup_waits_for_delete_and_reports_failure(self, tmp_path, cleanup_fails):
+        path = tmp_path / "document.pdf"
+        path.write_bytes(b"pdf")
+        delete_started = asyncio.Event()
+        finish_delete = asyncio.Event()
+
+        async def delete(file_id):
+            assert file_id == "uploaded-1"
+            delete_started.set()
+            await finish_delete.wait()
+            if cleanup_fails:
+                raise RuntimeError("delete failed")
+
+        client = SimpleNamespace(
+            files=SimpleNamespace(
+                create=AsyncMock(return_value=SimpleNamespace(id="uploaded-1")),
+                delete=AsyncMock(side_effect=delete),
+            ),
+            responses=SimpleNamespace(create=AsyncMock(return_value=SimpleNamespace(output_text="done"))),
+        )
+        wrapper = AsyncBatchResponses.of(client, "gpt-4.1-mini", "Describe", multimodal=True)
+        pending = asyncio.create_task(wrapper.parse([str(path)]))
+        await asyncio.wait_for(delete_started.wait(), timeout=2)
+        pending.cancel()
+        finish_delete.set()
+        if cleanup_fails:
+            with pytest.raises(RuntimeError, match="delete failed"):
+                await asyncio.wait_for(pending, timeout=2)
+        else:
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(pending, timeout=2)
+        client.files.delete.assert_awaited_once_with("uploaded-1")
+        assert not wrapper.cache._inflight

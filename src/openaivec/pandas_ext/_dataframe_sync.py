@@ -24,7 +24,7 @@ class OpenAIVecDataFrameAccessor:
     def responses_with_cache(
         self,
         instructions: str,
-        cache: BatchCache[str, ResponseFormat],
+        cache: BatchCache[str, ResponseFormat | None],
         response_format: type[ResponseFormat] = str,
         *,
         max_validation_retries: int = 3,
@@ -57,7 +57,7 @@ class OpenAIVecDataFrameAccessor:
 
         Args:
             instructions (str): System prompt prepended to every user message.
-            cache (BatchCache[str, ResponseFormat]): Pre-configured cache
+            cache (BatchCache[str, ResponseFormat | None]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
             response_format (type[ResponseFormat], optional): Pydantic model or built‑in
@@ -147,7 +147,7 @@ class OpenAIVecDataFrameAccessor:
     def task_with_cache(
         self,
         task: PreparedTask[ResponseFormat],
-        cache: BatchCache[str, ResponseFormat],
+        cache: BatchCache[str, ResponseFormat | None],
         *,
         max_validation_retries: int = 3,
         retry_policy: RetryPolicy | None = None,
@@ -173,7 +173,7 @@ class OpenAIVecDataFrameAccessor:
         Args:
             task (PreparedTask): A pre-configured task containing instructions,
                 response format for processing the inputs.
-            cache (BatchCache[str, ResponseFormat]): Pre-configured cache
+            cache (BatchCache[str, ResponseFormat | None]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
             max_validation_retries (int): Additional schema/ID correction attempts.
@@ -268,7 +268,7 @@ class OpenAIVecDataFrameAccessor:
     def parse_with_cache(
         self,
         instructions: str,
-        cache: BatchCache[str, ResponseFormat],
+        cache: BatchCache[str, ResponseFormat | None],
         response_format: type[ResponseFormat] | None = None,
         max_examples: int = 100,
         *,
@@ -299,7 +299,7 @@ class OpenAIVecDataFrameAccessor:
             instructions (str): Plain language description of what information
                 to extract from each row (e.g., "Extract shipping details and
                 order status"). Guides both extraction and schema inference.
-            cache (BatchCache[str, ResponseFormat]): Pre-configured cache
+            cache (BatchCache[str, ResponseFormat | None]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
             response_format (type[ResponseFormat] | None, optional): Target
@@ -516,7 +516,7 @@ class OpenAIVecDataFrameAccessor:
     def fillna(
         self,
         target_column_name: str,
-        max_examples: int = 500,
+        max_examples: int = 8,
         batch_size: int | None = None,
         show_progress: bool = True,
     ) -> pd.DataFrame:
@@ -532,7 +532,8 @@ class OpenAIVecDataFrameAccessor:
                 that need to be filled.
             max_examples (int, optional): The maximum number of example rows to use
                 for context when predicting missing values. Higher values may improve
-                accuracy but increase API costs and processing time. Defaults to 500.
+                accuracy but increase API costs and processing time. Defaults to 8;
+                example text is capped at 6000 characters.
             batch_size (int | None, optional): Number of requests sent in one batch
                 to optimize API usage. Defaults to ``None`` (automatic batch size
                 optimization based on execution time). Set to a positive integer for fixed batch size.
@@ -563,7 +564,8 @@ class OpenAIVecDataFrameAccessor:
             is returned unchanged.
         """
 
-        missing_rows = self._obj[self._obj[target_column_name].isna()]
+        missing_positions = np.flatnonzero(self._obj[target_column_name].isna().to_numpy())
+        missing_rows = self._obj.iloc[missing_positions]
         if missing_rows.empty:
             return self._obj
         import openaivec.pandas_ext as _pkg
@@ -574,17 +576,11 @@ class OpenAIVecDataFrameAccessor:
             task=task, batch_size=batch_size, show_progress=show_progress
         )
 
-        # get deep copy of the DataFrame to avoid modifying the original
         df = self._obj.copy()
-
-        # Get the actual indices of missing rows to map the results correctly
-        missing_indices = missing_rows.index.tolist()
-
-        for i, result in enumerate(filled_values):
+        column_position = df.columns.get_loc(target_column_name)
+        for position, result in zip(missing_positions, filled_values):
             if result.output is not None:
-                # Use the actual index from the original DataFrame, not the relative index from result
-                actual_index = missing_indices[i]
-                df.at[actual_index, target_column_name] = result.output
+                df.iat[position, column_position] = result.output
 
         return df
 

@@ -27,7 +27,7 @@ class AsyncOpenAIVecSeriesAccessor:
     async def responses_with_cache(
         self,
         instructions: str,
-        cache: AsyncBatchCache[str, ResponseFormat],
+        cache: AsyncBatchCache[str, ResponseFormat | None],
         response_format: type[ResponseFormat] = str,
         multimodal: bool = False,
         *,
@@ -54,7 +54,7 @@ class AsyncOpenAIVecSeriesAccessor:
 
         Args:
             instructions (str): System prompt prepended to every user message.
-            cache (AsyncBatchCache[str, ResponseFormat]): Pre-configured cache
+            cache (AsyncBatchCache[str, ResponseFormat | None]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
             response_format (type[ResponseFormat], optional): Pydantic model or built‑in
@@ -283,7 +283,7 @@ class AsyncOpenAIVecSeriesAccessor:
     async def task_with_cache(
         self,
         task: PreparedTask[ResponseFormat],
-        cache: AsyncBatchCache[str, ResponseFormat],
+        cache: AsyncBatchCache[str, ResponseFormat | None],
         multimodal: bool = False,
         *,
         max_validation_retries: int = 3,
@@ -311,7 +311,7 @@ class AsyncOpenAIVecSeriesAccessor:
         Args:
             task (PreparedTask): A pre-configured task containing instructions,
                 response format for processing the inputs.
-            cache (AsyncBatchCache[str, ResponseFormat]): Pre-configured cache
+            cache (AsyncBatchCache[str, ResponseFormat | None]): Pre-configured cache
                 instance for managing API call batching and deduplication.
                 Set cache.batch_size=None to enable automatic batch size optimization.
             max_validation_retries (int): Additional schema/ID correction attempts.
@@ -418,7 +418,7 @@ class AsyncOpenAIVecSeriesAccessor:
     async def parse_with_cache(
         self,
         instructions: str,
-        cache: AsyncBatchCache[str, ResponseFormat],
+        cache: AsyncBatchCache[str, ResponseFormat | None],
         response_format: type[ResponseFormat] | None = None,
         max_examples: int = 100,
         multimodal: bool = False,
@@ -450,7 +450,7 @@ class AsyncOpenAIVecSeriesAccessor:
             instructions (str): Plain language description of what to extract
                 (e.g., "Extract dates, amounts, and descriptions from receipts").
                 Guides both extraction and schema inference.
-            cache (AsyncBatchCache[str, ResponseFormat]): Pre-configured
+            cache (AsyncBatchCache[str, ResponseFormat | None]): Pre-configured
                 async cache for managing concurrent API calls and deduplication.
                 Set cache.batch_size=None for automatic optimization.
             response_format (type[ResponseFormat] | None, optional): Target

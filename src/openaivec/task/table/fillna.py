@@ -24,114 +24,131 @@ Example:
     task = fillna(df, "salary")
     filled_salaries = df[df["salary"].isna()].ai.task(task)
 
-    # Apply filled values back to DataFrame
-    for result in filled_salaries:
-        df.loc[result.index, "salary"] = result.output
+    missing_positions = df["salary"].isna().to_numpy().nonzero()[0]
+    for position, result in zip(missing_positions, filled_salaries):
+        df.iat[position, df.columns.get_loc("salary")] = result.output
     ```
 
-    With BatchResponses for more control:
+    Opt in to LLM prompt refinement before asynchronous execution:
 
     ```python
-    from openai import OpenAI
-    from openaivec import BatchResponses
     from openaivec.task.table import fillna
 
-    client = OpenAI()
-    df = pd.DataFrame({...})  # Your DataFrame with missing values
-
-    # Create fillna task for target column
-    task = fillna(df, "target_column")
-
-    # Get rows with missing values in target column
+    task = fillna(df, "target_column", improve_prompt=True)
     missing_rows = df[df["target_column"].isna()]
-
-    # Process with BatchResponses
-    filler = BatchResponses.of_task(
-        client=client,
-        model_name="gpt-6-luna",
-        task=task,
-        reasoning={"effort": "none"},
-    )
-
-    # Generate inputs for missing rows
-    inputs = []
-    for idx, row in missing_rows.iterrows():
-        inputs.append({
-            "index": idx,
-            "input": {k: v for k, v in row.items() if k != "target_column"}
-        })
-
-    filled_values = filler.parse(inputs)
+    filled_values = await missing_rows.aio.task(task)
     ```
 """
 
 import json
+from xml.etree import ElementTree
 
+import numpy as np
 import pandas as pd
+import tiktoken
 from pydantic import BaseModel, ConfigDict, Field
 
 from openaivec._model import PreparedTask
 from openaivec._prompt import FewShotPromptBuilder
+from openaivec._provider import CONTAINER
 from openaivec.task._prompt_templates import same_language_policy
 from openaivec.task._registry import TaskSpec
 
-__all__ = ["fillna", "FillNaResponse"]
+__all__ = ["FillNaResponse", "fillna"]
+
+_DEFAULT_EXAMPLES = 8
+_EXAMPLE_CHAR_BUDGET = 6000
+_EXAMPLE_TOKEN_BUDGET = 1500
+_EXAMPLE_XML_OVERHEAD_TOKENS = 16
 
 
-def _get_examples(df: pd.DataFrame, target_column_name: str, max_examples: int) -> list[dict]:
-    examples: list[dict] = []
+def _get_examples(df: pd.DataFrame, target_column_name: str, max_examples: int) -> list[tuple[str, str]]:
+    from openaivec.pandas_ext._common import _df_rows_to_json_series
 
-    samples: pd.DataFrame = df.sample(frac=1).reset_index(drop=True).drop_duplicates()
-    samples = samples.dropna(subset=[target_column_name])
+    positions = np.flatnonzero(df[target_column_name].notna().to_numpy())
+    candidate_count = min(len(positions), max_examples * 4, _EXAMPLE_CHAR_BUDGET // 30 * 4)
+    selected = np.random.default_rng(0).choice(positions, size=candidate_count, replace=False)
+    samples = df.iloc[selected].copy()
+    outputs = samples[target_column_name].tolist()
+    samples[target_column_name] = None
+    inputs = _df_rows_to_json_series(samples)
 
-    for i, row in samples.head(max_examples).iterrows():
-        examples.append(
-            {
-                "index": i,
-                "input": {k: v for k, v in row.items() if k != target_column_name},
-                "output": row[target_column_name],
-            }
+    examples: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    used_chars = 0
+    used_tokens = 0
+    encoding = CONTAINER.resolve(tiktoken.Encoding)
+    for input_value, output in zip(inputs, outputs):
+        output_value = json.dumps({"output": output}, ensure_ascii=False, default=str)
+        pair = (input_value, output_value)
+        pair_chars = len(input_value) + len(output_value) + 100
+        if pair in seen or pair_chars + used_chars > _EXAMPLE_CHAR_BUDGET:
+            continue
+        example = ElementTree.Element("Example")
+        ElementTree.SubElement(example, "Input").text = input_value
+        ElementTree.SubElement(example, "Output").text = output_value
+        pair_tokens = (
+            len(encoding.encode_ordinary(ElementTree.tostring(example, encoding="unicode")))
+            + _EXAMPLE_XML_OVERHEAD_TOKENS
         )
-
+        if pair_tokens + used_tokens > _EXAMPLE_TOKEN_BUDGET:
+            continue
+        seen.add(pair)
+        examples.append(pair)
+        used_chars += pair_chars
+        used_tokens += pair_tokens
+        if len(examples) == max_examples:
+            break
     return examples
 
 
-def _build_instructions(df: pd.DataFrame, target_column_name: str, max_examples: int) -> str:
+def _build_instructions(df: pd.DataFrame, target_column_name: str, max_examples: int, improve_prompt: bool) -> str:
     examples = _get_examples(df, target_column_name, max_examples)
 
     builder = (
         FewShotPromptBuilder()
-        .purpose("Fill missing values in the target column based on the context provided by other columns.")
+        .purpose(
+            f"Fill the missing value in column {target_column_name!r} of the JSON row. "
+            "Return an object with only the output field."
+        )
         .caution("Ensure that the filled values are consistent with the data in other columns.")
         .caution(same_language_policy())
     )
 
-    for row in examples:
-        builder.example(
-            input_value=json.dumps({"index": row["index"], "input": row["input"]}, ensure_ascii=False, default=str),
-            output_value=json.dumps({"index": row["index"], "output": row["output"]}, ensure_ascii=False, default=str),
+    if not examples:
+        if improve_prompt:
+            raise ValueError("No examples fit the prompt budget; prompt improvement requires at least one example.")
+        return (
+            f"Fill the missing value in column {target_column_name!r} of the input JSON row. "
+            "Return an object with only the output field. "
+            "Ensure the value is consistent with the other columns. "
+            f"{same_language_policy()}"
         )
+    for input_value, output_value in examples:
+        builder.example(input_value=input_value, output_value=output_value)
 
-    return builder.improve().build()
+    if improve_prompt:
+        builder.improve()
+    return builder.build()
 
 
 class FillNaResponse(BaseModel):
     """Response model for missing value imputation results.
 
-    Contains the row index and the imputed value for a specific missing
-    entry in the target column.
+    Contains the imputed value for a specific missing entry in the target column.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    index: int = Field(description="Index of the row in the original DataFrame")
     output: int | float | str | bool | None = Field(
         description="Filled value for the target column. This value should be JSON-compatible "
         "and match the target column type in the original DataFrame."
     )
 
 
-def fillna(df: pd.DataFrame, target_column_name: str, max_examples: int = 500) -> PreparedTask[FillNaResponse]:
+def fillna(
+    df: pd.DataFrame, target_column_name: str, max_examples: int = _DEFAULT_EXAMPLES, *, improve_prompt: bool = False
+) -> PreparedTask[FillNaResponse]:
     """Create a prepared task for filling missing values in a DataFrame column.
 
     Analyzes the provided DataFrame to understand data patterns and creates
@@ -145,8 +162,11 @@ def fillna(df: pd.DataFrame, target_column_name: str, max_examples: int = 500) -
             This column should exist in the DataFrame and contain some
             non-null values to serve as training examples.
         max_examples (int): Maximum number of example rows to use for few-shot
-            learning. Defaults to 500. Higher values provide more context
-            but increase token usage and processing time.
+            learning. Defaults to 8. Example text is limited to 6000 characters
+            and an estimated 1500 tokens. Sampling is deterministic.
+        improve_prompt (bool): Request optional LLM prompt refinement. Defaults
+            to ``False``, so construction is local and requires no API access.
+            For async execution, prepare explicitly before awaiting ``df.aio.task(task)``.
 
     Returns:
         PreparedTask configured for missing value imputation with:
@@ -185,7 +205,7 @@ def fillna(df: pd.DataFrame, target_column_name: str, max_examples: int = 500) -
         raise ValueError(f"Column '{target_column_name}' does not exist in the DataFrame.")
     if df[target_column_name].notna().sum() == 0:
         raise ValueError(f"Column '{target_column_name}' contains no non-null values for training examples.")
-    instructions = _build_instructions(df, target_column_name, max_examples)
+    instructions = _build_instructions(df, target_column_name, max_examples, improve_prompt)
     return PreparedTask(instructions=instructions, response_format=FillNaResponse)
 
 

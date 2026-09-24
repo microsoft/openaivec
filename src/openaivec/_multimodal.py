@@ -3,19 +3,22 @@
 Provides helpers for detecting file types (image, audio, document) and
 building OpenAI Responses API input messages from local files or URLs.
 
-Audio files (``.mp3``, ``.wav``) are encoded as base64 and sent via the
-``input_audio`` item type.  Images are inlined as ``data:`` URIs.
-Documents are uploaded through the Files API.
+Audio files (``.mp3``, ``.wav``) are rejected because the Responses API
+does not accept ``input_audio`` items. Images are inlined as ``data:``
+URIs. Documents are uploaded through the Files API.
 """
 
 from __future__ import annotations
 
+import asyncio
 import base64
+import hashlib
 import mimetypes
 import os
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlparse
 
 from openai import AsyncOpenAI, OpenAI
@@ -196,7 +199,7 @@ def is_image_path(value: str) -> bool:
     Returns:
         bool: ``True`` when the path has an image suffix.
     """
-    return Path(value).suffix.lower() in _IMAGE_EXTENSIONS
+    return _path_suffix(value) in _IMAGE_EXTENSIONS
 
 
 def is_audio_path(value: str) -> bool:
@@ -211,7 +214,7 @@ def is_audio_path(value: str) -> bool:
     Returns:
         bool: ``True`` when the path has an audio suffix.
     """
-    return Path(value).suffix.lower() in _AUDIO_EXTENSIONS
+    return _path_suffix(value) in _AUDIO_EXTENSIONS
 
 
 def is_url(value: str) -> bool:
@@ -224,6 +227,11 @@ def is_url(value: str) -> bool:
         bool: ``True`` when the string is an HTTP(S) URL.
     """
     return isinstance(value, str) and value.startswith(("http://", "https://"))
+
+
+def _path_suffix(value: str) -> str:
+    """Return the extension of a local path or a URL's parsed path."""
+    return Path(urlparse(value).path if is_url(value) else value).suffix.lower()
 
 
 def is_multimodal_input(value: str) -> bool:
@@ -269,7 +277,7 @@ def is_readable_text_file(value: str) -> bool:
     return suffix in _TEXT_DOCUMENT_EXTENSIONS
 
 
-def read_text_file(path: str) -> str:
+def read_text_file(path: str, *, file_bytes: bytes | None = None) -> str:
     """Read a local text file and return its content with a filename header.
 
     The returned string has the format::
@@ -282,13 +290,77 @@ def read_text_file(path: str) -> str:
 
     Args:
         path (str): Path to a text-readable file.
+        file_bytes (bytes | None): Verified contents from a content-versioned cache key,
+            if available. Avoids reading a different version of the file.
 
     Returns:
         str: File content prefixed with a ``[File: ...]`` header.
     """
     name = Path(path).name
-    content = Path(path).read_text(errors="replace")
+    content = (
+        file_bytes.decode("utf-8", errors="replace")
+        if file_bytes is not None
+        else Path(path).read_text(encoding="utf-8", errors="replace")
+    )
     return f"[File: {name}]\n{content}"
+
+
+def _file_version(stat: os.stat_result) -> tuple[int, int, int, int, int]:
+    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
+
+
+def local_file_cache_key(value: str) -> str:
+    """Return a content-versioned key for an existing local file.
+
+    The complete file is hashed, rather than its modification time, so edits
+    remain visible even on filesystems with coarse timestamps. Non-files keep
+    their original key.
+    """
+    if is_url(value) or not os.path.isfile(value):
+        return value
+    digest = hashlib.sha256()
+    before = _file_version(os.stat(value))
+    with open(value, "rb") as file:
+        if _file_version(os.fstat(file.fileno())) != before:
+            raise ValueError(f"File changed while computing cache key: {value}")
+        for block in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(block)
+        if _file_version(os.fstat(file.fileno())) != before:
+            raise ValueError(f"File changed while computing cache key: {value}")
+    if _file_version(os.stat(value)) != before:
+        raise ValueError(f"File changed while computing cache key: {value}")
+    return f"{value}\0{digest.hexdigest()}"
+
+
+def read_local_file_for_cache_key(path: str, key: str) -> bytes:
+    """Read bytes only if they still match the path's content-versioned cache key.
+
+    Args:
+        path (str): Local file path used to compute the key.
+        key (str): Result of ``local_file_cache_key(path)``.
+
+    Returns:
+        bytes: The exact bytes represented by the cache key.
+
+    Raises:
+        ValueError: If the file changed during hashing or reading.
+    """
+    prefix = f"{path}\0"
+    if not key.startswith(prefix):
+        raise ValueError(f"Invalid cache key for file: {path}")
+    try:
+        before = _file_version(os.stat(path))
+        with open(path, "rb") as file:
+            if _file_version(os.fstat(file.fileno())) != before:
+                raise ValueError(f"File changed since computing cache key: {path}")
+            contents = file.read()
+            if _file_version(os.fstat(file.fileno())) != before:
+                raise ValueError(f"File changed while reading cached input: {path}")
+        if _file_version(os.stat(path)) != before or hashlib.sha256(contents).hexdigest() != key[len(prefix) :]:
+            raise ValueError(f"File changed since computing cache key: {path}")
+    except (FileNotFoundError, IsADirectoryError) as error:
+        raise ValueError(f"File changed since computing cache key: {path}") from error
+    return contents
 
 
 def _mime_type(path: str) -> str:
@@ -300,18 +372,19 @@ def _mime_type(path: str) -> str:
     Returns:
         str: MIME type string (e.g. ``"image/png"``).
     """
-    suffix = Path(path).suffix.lower()
+    suffix = _path_suffix(path)
     if suffix in _MIME_OVERRIDES:
         return _MIME_OVERRIDES[suffix]
     mime, _ = mimetypes.guess_type(path)
     return mime or "application/octet-stream"
 
 
-def encode_file_to_data_uri(path: str) -> str:
+def encode_file_to_data_uri(path: str, *, file_bytes: bytes | None = None) -> str:
     """Read a file from disk and return a ``data:`` URI with base64 encoding.
 
     Args:
         path (str): Path to the file.
+        file_bytes (bytes | None): Verified contents, if already read for a cache key.
 
     Returns:
         str: A ``data:<mime>;base64,<data>`` URI.
@@ -320,10 +393,13 @@ def encode_file_to_data_uri(path: str) -> str:
         FileNotFoundError: If *path* does not exist.
         ValueError: If the file exceeds 20 MB.
     """
-    _check_file_size(path)
+    if file_bytes is None:
+        _check_file_size(path)
+        with open(path, "rb") as f:
+            file_bytes = f.read()
+    _check_file_size(path, size=len(file_bytes))
     mime = _mime_type(path)
-    with open(path, "rb") as f:
-        data = base64.b64encode(f.read()).decode("ascii")
+    data = base64.b64encode(file_bytes).decode("ascii")
     return f"data:{mime};base64,{data}"
 
 
@@ -347,7 +423,7 @@ def encode_file_to_base64(path: str) -> str:
         return base64.b64encode(f.read()).decode("ascii")
 
 
-def _check_file_size(path: str) -> None:
+def _check_file_size(path: str, *, size: int | None = None) -> None:
     """Raise ``ValueError`` if *path* exceeds the 20 MB limit.
 
     Args:
@@ -356,7 +432,7 @@ def _check_file_size(path: str) -> None:
     Raises:
         ValueError: If the file exceeds 20 MB.
     """
-    size = os.path.getsize(path)
+    size = os.path.getsize(path) if size is None else size
     if size > _MAX_FILE_SIZE_BYTES:
         raise ValueError(f"File {path} is {size / 1024 / 1024:.1f} MB, exceeding the 20 MB limit for base64 encoding.")
 
@@ -373,7 +449,7 @@ def _audio_format(path: str) -> str:
     Raises:
         ValueError: If the extension is not a supported audio format.
     """
-    suffix = Path(path).suffix.lower()
+    suffix = _path_suffix(path)
     fmt = _AUDIO_FORMAT.get(suffix)
     if fmt is None:
         raise ValueError(f"Unsupported audio format: {suffix}")
@@ -389,8 +465,7 @@ def _url_has_media_extension(url: str) -> bool:
     Returns:
         bool: ``True`` when the URL path has a known image, audio, or document suffix.
     """
-    path = urlparse(url).path
-    return Path(path).suffix.lower() in _SUPPORTED_MEDIA_EXTENSIONS
+    return _path_suffix(url) in _SUPPORTED_MEDIA_EXTENSIONS
 
 
 def _reject_audio(path_or_url: str) -> None:
@@ -406,7 +481,7 @@ def _reject_audio(path_or_url: str) -> None:
         ValueError: If the path has an audio extension (``.mp3`` or ``.wav``).
     """
     if is_audio_path(path_or_url):
-        ext = Path(path_or_url).suffix.lower()
+        ext = _path_suffix(path_or_url)
         raise ValueError(
             f"Audio files ({ext}) are not supported by the Responses API. "
             f"Use the Realtime API or Chat Completions API for audio input."
@@ -439,7 +514,9 @@ class MultimodalContentBuilder:
 
     * **Images** — inlined as base64 ``data:`` URIs via ``input_image``.
     * **Documents** (PDF, DOCX, etc.) — uploaded via the Files API and
-      referenced by ``file_id``.
+      referenced by ``file_id``. ``build`` transfers ownership of uploads
+      to its caller. Use ``build_with_uploads`` and ``cleanup_uploads`` for
+      temporary request-scoped uploads.
     * **Plain text** — wrapped as ``input_text``.
 
     Note:
@@ -454,6 +531,9 @@ class MultimodalContentBuilder:
 
     def build(self, value: str) -> ResponseInputParam:
         """Convert *value* to Responses API input messages.
+
+        Files uploaded by this method are caller-owned. Use
+        ``build_with_uploads`` for request-scoped temporary files.
 
         Args:
             value (str): Plain text, URL, or local file path.
@@ -472,6 +552,25 @@ class MultimodalContentBuilder:
 
         return _wrap_content_as_message({"type": "input_text", "text": value})
 
+    def build_with_uploads(
+        self, value: str, *, file_bytes: bytes | None = None
+    ) -> tuple[ResponseInputParam, tuple[str, ...]]:
+        """Build a request and return IDs of temporary Files API uploads.
+
+        The caller must delete these IDs after the request (including validation
+        corrections) completes or fails. No uploads are created for URLs or images.
+        Pass verified ``file_bytes`` to send the version identified by the cache key.
+        """
+        messages = self._build_local_file(value, file_bytes=file_bytes) if file_bytes is not None else self.build(value)
+        content = cast(list[dict[str, Any]], messages)[0]["content"]
+        uploads = tuple(part["file_id"] for part in content if "file_id" in part)
+        return messages, uploads
+
+    def cleanup_uploads(self, file_ids: tuple[str, ...]) -> None:
+        """Delete request-scoped files after the final API attempt."""
+        for file_id in file_ids:
+            self.client.files.delete(file_id)
+
     def _build_url(self, url: str) -> ResponseInputParam:
         """Build input messages for a media URL.
 
@@ -489,11 +588,12 @@ class MultimodalContentBuilder:
             return _wrap_content_as_message({"type": "input_image", "image_url": url, "detail": "auto"})
         return _wrap_content_as_message({"type": "input_file", "file_url": url})
 
-    def _build_local_file(self, path: str) -> ResponseInputParam:
+    def _build_local_file(self, path: str, *, file_bytes: bytes | None = None) -> ResponseInputParam:
         """Build input messages for a local file.
 
         Args:
             path (str): Path to an existing local file.
+            file_bytes (bytes | None): Verified contents for the cache key.
 
         Returns:
             ResponseInputParam: Input messages for the file.
@@ -503,22 +603,28 @@ class MultimodalContentBuilder:
         """
         _reject_audio(path)
         if is_image_path(path):
-            data_uri = encode_file_to_data_uri(path)
+            data_uri = encode_file_to_data_uri(path, file_bytes=file_bytes)
             return _wrap_content_as_message({"type": "input_image", "image_url": data_uri, "detail": "auto"})
-        file_id = self._upload(path)
+        file_id = self._upload(path, file_bytes=file_bytes)
         return _wrap_content_as_message({"type": "input_file", "file_id": file_id})
 
-    def _upload(self, path: str) -> str:
+    def _upload(self, path: str, *, file_bytes: bytes | None = None) -> str:
         """Upload a document via the Files API.
 
         Args:
             path (str): Local file path.
+            file_bytes (bytes | None): Verified contents for the cache key.
 
         Returns:
             str: The ``file_id`` of the uploaded file.
         """
-        with open(path, "rb") as f:
-            uploaded = self.client.files.create(file=f, purpose="assistants")
+        if file_bytes is None:
+            with open(path, "rb") as f:
+                uploaded = self.client.files.create(file=f, purpose="assistants")
+        else:
+            with BytesIO(file_bytes) as f:
+                setattr(f, "name", Path(path).name)
+                uploaded = self.client.files.create(file=f, purpose="assistants")
         return uploaded.id
 
 
@@ -534,6 +640,9 @@ class AsyncMultimodalContentBuilder:
 
     async def build(self, value: str) -> ResponseInputParam:
         """Convert *value* to Responses API input messages (async).
+
+        Files uploaded by this method are caller-owned. Use
+        ``build_with_uploads`` for request-scoped temporary files.
 
         Args:
             value (str): Plain text, URL, or local file path.
@@ -552,6 +661,46 @@ class AsyncMultimodalContentBuilder:
 
         return _wrap_content_as_message({"type": "input_text", "text": value})
 
+    async def build_with_uploads(
+        self, value: str, *, file_bytes: bytes | None = None
+    ) -> tuple[ResponseInputParam, tuple[str, ...]]:
+        """Build a request and return IDs of temporary Files API uploads.
+
+        Pass verified ``file_bytes`` to send the version identified by the cache key.
+        The caller owns and must clean up the returned uploads.
+        """
+        messages = (
+            await self._build_local_file(value, file_bytes=file_bytes)
+            if file_bytes is not None
+            else await self.build(value)
+        )
+        content = cast(list[dict[str, Any]], messages)[0]["content"]
+        uploads = tuple(part["file_id"] for part in content if "file_id" in part)
+        return messages, uploads
+
+    async def cleanup_uploads(self, file_ids: tuple[str, ...]) -> None:
+        """Delete request-scoped files, even if the caller is cancelled."""
+        if not file_ids:
+            return
+
+        async def delete_files() -> None:
+            for file_id in file_ids:
+                await self.client.files.delete(file_id)
+
+        pending = asyncio.create_task(delete_files())
+        cancelled = False
+        while True:
+            try:
+                await asyncio.shield(pending)
+                break
+            except asyncio.CancelledError:
+                cancelled = True
+                if pending.done():
+                    break
+        pending.result()
+        if cancelled:
+            raise asyncio.CancelledError
+
     def _build_url(self, url: str) -> ResponseInputParam:
         """Build input messages for a media URL.
 
@@ -569,11 +718,12 @@ class AsyncMultimodalContentBuilder:
             return _wrap_content_as_message({"type": "input_image", "image_url": url, "detail": "auto"})
         return _wrap_content_as_message({"type": "input_file", "file_url": url})
 
-    async def _build_local_file(self, path: str) -> ResponseInputParam:
+    async def _build_local_file(self, path: str, *, file_bytes: bytes | None = None) -> ResponseInputParam:
         """Build input messages for a local file (async).
 
         Args:
             path (str): Path to an existing local file.
+            file_bytes (bytes | None): Verified contents for the cache key.
 
         Returns:
             ResponseInputParam: Input messages for the file.
@@ -583,20 +733,39 @@ class AsyncMultimodalContentBuilder:
         """
         _reject_audio(path)
         if is_image_path(path):
-            data_uri = encode_file_to_data_uri(path)
+            data_uri = encode_file_to_data_uri(path, file_bytes=file_bytes)
             return _wrap_content_as_message({"type": "input_image", "image_url": data_uri, "detail": "auto"})
-        file_id = await self._upload(path)
+        file_id = await self._upload(path, file_bytes=file_bytes)
         return _wrap_content_as_message({"type": "input_file", "file_id": file_id})
 
-    async def _upload(self, path: str) -> str:
+    async def _upload(self, path: str, *, file_bytes: bytes | None = None) -> str:
         """Upload a document via the Files API (async).
 
         Args:
             path (str): Local file path.
+            file_bytes (bytes | None): Verified contents for the cache key.
 
         Returns:
             str: The ``file_id`` of the uploaded file.
         """
-        with open(path, "rb") as f:
-            uploaded = await self.client.files.create(file=f, purpose="assistants")
-        return uploaded.id
+        if file_bytes is None:
+            with open(path, "rb") as f:
+                return await self._upload_stream(f)
+        with BytesIO(file_bytes) as f:
+            setattr(f, "name", Path(path).name)
+            return await self._upload_stream(f)
+
+    async def _upload_stream(self, file: Any) -> str:
+        pending = asyncio.create_task(self.client.files.create(file=file, purpose="assistants"))
+        try:
+            return (await asyncio.shield(pending)).id
+        except asyncio.CancelledError:
+            while True:
+                try:
+                    uploaded = await asyncio.shield(pending)
+                    break
+                except asyncio.CancelledError:
+                    if pending.done():
+                        raise
+            await self.cleanup_uploads((uploaded.id,))
+            raise

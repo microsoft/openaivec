@@ -138,7 +138,7 @@ async def test_dataframe_aio_fillna_fills_only_missing_rows_in_index_order(monke
     from openaivec._model import PreparedTask
     from openaivec.task.table import FillNaResponse
 
-    def fake_fillna(df, target_column_name, max_examples=500):
+    def fake_fillna(df, target_column_name, max_examples=8):
         assert target_column_name == "name"
         return PreparedTask(instructions="stub fillna", response_format=FillNaResponse)
 
@@ -146,8 +146,8 @@ async def test_dataframe_aio_fillna_fills_only_missing_rows_in_index_order(monke
         assert task.instructions == "stub fillna"
         assert self._obj.index.tolist() == [1, 3]
         return [
-            FillNaResponse(index=100, output="Charlie"),
-            FillNaResponse(index=200, output="Dana"),
+            FillNaResponse(output="Charlie"),
+            FillNaResponse(output="Dana"),
         ]
 
     monkeypatch.setattr(pandas_ext, "fillna", fake_fillna)
