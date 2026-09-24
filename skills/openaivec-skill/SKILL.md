@@ -1,11 +1,11 @@
 ---
 name: openaivec-skill
-description: Use this skill for interpretive work repeated across many files or table rows, even when the user names only a business outcome. Examples include feedback analysis, support or maintenance routing, sales-note structuring, campaign or feature-request analysis, catalog cleanup, document extraction, translation, incident or quality triage, knowledge matching, and intelligent missing-value fill. Sources include Excel, CSV/TSV, Parquet, JSON, supported PDFs/images, and relational databases. Internally use openaivec.duckdb_ext for batched, ordered, structured results, but speak in business terms. Guide OpenAI, Azure OpenAI, Entra ID, or Fabric authentication failures without exposing secrets. Exclude ordinary ETL, database administration, workbook formatting, cloud provisioning, model training, unsupported sources, other AI SDKs, and automated employment, credit, medical, or eligibility decisions. Japanese cues include アンケート, 問い合わせ, 商談メモ, and 欠損値補完.
+description: Use this skill for interpretive work repeated across many files or table rows, even when the user names only a business outcome. Examples include feedback analysis, support or maintenance routing, sales-note structuring, campaign or feature-request analysis, catalog cleanup, document extraction, translation, incident or quality triage, knowledge matching, and intelligent missing-value fill. Sources include Excel, CSV/TSV, Parquet, JSON, supported PDFs/images, and relational databases. Internally use openaivec.duckdb_ext for batched, ordered, structured results, but speak in business terms. Guide OpenAI, Azure OpenAI, Entra ID, or Fabric authentication failures without exposing secrets. Exclude ordinary ETL, database administration, workbook formatting, cloud provisioning, model training, unsupported sources, other AI SDKs, and automated employment, credit, medical, or eligibility decisions.
 license: MIT
 compatibility: Requires Python 3.10+, openaivec, DuckDB, and network access to the selected OpenAI-compatible service. Excel and relational sources require support in the installed DuckDB version and an available extension; installing one requires explicit approval. Fabric built-in models require a supported Fabric notebook runtime.
 metadata:
   author: microsoft
-  version: "1.0.0"
+  version: "1.1.0"
   repository: https://github.com/microsoft/openaivec
 ---
 

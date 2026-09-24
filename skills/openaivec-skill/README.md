@@ -45,6 +45,15 @@ The assistant should keep implementation details in the background and:
 7. return validated counts, unresolved items, and a human-review-ready result
    without silently changing the source.
 
+## Getting started
+
+- [Getting-started guide](GETTING_STARTED.md)
+
+The guide separates Skill installation from runtime setup, provides
+copy-and-paste bootstrap prompts, and walks through high-volume extraction
+examples for customer feedback, support tickets, document folders, contracts,
+sales notes, and quality reports.
+
 ## Install from GitHub
 
 Preview the package before installing it:
@@ -122,8 +131,8 @@ matching tag on that exact commit:
 ```bash
 git switch main
 git pull --ff-only
-git tag openaivec-skill-v1.0.0
-git push origin openaivec-skill-v1.0.0
+git tag openaivec-skill-v1.1.0
+git push origin openaivec-skill-v1.1.0
 ```
 
 The `Publish Agent Skill` workflow validates the Agent Skills specification,

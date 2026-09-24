@@ -1,6 +1,6 @@
 [
   {
-    "query": "顧客アンケートのExcelにある自由記述を、感情、主な話題、解約の兆候、担当者による確認が必要かどうかに整理してください。元の回答番号は残してください。",
+    "query": "Organize the free-text responses in our customer survey Excel workbook by sentiment, main topic, cancellation signal, and need for staff review. Preserve the original response number.",
     "should_trigger": true
   },
   {
@@ -8,7 +8,7 @@
     "should_trigger": true
   },
   {
-    "query": "20万件のお問い合わせを、内容、緊急度、担当チーム、折り返しが必要かどうかに分類し、受付番号を失わないようにしてください。",
+    "query": "Classify 200,000 inquiries by subject, urgency, responsible team, and need for a callback without losing the case number.",
     "should_trigger": true
   },
   {
@@ -20,7 +20,7 @@
     "should_trigger": true
   },
   {
-    "query": "営業担当者が残した数千件の商談メモから、顧客の課題、関心のある製品、約束した次の対応、確認が必要な期限を整理してください。",
+    "query": "Organize thousands of sales notes into customer needs, products of interest, promised next actions, and deadlines that require review.",
     "should_trigger": true
   },
   {
@@ -28,7 +28,7 @@
     "should_trigger": true
   },
   {
-    "query": "製品への要望一覧を、要望の種類、対象機能、利用場面、困りごとに整理し、同じ内容が何件あるか分かるようにしてください。",
+    "query": "Organize our product-request backlog by request type, affected feature, usage scenario, and stated problem, and show how often the same content occurs.",
     "should_trigger": true
   },
   {
@@ -48,7 +48,7 @@
     "should_trigger": true
   },
   {
-    "query": "契約書フォルダから、契約当事者、開始日、更新日、解約通知期限、該当箇所を抜き出し、法務担当者が原文を確認できる一覧にしてください。",
+    "query": "Extract parties, start date, renewal date, termination-notice deadline, and source passages from the contract folder so counsel can review the original text.",
     "should_trigger": true
   },
   {
@@ -56,7 +56,7 @@
     "should_trigger": true
   },
   {
-    "query": "各工場の数年分の日報にある不具合記述を、部品、現象、発生工程、再発かどうかに整理し、品質担当者の確認対象を一覧化してください。",
+    "query": "Organize several years of plant defect notes by component, symptom, production step, and whether recurrence is stated, then list items for quality-team review.",
     "should_trigger": true
   },
   {
@@ -76,7 +76,7 @@
     "should_trigger": true
   },
   {
-    "query": "匿名化済みの従業員サーベイを部門単位で要約し、働きやすさに関する共通テーマを出してください。個人の評価や順位付けには使わないでください。",
+    "query": "Summarize anonymized employee surveys by department and identify common workplace themes without evaluating or ranking individuals.",
     "should_trigger": true
   },
   {
@@ -92,7 +92,7 @@
     "should_trigger": true
   },
   {
-    "query": "月次決算の差異説明を、価格、数量、時期、一時要因などの共通テーマに整理し、各説明文への参照を残してください。",
+    "query": "Organize monthly-close variance explanations into common themes such as price, quantity, timing, and one-time factors while retaining a reference to each explanation.",
     "should_trigger": true
   },
   {
@@ -100,7 +100,7 @@
     "should_trigger": true
   },
   {
-    "query": "保守記録の故障区分が一部空欄です。既存の記入済み記録で必要な例の数と精度を確かめ、不確かな行は空欄のままにしてください。",
+    "query": "Some maintenance failure categories are blank. Use completed records to measure the required example count and accuracy, and leave uncertain rows blank.",
     "should_trigger": true
   },
   {
@@ -112,7 +112,7 @@
     "should_trigger": true
   },
   {
-    "query": "このExcelアンケートを分析したいです。必要な追加機能があれば、PCに何が追加されるかと代替案を説明し、私が選んだ後でだけ導入してください。",
+    "query": "I want to analyze this Excel survey. If an additional component is needed, explain what it adds to my computer and the alternatives, then install it only after I choose.",
     "should_trigger": true
   },
   {
@@ -136,7 +136,7 @@
     "should_trigger": true
   },
   {
-    "query": "アンケートの自由記述を感情と話題に分類し、部門別・月別にクロス集計してください。dept_codeが回答者の所属部門か対応部門か曖昧なら、候補から一つ選べて自由入力もできる形で、一問ずつ確認してください。",
+    "query": "Classify survey comments by sentiment and topic, then cross-tab them by department and month. If dept_code could mean the respondent department or the handling department, ask me one question at a time with single-choice options and free-text input.",
     "should_trigger": true
   },
   {
@@ -144,7 +144,7 @@
     "should_trigger": true
   },
   {
-    "query": "30万件の問い合わせを分類してください。長時間かかる場合は、一件ずつではなく効率的にまとめて処理し、完了件数、全体に占める割合、経過時間、失敗件数を定期的に知らせてください。",
+    "query": "Classify 300,000 inquiries. If it takes a long time, process them efficiently in batches rather than one at a time, and regularly report completed count, percentage, elapsed time, and failures.",
     "should_trigger": true
   },
   {

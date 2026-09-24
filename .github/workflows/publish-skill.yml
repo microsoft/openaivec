@@ -113,6 +113,7 @@ jobs:
           mkdir -p "$source_dir" "$install_dir"
 
           tar -xzf "skill-dist/openaivec-skill-${SKILL_VERSION}.tar.gz" -C "$source_dir"
+          test -f "$source_dir/openaivec-skill/GETTING_STARTED.md"
           test -f "$source_dir/openaivec-skill/LICENSE"
           test -f "$source_dir/openaivec-skill/SKILL.md"
           test -f "$source_dir/openaivec-skill/references/data-shaping-and-crosstabs.md"
@@ -124,6 +125,7 @@ jobs:
             openaivec-skill \
             --from-local \
             --dir "$install_dir"
+          test -f "$install_dir/openaivec-skill/GETTING_STARTED.md"
           test -f "$install_dir/openaivec-skill/LICENSE"
           test -f "$install_dir/openaivec-skill/SKILL.md"
           test -f "$install_dir/openaivec-skill/references/data-shaping-and-crosstabs.md"
@@ -138,6 +140,7 @@ jobs:
           with zipfile.ZipFile(archive) as package:
               members = set(package.namelist())
               expected = {
+                  "openaivec-skill/GETTING_STARTED.md",
                   "openaivec-skill/LICENSE",
                   "openaivec-skill/SKILL.md",
                   "openaivec-skill/references/data-shaping-and-crosstabs.md",
