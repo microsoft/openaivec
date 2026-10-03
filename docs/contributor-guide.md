@@ -16,6 +16,25 @@ The generated `site/` directory is gitignored. The Pages workflow runs the
 same strict build for documentation pull requests without uploading or
 deploying them. Tagged builds publish only after the strict build succeeds.
 
+## Updating dependencies safely
+
+Use `uv lock --upgrade-package NAME` for targeted dependency updates, then
+validate with `uv sync --locked --all-extras --dev` and the relevant tests.
+Keep GitHub Actions pinned to full commit SHAs when updating their versions.
+
+The lockfile protects repository environments, but PyPI installations use the
+package's published dependency metadata instead. Declare security minimums in
+`project.dependencies` when an upstream dependency still permits vulnerable
+transitive versions. Azure authentication requires `pyjwt>=2.15.0` and
+`urllib3>=2.8.0`; notebook tooling requires `tornado>=6.5.9` in the development
+dependency group. Keep notebook-only dependencies out of the runtime metadata.
+
+urllib3 2.8.0 separates HTTPS forwarding-proxy TLS settings from destination
+settings. Configure proxy certificates through `proxy_ssl_context` and proxy
+identity checks through `proxy_assert_hostname` or `proxy_assert_fingerprint`;
+destination client certificates and identity overrides no longer apply to
+the proxy connection.
+
 ## Publishing a package release
 
 Once the intended changes are merged into `main`, create and push a `vX.Y.Z`
