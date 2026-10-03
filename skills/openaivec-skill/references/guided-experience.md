@@ -19,9 +19,9 @@ both repeated scope and text/document interpretation:
 | Known and missing categories in otherwise complete rows | Evaluate contextual fill before filling blanks |
 
 Recognize colloquial requests such as "do all of these at once", "make this
-usable", "sort out the comments", "大量のファイルを一気に整理したい",
-"この表の文章を全部分類して", or "あー、この資料まとめて処理したい".
-Do not require a library, AI, SQL, or skill name.
+usable", "sort out the comments", "classify every description", or "process
+this whole document folder", including equivalent requests in the user's
+language. Do not require a library, AI, SQL, or skill name.
 
 When a user merely asks to inspect a large table, respect that read-only
 request. If the authorized inspection discovers suitable text, briefly offer

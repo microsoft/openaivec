@@ -54,7 +54,6 @@ nav:
   - Home: index.md
   - Agent Skill:
       - Getting Started: agent-skill/index.md
-      - 日本語ガイド: agent-skill/getting-started-ja.md
       - Guided Experience: agent-skill/references/guided-experience.md
       - Business Scenarios: agent-skill/references/business-scenarios.md
       - Safe Data I/O: agent-skill/references/safe-data-io.md

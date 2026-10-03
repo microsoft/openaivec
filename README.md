@@ -481,8 +481,6 @@ Start with the
 [getting-started guide](skills/openaivec-skill/GETTING_STARTED.md) for
 installation prompts tailored to each harness, readiness prompts, and business
 examples focused on extracting information from large datasets. The
-[Japanese business-user guide](skills/openaivec-skill/GETTING_STARTED.ja.md)
-offers a short no-code installation and first-task path. The
 [skill package README](skills/openaivec-skill/README.md) also covers
 multi-harness installation, local validation, and automated releases. See the
 [business scenario examples](skills/openaivec-skill/references/business-scenarios.md),

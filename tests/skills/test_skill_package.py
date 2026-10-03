@@ -21,7 +21,7 @@ def test_release_manifest_and_curated_notes_match_skill():
     assert "repository: https://github.com/microsoft/openaivec" in frontmatter
     notes = (SKILL / "RELEASE_NOTES.md").read_text()
     assert notes.startswith(f"# openaivec-skill {version.group(1)} ")
-    assert "インストール方法" in notes
+    assert "Business-user installation" in notes
     assert "pin installation to that exact tag" in notes
     workflow = WORKFLOW.read_text()
     assert '--notes-file "$SKILL_RELEASE_NOTES"' in workflow
@@ -30,7 +30,7 @@ def test_release_manifest_and_curated_notes_match_skill():
     assert manifest is not None
     files = [line.strip() for line in manifest.group(1).splitlines()]
     assert len(files) == len(set(files))
-    assert {"GETTING_STARTED.ja.md", "RELEASE_NOTES.md", "scripts/bulk_runner.py"} <= set(files)
+    assert {"GETTING_STARTED.md", "RELEASE_NOTES.md", "scripts/bulk_runner.py"} <= set(files)
     assert all((SKILL / file).is_file() for file in files)
 
 
@@ -42,10 +42,11 @@ def test_portable_documentation_links_resolve(path):
         assert (path.parent / target.split("#", 1)[0]).is_file(), f"{path.name}: {target}"
 
 
-@pytest.mark.parametrize("name", ["GETTING_STARTED.md", "GETTING_STARTED.ja.md", "RELEASE_NOTES.md"])
+@pytest.mark.parametrize("name", ["GETTING_STARTED.md", "RELEASE_NOTES.md"])
 def test_business_guides_do_not_require_code_or_terminal_steps(name):
     text = (SKILL / name).read_text()
     assert not re.search(r"```(?:bash|sh|python|sql)\b", text)
+    assert not re.search(r"[\u3040-\u30ff\u4e00-\u9fff]", text)
     assert "openaivec-skill-vX.Y.Z" in text
     assert "```text" in text
 

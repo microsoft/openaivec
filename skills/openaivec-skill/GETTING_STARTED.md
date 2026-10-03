@@ -11,8 +11,6 @@ You do not need to write code, choose processing settings, or invoke the
 skill by name for each task. Your assistant handles those details. You choose
 the result you want, check a small preview, and approve the full run.
 
-[Japanese business-user guide](https://microsoft.github.io/openaivec/agent-skill/getting-started-ja/)
-
 ## The shortest path
 
 Open the workspace containing your task in an Agent Skills-compatible

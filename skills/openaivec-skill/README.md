@@ -59,7 +59,6 @@ The assistant should keep implementation details in the background and:
 ## Getting started
 
 - [Getting-started guide](GETTING_STARTED.md)
-- [Japanese business-user guide](GETTING_STARTED.ja.md)
 - [Release notes and installation prompts](RELEASE_NOTES.md)
 
 Start with the short installation and ordinary-language task prompts. The

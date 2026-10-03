@@ -25,7 +25,6 @@ jobs:
       SKILL_RELEASE_NOTES: skills/openaivec-skill/RELEASE_NOTES.md
       SKILL_PACKAGE_FILES: |
         GETTING_STARTED.md
-        GETTING_STARTED.ja.md
         LICENSE
         README.md
         RELEASE_NOTES.md
