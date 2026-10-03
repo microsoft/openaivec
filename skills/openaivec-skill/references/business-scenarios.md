@@ -3,6 +3,10 @@
 Read this reference when the user describes a business outcome rather than a
 specific openaivec API. Every scenario remains subject to the privacy, cost,
 pilot, deduplication, materialization, and validation workflow in `SKILL.md`.
+Do not wait for an explicit skill invocation: a suitable large text table or
+document folder found during authorized inspection can activate the guided
+outcome choice in [guided experience](guided-experience.md). Keep the
+implementation examples below out of the business-user conversation.
 When a result needs grouped metrics or a matrix, follow
 [data shaping and cross-tabs](data-shaping-and-crosstabs.md) and clarify the
 business meaning before aggregating.
@@ -46,9 +50,10 @@ running them:
    in-memory temporary staging.
 3. Count total, non-NULL, and distinct inputs locally.
 4. Confirm provider, model, data boundary, cost, and destination.
-5. Run 3-10 representative inputs as a quality gate.
-6. Materialize one result per distinct non-NULL input in a temporary table,
-   then join it back.
+5. Obtain scoped pilot consent, run 3-10 representative inputs as a quality
+   gate, and retain the accepted input-to-result mapping.
+6. After full-run approval, materialize only pending distinct non-NULL inputs,
+   reuse accepted pilot results, then join the complete mapping back.
 7. Shape and aggregate the materialized result locally, then reconcile source,
    included, excluded, failed, and summary counts. Write externally only when
    the user explicitly requested the exact destination and mode.
@@ -56,6 +61,10 @@ running them:
 The examples use temporary tables and views. Follow
 [safe data I/O](safe-data-io.md) for Excel, CSV, relational connections, and
 any persistent output or mutation.
+Use the canonical helper in [performance and execution](performance-and-execution.md)
+for consent-gated pilot retention and long-running checkpoints. The SQL below
+illustrates scenario-specific shapes, not permission to skip those gates or
+recompute a pilot.
 
 For intelligent missing-value fill, follow the separate
 [example-count and imputation protocol](intelligent-fill.md). The default eight

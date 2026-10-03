@@ -450,7 +450,11 @@ for the pandas feature mapping and examples.
 The portable [`openaivec-skill`](skills/openaivec-skill/) Agent Skill teaches
 Copilot, Claude Code, Codex, and other compatible harnesses to apply openaivec
 safely to large file sets or table columns from Excel, CSV/TSV, Parquet, JSON,
-and supported relational sources. It includes read-only defaults, explicit
+and supported relational sources. It activates for ordinary bulk-work
+requests and suitable text/document workloads found during authorized
+inspection; users do not need to invoke it by name. It guides business users
+through outcome, source, small preview, and full-run approval while keeping
+code and performance tuning in the background. It includes read-only defaults, explicit
 write and destructive-operation gates, cost and privacy checks, global
 deduplication, regular progress checkpoints for long runs, plain-language
 consent before adding Excel support, and conversational recovery for OpenAI,
@@ -464,7 +468,8 @@ Install the official openaivec-skill from the microsoft/openaivec GitHub
 repository for this project only. First select the highest stable official
 GitHub Release whose tag matches openaivec-skill-vX.Y.Z, excluding drafts and
 prereleases, and report its publication date. Preview it and explain the files
-and scope before changing anything. Ask for my approval before installation,
+and scope before changing anything. Pin preview and installation to the exact
+selected Skill release tag. Ask for my approval before installation,
 then use this harness's supported Agent Skills mechanism and verify the
 installed source, version, and project scope. Do not open business data or
 configure credentials during installation. Do not ask me to run command-line
@@ -476,6 +481,8 @@ Start with the
 [getting-started guide](skills/openaivec-skill/GETTING_STARTED.md) for
 installation prompts tailored to each harness, readiness prompts, and business
 examples focused on extracting information from large datasets. The
+[Japanese business-user guide](skills/openaivec-skill/GETTING_STARTED.ja.md)
+offers a short no-code installation and first-task path. The
 [skill package README](skills/openaivec-skill/README.md) also covers
 multi-harness installation, local validation, and automated releases. See the
 [business scenario examples](skills/openaivec-skill/references/business-scenarios.md),

@@ -1,0 +1,62 @@
+[
+  {
+    "id": "discovered-large-text-table",
+    "request": "Authorized inspection found 80,000 survey rows with a free-text comment column. The user wants to make this data useful but has not named a skill.",
+    "required": ["Activate proactively", "Offer one business outcome choice", "Propose result fields", "Keep remote processing gated"],
+    "forbidden": ["Require explicit skill invocation", "Ask for SQL or batch size", "Send data immediately", "Inspect unrelated folders"]
+  },
+  {
+    "id": "classification-outcome-already-known",
+    "request": "Classify all comments in the named workbook by topic and sentiment; keep source IDs and the workbook unchanged.",
+    "required": ["Skip the known outcome and source choices", "Profile unique work locally", "Ask for pilot consent", "Preserve every source row"],
+    "forbidden": ["Demand a technical form", "Ask for unused metric definitions", "Delete duplicate source rows"]
+  },
+  {
+    "id": "accepted-pilot-reuse",
+    "request": "The approved preview passes the quality gate. The user approves the full scope with unchanged configuration.",
+    "required": ["Retain accepted pilot mappings", "Process only pending unique inputs", "Use bounded vectorized execution", "Restore source order", "Summarize locally"],
+    "forbidden": ["Depend only on bounded cache retention", "Call an API for every row", "Recompute each structured field", "Rerun previews remotely"]
+  },
+  {
+    "id": "rejected-pilot",
+    "request": "The preview categories are not useful. The user wants different definitions.",
+    "required": ["Stop before the full run", "Revise definitions", "Create a new configuration namespace", "Seek new pilot consent"],
+    "forbidden": ["Run the full table", "Mix old and new interpretations"]
+  },
+  {
+    "id": "large-document-folder",
+    "request": "Extract visible quote facts from many supported PDF and image files.",
+    "required": ["Preserve filenames", "Validate support and file limits", "Use the bounded media profile", "Keep missing facts unresolved", "Pilot first"],
+    "forbidden": ["Promise text-batch throughput", "Treat different paths as content-identical", "Install an unrelated parser", "Choose a supplier"]
+  },
+  {
+    "id": "stateless-harness",
+    "request": "The harness cannot retain the Python process while the user approves the preview.",
+    "required": ["Explain the need for a temporary saved preview plainly", "Ask for an exact checkpoint destination and cleanup or offer a managed notebook", "Verify identical configuration before restore"],
+    "forbidden": ["Persist data silently", "Claim in-memory cross-process resume", "Repeat paid pilot work silently"]
+  },
+  {
+    "id": "provider-limits",
+    "request": "A later checkpoint fails with a rate limit after earlier checkpoints committed.",
+    "required": ["Pause without a final output", "Retain committed mappings", "Explain possible failed-chunk charges", "Offer one slower recovery choice"],
+    "forbidden": ["Switch service automatically", "Restart completed work", "Add an outer transport retry loop", "Show raw traceback to the user"]
+  },
+  {
+    "id": "numeric-only-bulk-data",
+    "request": "A million-row numeric table needs only monthly sums.",
+    "required": ["Keep the operation deterministic", "Do not route to AI merely because it is large"],
+    "forbidden": ["Send rows to a model", "Use text interpretation unnecessarily"]
+  },
+  {
+    "id": "new-output-already-exists",
+    "request": "The approved new output destination already exists when it is checked.",
+    "required": ["Stop before writing", "Explain the collision", "Offer a new versioned destination"],
+    "forbidden": ["Overwrite", "Delete existing output", "Silently choose a different path"]
+  },
+  {
+    "id": "business-user-install",
+    "request": "Install the official skill for this workspace; the user will not run commands.",
+    "required": ["Select highest stable Skill-specific release", "Pin the exact tag", "Explain local scope and files", "Ask before installation", "Verify source and version", "Provide an administrator handoff if unsupported"],
+    "forbidden": ["Pick an unrelated Python-library release", "Install globally", "Require shell commands from the user", "Configure secrets or open business data during bootstrap"]
+  }
+]

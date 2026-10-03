@@ -1,4 +1,4 @@
-# Getting started with openaivec-skill
+# Process many comments, tables, and documents at once
 
 This is a no-command-line guide for business users who need to extract,
 classify, or organize information from many rows or files with an
@@ -7,13 +7,68 @@ ordinary language. The assistant handles installation, environment checks,
 efficient batching, duplicate reuse, consistent output fields, and local data
 preparation after explaining any change and receiving your approval.
 
-Most users need only three copy-and-paste prompts:
+You do not need to write code, choose processing settings, or invoke the
+skill by name for each task. Your assistant handles those details. You choose
+the result you want, check a small preview, and approve the full run.
 
-1. an **installation bootstrap prompt** for their assistant;
-2. a **readiness prompt** that checks the environment without opening business
-   data; and
-3. a **task prompt** that defines the source, information to extract, pilot,
-   review rules, and output.
+[Japanese business-user guide](https://microsoft.github.io/openaivec/agent-skill/getting-started-ja/)
+
+## The shortest path
+
+Open the workspace containing your task in an Agent Skills-compatible
+assistant, such as GitHub Copilot, Claude Code, Codex, or Cursor. Paste this
+once to request project-only installation:
+
+```text
+Install Microsoft's official openaivec-skill from microsoft/openaivec for
+this workspace only. Select the latest stable Skill release tagged
+openaivec-skill-vX.Y.Z, not a Python-library release or untagged branch,
+and pin installation to that exact tag. Explain the files and scope,
+stop if an existing Skill would be replaced, and ask before installing.
+Use this assistant's supported Skill installer. Do not open business data,
+install processing software, configure secrets, or make an AI request yet.
+After approval, perform the installation yourself, verify the source and
+version, and tell me if I need a new chat. Do not ask me to run commands.
+If installation is unavailable, prepare a short administrator handoff.
+```
+
+Once installation is confirmed (and a new chat is started if required),
+describe the work normally:
+
+```text
+Organize all the comments in surveys/customer_feedback.xlsx by topic and
+sentiment. Keep the original response IDs and leave the workbook unchanged.
+Recommend useful result columns, test a few comments first, and guide me
+through the choices. Ask before sending data or saving a new result.
+```
+
+No `/openaivec-skill` command is necessary. A large table with text columns,
+a folder of many documents, or a bulk interpretation request is enough for
+the assistant to recognize the opportunity. If it discovers suitable text
+during an inspection you authorized, it can suggest classification,
+extraction, or summaries. Discovery alone never authorizes paid processing.
+
+### What you choose
+
+| Stage | Your choice |
+| --- | --- |
+| What should be done? | Classify, extract facts, summarize, translate, match documents, or evaluate filling blanks |
+| What should be processed? | The workbook, column, table, or folder, only if not already named |
+| Does the preview look right? | Accept a small result table, adjust categories, or stop |
+| Run the whole set? | Approve the shown data/service scope and exact new output if requested |
+
+Already-answered choices are skipped. Readiness or privacy issues may require
+an extra approval, but you should never need to select a batch size, write
+SQL, choose a library, or interpret a technical error message.
+
+For example, 80,000 comments with 31,200 distinct texts require 31,200
+distinct evaluations, not removal of duplicate source rows. Every source row
+is retained, and accepted preview results are reused. These are illustrative
+counts; actual speed and charges depend on your data and approved service.
+
+The longer sections below provide optional installation variants, readiness
+checks, and business examples. You do not have to complete a technical form
+or copy every prompt before your first task.
 
 ## What it is useful for
 
@@ -50,6 +105,8 @@ Every installation prompt below requires the assistant to:
 - read the official GitHub Releases and select the highest stable version
   whose tag matches `openaivec-skill-vX.Y.Z`, excluding drafts and
   prereleases;
+- pin preview and installation to that exact Skill release tag; an
+  unversioned installer can select a Python-library release instead;
 - install for the current project or workspace, not for every project on the
   computer;
 - preview the Skill and explain the exact files and location before changing
@@ -88,6 +145,7 @@ official Microsoft repository, explain which project-local files will be
 created, and tell me whether an existing Skill would be replaced. Do not use
 user-wide or system-wide scope. Do not open business data, install Python
 packages or Excel support, configure credentials, or make an AI request.
+Pin both the preview and installation to the exact selected Skill release tag.
 
 Ask for my approval before performing the installation. After approval, use
 the supported GitHub Agent Skills installer, verify that openaivec-skill is
@@ -120,6 +178,7 @@ explain the files and project location that will be created, and stop if an
 existing Skill would be replaced. Do not install it for every project. Do not
 open business data, install runtime packages or Excel support, configure
 credentials, or call an AI service during installation.
+Pin both the preview and installation to the exact selected Skill release tag.
 
 Ask for my approval before installing. After approval, verify the Skill,
 report its source, version, and project-only scope, and tell me whether a new
@@ -149,6 +208,7 @@ Preview that release, verify the official source, explain every project-local
 file that would be created, and check for an existing Skill. Do not use global
 scope. Do not open business data, add runtime packages or Excel support,
 configure secrets, or make a model request.
+Pin both the preview and installation to the exact selected Skill release tag.
 
 Ask for approval before installation. After approval, verify the source,
 version, and workspace scope and tell me whether I should begin a new Codex
@@ -178,6 +238,7 @@ Before changing files, preview that release, verify the official source,
 explain the project-local destination and files, and stop if anything would be
 replaced. Do not install globally. Do not open business data, install runtime
 packages or Excel support, configure credentials, or send an AI request.
+Pin both the preview and installation to the exact selected Skill release tag.
 
 Ask for my approval before installation. After approval, verify the source,
 version, and project scope and explain whether Cursor must reload or start a
@@ -207,6 +268,7 @@ Before changing anything, preview that release, verify the official source,
 explain the project-local files and destination, and stop if an existing Skill
 would be replaced. Do not install globally. Do not open business data, add
 runtime packages or Excel support, configure credentials, or call a model.
+Pin both the preview and installation to the exact selected Skill release tag.
 
 Ask for approval before installation. After approval, verify the source,
 version, and project scope and tell me whether a new Gemini session is needed.
@@ -368,7 +430,9 @@ Requested output:
 ```
 
 The assistant should not require every item before starting. The template
-helps prevent hidden assumptions and makes the result easier to audit.
+helps prevent hidden assumptions and makes the result easier to audit. It
+is optional: the short ordinary-language request at the top is sufficient,
+and the assistant should ask only for missing decisions.
 
 ## Business examples
 

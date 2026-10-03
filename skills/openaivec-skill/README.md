@@ -1,9 +1,16 @@
-# openaivec skill
+# Business bulk-processing skill
 
 Portable [Agent Skills](https://agentskills.io/) guidance for applying
-openaivec to large file sets and table columns. Users can work in terms of
-Excel, CSV, Parquet, JSON, or supported relational sources; the skill handles
-the vectorized execution layer internally.
+openaivec to large file sets and table columns. Business users describe a
+result, choose from plain-language options, review a small preview, and
+approve the full run. The assistant handles code and processing settings.
+Excel, CSV, Parquet, JSON, and supported relational sources remain in the
+user's vocabulary; the vectorized execution layer stays in the background.
+
+**No explicit invocation is required.** Requests involving large free-text
+tables or document folders, and suitable opportunities discovered during
+authorized inspection, activate this guidance. Text classification,
+extraction, summaries, and translation are core bulk workloads.
 
 The skill covers:
 
@@ -19,7 +26,9 @@ The skill covers:
 - deterministic DuckDB shaping and cross-tabs around materialized AI results,
   with a business-semantics clarification gate;
 - adaptive text batching, global duplicate reuse, stable result restoration,
-  and progress checkpoints for long-running work;
+  accepted-pilot reuse, and progress checkpoints for long-running work;
+- an assistant-only in-memory runner with explicit pilot/full-run gates and
+  ordered restoration across checkpoints;
 - business scenarios for customer support, product catalogs, documents,
   localization, incident reports, CRM notes, and semantic search;
 - conversational recovery for OpenAI, Azure OpenAI, Entra ID, and Fabric
@@ -50,8 +59,11 @@ The assistant should keep implementation details in the background and:
 ## Getting started
 
 - [Getting-started guide](GETTING_STARTED.md)
+- [Japanese business-user guide](GETTING_STARTED.ja.md)
+- [Release notes and installation prompts](RELEASE_NOTES.md)
 
-The no-command-line guide provides installation bootstrap prompts for GitHub
+Start with the short installation and ordinary-language task prompts. The
+no-command-line guide also provides installation variants for GitHub
 Copilot, Claude Code, Codex, Cursor, and managed Gemini environments. It then
 walks business users through readiness checks and high-volume extraction
 examples for customer feedback, support tickets, document folders, contracts,
@@ -66,7 +78,8 @@ Install the official openaivec-skill from the microsoft/openaivec GitHub
 repository for this project only. First select the highest stable official
 GitHub Release whose tag matches openaivec-skill-vX.Y.Z, excluding drafts and
 prereleases, and report its publication date. Preview it and explain the files
-and scope before changing anything. Ask for my approval before installation.
+and scope before changing anything. Pin preview and installation to that
+exact Skill release tag. Ask for my approval before installation.
 Do not open business data, install processing software, configure credentials,
 or make an AI request during this bootstrap step. After approval, use this
 harness's supported Agent Skills mechanism, verify the source, version, and
@@ -84,12 +97,16 @@ Administrators and automated environments can preview and install through the
 GitHub CLI:
 
 ```bash
-gh skill preview microsoft/openaivec openaivec-skill
+gh skill preview microsoft/openaivec openaivec-skill@openaivec-skill-v1.3.0
 gh skill install microsoft/openaivec openaivec-skill \
+  --pin openaivec-skill-v1.3.0 \
   --agent github-copilot \
   --scope project
-npx skills add microsoft/openaivec --skill openaivec-skill
 ```
+
+Pin the exact stable Skill tag selected from official Releases. Do not use an
+unversioned install: this repository also publishes Python-library releases.
+The commands above are for administrators, not steps a business user must run.
 
 To validate and install a local checkout:
 
@@ -118,8 +135,14 @@ source, for example:
 > Read the comments from this Excel workbook, identify sentiment and themes,
 > and write a new CSV without changing the workbook.
 
-In clients that support explicit skill invocation, request
-`/openaivec-skill`.
+Explicit `/openaivec-skill` invocation is optional where supported, never a
+prerequisite. The harness should also recognize large free-text tables or
+many documents found during already-authorized source inspection and offer
+an appropriate business outcome without starting a billable run.
+
+See [guided experience](references/guided-experience.md) for the native-choice
+conversation contract and [performance and execution](references/performance-and-execution.md)
+for internal profiles, accepted-pilot reuse, and the executable bulk runner.
 
 See [business scenarios](references/business-scenarios.md) for the scenario
 catalog and runnable examples.
@@ -152,8 +175,8 @@ matching tag on that exact commit:
 ```bash
 git switch main
 git pull --ff-only
-git tag openaivec-skill-v1.2.0
-git push origin openaivec-skill-v1.2.0
+git tag openaivec-skill-v1.3.0
+git push origin openaivec-skill-v1.3.0
 ```
 
 The `Publish Agent Skill` workflow validates the Agent Skills specification,
@@ -162,6 +185,10 @@ packages with SHA-256 checksums, verifies a local harness installation, and
 creates the GitHub Release. Rerunning a completed release is safe when all
 expected assets already exist; an incomplete existing release fails without
 overwriting assets.
+
+Update `RELEASE_NOTES.md` with the matching version and business-user
+installation prompts before tagging. The workflow publishes that curated
+document as the Release body rather than relying on generated commit notes.
 
 The skill-specific tag deliberately does not match this repository's
 `v*.*.*` PyPI release trigger.

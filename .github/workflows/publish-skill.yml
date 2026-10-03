@@ -22,6 +22,28 @@ jobs:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       RELEASE_TAG: ${{ github.ref_name }}
       SKILL_PATH: skills/openaivec-skill/SKILL.md
+      SKILL_RELEASE_NOTES: skills/openaivec-skill/RELEASE_NOTES.md
+      SKILL_PACKAGE_FILES: |
+        GETTING_STARTED.md
+        GETTING_STARTED.ja.md
+        LICENSE
+        README.md
+        RELEASE_NOTES.md
+        SKILL.md
+        evals/trigger-cases.json
+        evals/workflow-cases.json
+        references/authentication.md
+        references/business-scenarios.md
+        references/data-shaping-and-crosstabs.md
+        references/duckdb-workflows.md
+        references/excel-setup.md
+        references/guided-experience.md
+        references/intelligent-fill.md
+        references/performance-and-execution.md
+        references/safe-data-io.md
+        scripts/bulk_runner.py
+        scripts/check_environment.py
+        scripts/manage_excel_extension.py
 
     steps:
       - name: Checkout tagged commit
@@ -70,6 +92,10 @@ jobs:
                   f"Tag version {requested_version} does not match SKILL.md metadata.version {declared_version}"
               )
 
+          notes = Path(os.environ["SKILL_RELEASE_NOTES"]).read_text(encoding="utf-8")
+          if not notes.startswith(f"# openaivec-skill {requested_version} "):
+              raise SystemExit("Release notes must describe the exact tagged Skill version")
+
           with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as env_file:
               env_file.write(f"SKILL_VERSION={requested_version}\n")
           PY
@@ -113,24 +139,18 @@ jobs:
           mkdir -p "$source_dir" "$install_dir"
 
           tar -xzf "skill-dist/openaivec-skill-${SKILL_VERSION}.tar.gz" -C "$source_dir"
-          test -f "$source_dir/openaivec-skill/GETTING_STARTED.md"
-          test -f "$source_dir/openaivec-skill/LICENSE"
-          test -f "$source_dir/openaivec-skill/SKILL.md"
-          test -f "$source_dir/openaivec-skill/references/data-shaping-and-crosstabs.md"
-          test -f "$source_dir/openaivec-skill/references/excel-setup.md"
-          test -f "$source_dir/openaivec-skill/scripts/manage_excel_extension.py"
+          while IFS= read -r file; do
+            test -z "$file" || test -f "$source_dir/openaivec-skill/$file"
+          done <<<"$SKILL_PACKAGE_FILES"
 
           gh skill install \
             "$source_dir" \
             openaivec-skill \
             --from-local \
             --dir "$install_dir"
-          test -f "$install_dir/openaivec-skill/GETTING_STARTED.md"
-          test -f "$install_dir/openaivec-skill/LICENSE"
-          test -f "$install_dir/openaivec-skill/SKILL.md"
-          test -f "$install_dir/openaivec-skill/references/data-shaping-and-crosstabs.md"
-          test -f "$install_dir/openaivec-skill/references/excel-setup.md"
-          test -f "$install_dir/openaivec-skill/scripts/manage_excel_extension.py"
+          while IFS= read -r file; do
+            test -z "$file" || test -f "$install_dir/openaivec-skill/$file"
+          done <<<"$SKILL_PACKAGE_FILES"
 
           python - <<'PY'
           import os
@@ -140,12 +160,9 @@ jobs:
           with zipfile.ZipFile(archive) as package:
               members = set(package.namelist())
               expected = {
-                  "openaivec-skill/GETTING_STARTED.md",
-                  "openaivec-skill/LICENSE",
-                  "openaivec-skill/SKILL.md",
-                  "openaivec-skill/references/data-shaping-and-crosstabs.md",
-                  "openaivec-skill/references/excel-setup.md",
-                  "openaivec-skill/scripts/manage_excel_extension.py",
+                  f"openaivec-skill/{file}"
+                  for file in os.environ["SKILL_PACKAGE_FILES"].splitlines()
+                  if file
               }
               missing = sorted(expected - members)
               if missing:
@@ -184,8 +201,9 @@ jobs:
           else
             gh release create "$RELEASE_TAG" \
               --verify-tag \
+              --latest=false \
               --title "openaivec-skill ${SKILL_VERSION}" \
-              --generate-notes \
+              --notes-file "$SKILL_RELEASE_NOTES" \
               "skill-dist/openaivec-skill-${SKILL_VERSION}.tar.gz" \
               "skill-dist/openaivec-skill-${SKILL_VERSION}.zip" \
               "skill-dist/SHA256SUMS"
