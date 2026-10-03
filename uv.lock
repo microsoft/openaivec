@@ -2930,9 +2930,11 @@ dependencies = [
     { name = "pandas", version = "3.0.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pyarrow" },
     { name = "pydantic" },
+    { name = "pyjwt" },
     { name = "tiktoken" },
     { name = "tqdm" },
     { name = "typing-extensions" },
+    { name = "urllib3" },
 ]
 
 [package.optional-dependencies]
@@ -2956,6 +2958,7 @@ dev = [
     { name = "python-dotenv" },
     { name = "ruff" },
     { name = "tabulate" },
+    { name = "tornado" },
 ]
 docs = [
     { name = "mkdocs" },
@@ -2979,10 +2982,12 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "pyarrow", specifier = ">=19.0.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
+    { name = "pyjwt", specifier = ">=2.15.0" },
     { name = "pyspark", marker = "extra == 'spark'", specifier = ">=4.0.0" },
     { name = "tiktoken", specifier = ">=0.9.0" },
     { name = "tqdm", specifier = ">=4.67.1" },
     { name = "typing-extensions", specifier = ">=4.11.0" },
+    { name = "urllib3", specifier = ">=2.8.0" },
 ]
 provides-extras = ["spark"]
 
@@ -3001,6 +3006,7 @@ dev = [
     { name = "python-dotenv", specifier = ">=1.1.0" },
     { name = "ruff", specifier = ">=0.11.5" },
     { name = "tabulate", specifier = ">=0.9.0" },
+    { name = "tornado", specifier = ">=6.5.9" },
 ]
 docs = [
     { name = "mkdocs", specifier = ">=1.6.1" },
