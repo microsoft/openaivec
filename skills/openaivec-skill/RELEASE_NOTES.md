@@ -1,4 +1,9 @@
-# openaivec-skill 1.3.0 - Business bulk-processing assistant
+# openaivec-skill 1.3.1 - OSS business bulk-processing assistant
+
+This patch clarifies that openaivec-skill is **MIT-licensed open source**.
+Installation guidance names its upstream repository without implying vendor
+certification, endorsement, product status, or commercial support. The bulk
+execution behavior introduced in 1.3.0 is unchanged.
 
 ## Process large tables and document folders through guided choices
 
@@ -32,10 +37,10 @@ GitHub Copilot, Claude Code, Codex, or Cursor. Paste the following into chat.
 **You do not need to run terminal commands.**
 
 ```text
-Install Microsoft's official openaivec-skill from microsoft/openaivec for
-this workspace only. Select the latest stable Skill release tagged
-openaivec-skill-vX.Y.Z, not a Python-library release or untagged branch,
-and pin installation to that exact tag.
+Install the MIT-licensed openaivec-skill from its upstream repository,
+microsoft/openaivec, for this workspace only. Select the latest stable
+Skill release tagged openaivec-skill-vX.Y.Z, not a Python-library release
+or untagged branch, and pin installation to that exact tag.
 Explain the files and scope, stop if an existing Skill would be replaced,
 and ask before installing. After approval, use this assistant's supported
 Skill installer, perform installation yourself, and verify the source,

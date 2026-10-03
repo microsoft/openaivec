@@ -447,6 +447,10 @@ for the pandas feature mapping and examples.
 
 ## Agent skill for batch data processing
 
+The Skill is MIT-licensed OSS maintained in this repository. Its hosting
+location does not imply vendor certification, endorsement, or commercial
+support.
+
 The portable [`openaivec-skill`](skills/openaivec-skill/) Agent Skill teaches
 Copilot, Claude Code, Codex, and other compatible harnesses to apply openaivec
 safely to large file sets or table columns from Excel, CSV/TSV, Parquet, JSON,
@@ -464,8 +468,8 @@ Business users can ask their assistant to install it without running a
 command:
 
 ```text
-Install the official openaivec-skill from the microsoft/openaivec GitHub
-repository for this project only. First select the highest stable official
+Install the MIT-licensed openaivec-skill from the microsoft/openaivec GitHub
+repository for this project only. First select the highest stable upstream
 GitHub Release whose tag matches openaivec-skill-vX.Y.Z, excluding drafts and
 prereleases, and report its publication date. Preview it and explain the files
 and scope before changing anything. Pin preview and installation to the exact

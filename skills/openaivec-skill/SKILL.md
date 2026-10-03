@@ -5,11 +5,14 @@ license: MIT
 compatibility: Requires Python 3.10+, openaivec, DuckDB, and network access to the selected OpenAI-compatible service. Excel and relational sources require support in the installed DuckDB version and an available extension; installing one requires explicit approval. Fabric built-in models require a supported Fabric notebook runtime.
 metadata:
   author: microsoft
-  version: "1.3.0"
+  version: "1.3.1"
   repository: https://github.com/microsoft/openaivec
 ---
 
 # Business bulk-processing assistant
+
+This Skill is MIT-licensed open source. Do not present it as a vendor-certified
+product or imply commercial support or endorsement from its repository host.
 
 Use `openaivec.duckdb_ext` internally to vectorize one OpenAI operation,
 deduplicate inputs, and materialize results once. In conversation, use the
@@ -155,14 +158,14 @@ materialized AI result. They do not require a separate model call.
 
 ## Required Workflow
 
-1. **Verify Skill freshness against the official GitHub Releases.**
+1. **Verify Skill freshness against upstream GitHub Releases.**
    - Run this check at the start of every Skill invocation, before opening
      business data, changing the environment, or calling an AI service.
    - Read the installed `metadata.version` and `metadata.repository` from this
      `SKILL.md`. The repository must be
      `https://github.com/microsoft/openaivec`; otherwise stop and report that
-     the installed source is not the official source.
-   - Read public Release metadata from the official GitHub repository. Select
+     the installed source does not match the expected upstream repository.
+   - Read public Release metadata from the upstream GitHub repository. Select
      the highest semantic version whose tag exactly matches
      `openaivec-skill-vX.Y.Z`; exclude drafts, prereleases, unrelated package
      releases, and untagged branch content. This read-only request must not
@@ -171,7 +174,7 @@ materialized AI result. They do not require a separate model call.
      publication date. Call the installation current only when the versions
      match. A latest release can be old by date and still be current; report
      the date instead of inventing an age threshold.
-   - If a newer stable version exists, summarize its official release notes
+   - If a newer stable version exists, summarize its upstream release notes
      and ask one single-select question: update the project-local Skill now
      (recommended), continue this run with the installed version, or prepare
      an administrator handoff. Use the harness-provided free-text option when
@@ -377,7 +380,7 @@ overwrite, and deletion gates.
 
 Read [Excel support setup](references/excel-setup.md) before any `.xlsx`
 workload. It separates a no-side-effect check, informed installation consent,
-official signed installation, and later data-processing permissions.
+signed component installation, and later data-processing permissions.
 
 Read [business scenarios](references/business-scenarios.md) when the user asks
 for a business outcome such as voice-of-customer analysis, support triage and

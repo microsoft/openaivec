@@ -7,6 +7,10 @@ approve the full run. The assistant handles code and processing settings.
 Excel, CSV, Parquet, JSON, and supported relational sources remain in the
 user's vocabulary; the vectorized execution layer stays in the background.
 
+The Skill is MIT-licensed OSS maintained in `microsoft/openaivec`. Repository
+hosting does not imply vendor certification, endorsement, or commercial
+support.
+
 **No explicit invocation is required.** Requests involving large free-text
 tables or document folders, and suitable opportunities discovered during
 authorized inspection, activate this guidance. Text classification,
@@ -17,7 +21,7 @@ The skill covers:
 - batched text and structured Responses;
 - extraction, prepared tasks, embeddings, and similarity search;
 - Excel, CSV/TSV, Parquet, JSON, and supported relational input/output;
-- informed, user-approved setup of the official Excel support component when
+- informed, user-approved setup of a signed Excel-reading component when
   it is not already available;
 - read-only defaults and explicit gates for create, append, update, overwrite,
   and delete operations;
@@ -73,8 +77,8 @@ sales notes, and quality reports.
 Ask the selected assistant to install the Skill for the current project:
 
 ```text
-Install the official openaivec-skill from the microsoft/openaivec GitHub
-repository for this project only. First select the highest stable official
+Install the MIT-licensed openaivec-skill from the microsoft/openaivec GitHub
+repository for this project only. First select the highest stable upstream
 GitHub Release whose tag matches openaivec-skill-vX.Y.Z, excluding drafts and
 prereleases, and report its publication date. Preview it and explain the files
 and scope before changing anything. Pin preview and installation to that
@@ -96,14 +100,14 @@ Administrators and automated environments can preview and install through the
 GitHub CLI:
 
 ```bash
-gh skill preview microsoft/openaivec openaivec-skill@openaivec-skill-v1.3.0
+gh skill preview microsoft/openaivec openaivec-skill@openaivec-skill-v1.3.1
 gh skill install microsoft/openaivec openaivec-skill \
-  --pin openaivec-skill-v1.3.0 \
+  --pin openaivec-skill-v1.3.1 \
   --agent github-copilot \
   --scope project
 ```
 
-Pin the exact stable Skill tag selected from official Releases. Do not use an
+Pin the exact stable Skill tag selected from upstream Releases. Do not use an
 unversioned install: this repository also publishes Python-library releases.
 The commands above are for administrators, not steps a business user must run.
 
@@ -117,7 +121,7 @@ gh skill install . openaivec-skill --from-local --agent github-copilot
 ## Use
 
 Every invocation starts by comparing the installed `metadata.version` with the
-highest stable official GitHub Release tagged
+highest stable upstream GitHub Release tagged
 `openaivec-skill-vX.Y.Z`. Drafts, prereleases, unrelated package releases, and
 untagged branch content are excluded. The harness reports both versions and
 the publication date. It never updates automatically or claims the Skill is
@@ -174,8 +178,8 @@ matching tag on that exact commit:
 ```bash
 git switch main
 git pull --ff-only
-git tag openaivec-skill-v1.3.0
-git push origin openaivec-skill-v1.3.0
+git tag openaivec-skill-v1.3.1
+git push origin openaivec-skill-v1.3.1
 ```
 
 The `Publish Agent Skill` workflow validates the Agent Skills specification,

@@ -11,6 +11,10 @@ You do not need to write code, choose processing settings, or invoke the
 skill by name for each task. Your assistant handles those details. You choose
 the result you want, check a small preview, and approve the full run.
 
+The Skill is MIT-licensed open source, maintained in `microsoft/openaivec`.
+Its repository location does not imply vendor certification, endorsement, or
+commercial support. Usage of your selected AI service may still be billable.
+
 ## The shortest path
 
 Open the workspace containing your task in an Agent Skills-compatible
@@ -18,11 +22,12 @@ assistant, such as GitHub Copilot, Claude Code, Codex, or Cursor. Paste this
 once to request project-only installation:
 
 ```text
-Install Microsoft's official openaivec-skill from microsoft/openaivec for
-this workspace only. Select the latest stable Skill release tagged
-openaivec-skill-vX.Y.Z, not a Python-library release or untagged branch,
-and pin installation to that exact tag. Explain the files and scope,
-stop if an existing Skill would be replaced, and ask before installing.
+Install the MIT-licensed openaivec-skill from its upstream repository,
+microsoft/openaivec, for this workspace only. Select the latest stable
+Skill release tagged openaivec-skill-vX.Y.Z, not a Python-library release
+or untagged branch, and pin installation to that exact tag.
+Explain the files and scope, stop if an existing Skill would be replaced,
+and ask before installing.
 Use this assistant's supported Skill installer. Do not open business data,
 install processing software, configure secrets, or make an AI request yet.
 After approval, perform the installation yourself, verify the source and
@@ -98,9 +103,9 @@ the data task, start your assistant, and paste the prompt for that harness.
 
 Every installation prompt below requires the assistant to:
 
-- use only the official `microsoft/openaivec` repository and the
+- use only the upstream `microsoft/openaivec` repository and the
   `openaivec-skill` package;
-- read the official GitHub Releases and select the highest stable version
+- read upstream GitHub Releases and select the highest stable version
   whose tag matches `openaivec-skill-vX.Y.Z`, excluding drafts and
   prereleases;
 - pin preview and installation to that exact Skill release tag; an
@@ -119,7 +124,7 @@ Every installation prompt below requires the assistant to:
 
 If the harness cannot install Agent Skills itself, it must not guess a folder
 or use an unrelated download script. It should instead prepare a short handoff
-for the user's IT administrator that names the official repository, Skill,
+for the user's IT administrator that names the upstream repository, Skill,
 requested project-only scope, and missing harness capability.
 
 ### GitHub Copilot in VS Code
@@ -129,17 +134,17 @@ requested project-only scope, and missing harness capability.
 3. Paste:
 
 ```text
-Install the official openaivec-skill from the microsoft/openaivec GitHub
+Install the MIT-licensed openaivec-skill from the microsoft/openaivec GitHub
 repository for this VS Code workspace only.
 
-First read the official GitHub Releases and identify the highest stable
+First read upstream GitHub Releases and identify the highest stable
 version whose tag matches openaivec-skill-vX.Y.Z. Exclude drafts,
 prereleases, unrelated package releases, and untagged branch content. Report
 the version and publication date. If the Release metadata cannot be verified,
 stop without installing or claiming that any version is current.
 
 Before changing anything, preview that release, confirm that the source is the
-official Microsoft repository, explain which project-local files will be
+expected upstream repository, explain which project-local files will be
 created, and tell me whether an existing Skill would be replaced. Do not use
 user-wide or system-wide scope. Do not open business data, install Python
 packages or Excel support, configure credentials, or make an AI request.
@@ -162,16 +167,16 @@ administrator handoff instead of inventing another installation method.
 3. Paste:
 
 ```text
-Install the official openaivec-skill from the microsoft/openaivec GitHub
+Install the MIT-licensed openaivec-skill from the microsoft/openaivec GitHub
 repository using Claude Code's supported project-local Agent Skills mechanism.
 
-First read the official GitHub Releases and identify the highest stable
+First read upstream GitHub Releases and identify the highest stable
 version whose tag matches openaivec-skill-vX.Y.Z. Exclude drafts,
 prereleases, unrelated package releases, and untagged branch content. Report
 the version and publication date. If the Release metadata cannot be verified,
 stop without installing or claiming that any version is current.
 
-Before changing anything, preview that release, verify the official source,
+Before changing anything, preview that release, verify the upstream source,
 explain the files and project location that will be created, and stop if an
 existing Skill would be replaced. Do not install it for every project. Do not
 open business data, install runtime packages or Excel support, configure
@@ -192,17 +197,17 @@ an administrator handoff.
 3. Paste:
 
 ```text
-Install the official openaivec-skill from the microsoft/openaivec GitHub
+Install the MIT-licensed openaivec-skill from the microsoft/openaivec GitHub
 repository for this Codex workspace only, using Codex's supported Agent Skills
 installation mechanism.
 
-First read the official GitHub Releases and identify the highest stable
+First read upstream GitHub Releases and identify the highest stable
 version whose tag matches openaivec-skill-vX.Y.Z. Exclude drafts,
 prereleases, unrelated package releases, and untagged branch content. Report
 the version and publication date. If the Release metadata cannot be verified,
 stop without installing or claiming that any version is current.
 
-Preview that release, verify the official source, explain every project-local
+Preview that release, verify the upstream source, explain every project-local
 file that would be created, and check for an existing Skill. Do not use global
 scope. Do not open business data, add runtime packages or Excel support,
 configure secrets, or make a model request.
@@ -222,17 +227,17 @@ without using an improvised method.
 3. Paste:
 
 ```text
-Install the official openaivec-skill from the microsoft/openaivec GitHub
+Install the MIT-licensed openaivec-skill from the microsoft/openaivec GitHub
 repository for this Cursor project only, using Cursor's supported project
 Agent Skills mechanism.
 
-First read the official GitHub Releases and identify the highest stable
+First read upstream GitHub Releases and identify the highest stable
 version whose tag matches openaivec-skill-vX.Y.Z. Exclude drafts,
 prereleases, unrelated package releases, and untagged branch content. Report
 the version and publication date. If the Release metadata cannot be verified,
 stop without installing or claiming that any version is current.
 
-Before changing files, preview that release, verify the official source,
+Before changing files, preview that release, verify the upstream source,
 explain the project-local destination and files, and stop if anything would be
 replaced. Do not install globally. Do not open business data, install runtime
 packages or Excel support, configure credentials, or send an AI request.
@@ -252,17 +257,17 @@ Gemini CLI chat environment. The business user still pastes a natural-language
 prompt and does not type installation commands.
 
 ```text
-Install the official openaivec-skill from the microsoft/openaivec GitHub
+Install the MIT-licensed openaivec-skill from the microsoft/openaivec GitHub
 repository for this Gemini project only, using Gemini's supported Agent Skills
 mechanism.
 
-First read the official GitHub Releases and identify the highest stable
+First read upstream GitHub Releases and identify the highest stable
 version whose tag matches openaivec-skill-vX.Y.Z. Exclude drafts,
 prereleases, unrelated package releases, and untagged branch content. Report
 the version and publication date. If the Release metadata cannot be verified,
 stop without installing or claiming that any version is current.
 
-Before changing anything, preview that release, verify the official source,
+Before changing anything, preview that release, verify the upstream source,
 explain the project-local files and destination, and stop if an existing Skill
 would be replaced. Do not install globally. Do not open business data, add
 runtime packages or Excel support, configure credentials, or call a model.
@@ -284,7 +289,7 @@ Confirm that openaivec-skill is available in this project. Report its source,
 version, and project-only scope.
 
 Before opening business files, read the public Release metadata from the
-official microsoft/openaivec GitHub repository. Select the highest stable
+upstream microsoft/openaivec GitHub repository. Select the highest stable
 version whose tag matches openaivec-skill-vX.Y.Z, excluding drafts,
 prereleases, unrelated package releases, and untagged content. Compare it with
 the installed metadata.version and report both versions and the latest
@@ -292,7 +297,7 @@ publication date.
 
 Do not install or change anything, inspect secret values, or send business
 data. The only network request allowed for this check is read-only access to
-the official GitHub Release metadata. If the Skill is not available or GitHub
+upstream GitHub Release metadata. If the Skill is not available or GitHub
 cannot be checked, stop and explain the problem in plain language. Never claim
 that the Skill is current when the check could not be completed.
 ```
@@ -303,13 +308,13 @@ success merely because it can read this documentation.
 
 ## Check for updates before every task
 
-The Skill repeats the official GitHub freshness check each time it activates,
+The Skill repeats the upstream GitHub freshness check each time it activates,
 before it opens business data, changes processing software, or calls an AI
 service.
 
 - **Versions match:** report the installed version, latest stable version, and
   publication date, then continue.
-- **A newer stable version exists:** summarize the official release notes and
+- **A newer stable version exists:** summarize the upstream release notes and
   ask whether to update the project-local Skill, continue this run with the
   installed version, or prepare an administrator handoff. Never update
   automatically.
@@ -334,7 +339,7 @@ authentication without opening the user's business data:
 ```text
 Use openaivec-skill for this work.
 
-First perform the Skill's official GitHub freshness check. Report the
+First perform the Skill's upstream GitHub freshness check. Report the
 installed version, latest stable openaivec-skill version, and publication
 date. If a newer version exists or freshness cannot be verified, stop for my
 update or continue decision before opening business data.
@@ -376,7 +381,7 @@ OpenAI API account is required; there is no anonymous fallback. See
 
 ### If the source is Excel
 
-Reading `.xlsx` may require the Skill's official Excel support component. Its
+Reading `.xlsx` may require a signed Excel-reading component. Its
 installation downloads code and changes the local environment, so the
 assistant must first explain the impact and offer CSV or Parquet as an
 alternative. Approval to install it is separate from approval to read a
@@ -403,7 +408,7 @@ Business outcome:
 - Leave a value unresolved rather than guessing when: [rule]
 
 Safety and execution:
-- Before opening the source, perform the official GitHub freshness check.
+- Before opening the source, perform the upstream GitHub freshness check.
   Report the installed and latest stable Skill versions and publication date.
   If they differ or the check fails, wait for my decision.
 - Keep the source unchanged.
@@ -612,9 +617,9 @@ Ask the assistant to include:
 | Situation | What to ask |
 | --- | --- |
 | No API key or unclear company setup | "Do not send data. Explain the approved Fabric, Azure, OpenAI, or administrator route one question at a time." |
-| A newer Skill release exists | "Do not update automatically. Summarize the official release notes and ask whether to update this project, continue once, or prepare an administrator handoff." |
+| A newer Skill release exists | "Do not update automatically. Summarize the upstream release notes and ask whether to update this project, continue once, or prepare an administrator handoff." |
 | GitHub release check fails | "Do not claim the Skill is current. Report the installed version and ask whether to continue once, retry later, or prepare an administrator handoff." |
-| Excel cannot be opened | "Do not install anything yet. Explain the official Excel component, its local impact, and the CSV/Parquet alternative." |
+| Excel cannot be opened | "Do not install anything yet. Explain the signed Excel-reading component, its local impact, and the CSV/Parquet alternative." |
 | Column meaning is unclear | "Show the plausible business meanings and ask me one single-choice question with a free-text option." |
 | Pilot categories are poor | "Stop the full run. Show which acceptance check failed and revise the categories or extraction fields before a new pilot." |
 | Output path already exists | "Do not overwrite it. Stop and propose a new versioned destination." |
