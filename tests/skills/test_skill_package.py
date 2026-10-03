@@ -22,6 +22,7 @@ def test_release_manifest_and_curated_notes_match_skill():
     notes = (SKILL / "RELEASE_NOTES.md").read_text()
     assert notes.startswith(f"# openaivec-skill {version.group(1)} ")
     assert "Business-user installation" in notes
+    assert "MIT-licensed open source" in notes
     assert "pin installation to that exact tag" in notes
     workflow = WORKFLOW.read_text()
     assert '--notes-file "$SKILL_RELEASE_NOTES"' in workflow
@@ -36,7 +37,9 @@ def test_release_manifest_and_curated_notes_match_skill():
 
 @pytest.mark.parametrize("path", sorted(SKILL.rglob("*.md")))
 def test_portable_documentation_links_resolve(path):
-    for target in re.findall(r"\[[^]]+\]\(([^)]+)\)", path.read_text()):
+    text = path.read_text()
+    assert not re.search(r"Microsoft(?:'s)?\s+official|official\s+(?:Microsoft|openaivec)", text, re.IGNORECASE)
+    for target in re.findall(r"\[[^]]+\]\(([^)]+)\)", text):
         if "://" in target or target.startswith("#"):
             continue
         assert (path.parent / target.split("#", 1)[0]).is_file(), f"{path.name}: {target}"

@@ -27,18 +27,18 @@ Do not trigger installation merely because a path ends in `.xlsx`.
 Adapt this explanation to the user's language:
 
 > This environment does not yet have the optional feature needed to read Excel
-> `.xlsx` tables directly. I can add the official Excel support component.
+> `.xlsx` tables directly. I can add a signed Excel-reading component.
 >
 > What will change:
 >
 > - one signed component made for the installed data-processing software will
->   be downloaded from its official distribution site;
+>   be downloaded from the component publisher's distribution site;
 > - it will remain in this environment's local component storage, so future
 >   sessions can reuse it;
 > - the download uses network access and a small amount of local disk space;
 >   the exact location and size depend on this environment; and
 > - the component runs with the same local file permissions as this process,
->   which is why I will accept only the official signed version.
+>   which is why I will accept only the publisher-signed version.
 >
 > What will not happen during installation:
 >
@@ -59,7 +59,7 @@ Do not replace this explanation with only "a dependency is required" or
 Use the harness's structured question UI when available. Localize the wording,
 but offer these three choices:
 
-1. **Add the official Excel support component locally (Recommended)**
+1. **Add the signed Excel-reading component locally (Recommended)**
 2. **I will provide CSV or Parquet instead**
 3. **Stop for now**
 
@@ -113,17 +113,17 @@ fallback.
 
 Explain the likely category without overwhelming the user:
 
-- **Network or company policy:** the official download site may be blocked.
+- **Network or company policy:** the component publisher's download site may be blocked.
 - **Local permission:** this environment may not allow local component
   installation.
-- **Platform/version availability:** a compatible official build may not be
+- **Platform/version availability:** a compatible publisher-signed build may not be
   available for this environment.
 - **Existing installation problem:** an installed copy may not pass loading or
   signature checks.
 
 Offer these options:
 
-1. Ask the environment administrator to allow the official component.
+1. Ask the environment administrator to allow the signed component.
 2. Export the required worksheet to CSV or Parquet and continue without Excel
    support.
 3. Stop without changing the environment.

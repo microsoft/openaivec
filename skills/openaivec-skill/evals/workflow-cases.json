@@ -55,7 +55,7 @@
   },
   {
     "id": "business-user-install",
-    "request": "Install the official skill for this workspace; the user will not run commands.",
+    "request": "Install the upstream MIT-licensed OSS skill for this workspace; the user will not run commands.",
     "required": ["Select highest stable Skill-specific release", "Pin the exact tag", "Explain local scope and files", "Ask before installation", "Verify source and version", "Provide an administrator handoff if unsupported"],
     "forbidden": ["Pick an unrelated Python-library release", "Install globally", "Require shell commands from the user", "Configure secrets or open business data during bootstrap"]
   }
