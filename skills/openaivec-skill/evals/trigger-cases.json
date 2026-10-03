@@ -1,5 +1,41 @@
 [
   {
+    "query": "このExcelには何万行も自由記述が入っています。文章を全部、話題と感情で分類して、少量の結果を見せてから進めてください。",
+    "should_trigger": true
+  },
+  {
+    "query": "あーーーー、このフォルダの大量の見積書、一気に必要な情報を一覧にして確認したい！",
+    "should_trigger": true
+  },
+  {
+    "query": "大量の問い合わせの表を業務で使いやすく整理したい。向いている方法を選択肢で案内して。",
+    "should_trigger": true
+  },
+  {
+    "query": "There are 80,000 text comments in this table. Make them usable for our feedback review; guide me through the choices without asking me to write code.",
+    "should_trigger": true
+  },
+  {
+    "query": "During the inspection I authorized, you found 200,000 rows and a long free-text complaint column. Suggest whether topic classification, action extraction, or summaries would help. Do not send data yet.",
+    "should_trigger": true
+  },
+  {
+    "query": "You inspected the folder I named and found hundreds of supported invoice PDFs. Help me choose useful fields for a review list, without running the paid processing yet.",
+    "should_trigger": true
+  },
+  {
+    "query": "この商品の説明文をすべて英語と日本語に訳して、元の商品番号を残してください。",
+    "should_trigger": true
+  },
+  {
+    "query": "この表は100万行ありますが数値だけです。売上を月別に合計して。",
+    "should_trigger": false
+  },
+  {
+    "query": "大量のPDFを別のフォルダにコピーするだけで、内容の分析は不要です。",
+    "should_trigger": false
+  },
+  {
     "query": "Organize the free-text responses in our customer survey Excel workbook by sentiment, main topic, cancellation signal, and need for staff review. Preserve the original response number.",
     "should_trigger": true
   },

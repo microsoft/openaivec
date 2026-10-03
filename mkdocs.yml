@@ -54,6 +54,7 @@ nav:
   - Home: index.md
   - Agent Skill:
       - Getting Started: agent-skill/index.md
+      - Guided Experience: agent-skill/references/guided-experience.md
       - Business Scenarios: agent-skill/references/business-scenarios.md
       - Safe Data I/O: agent-skill/references/safe-data-io.md
       - Authentication: agent-skill/references/authentication.md
@@ -61,6 +62,7 @@ nav:
       - Intelligent Fill: agent-skill/references/intelligent-fill.md
       - Data Shaping and Cross-Tabs: agent-skill/references/data-shaping-and-crosstabs.md
       - DuckDB Workflows: agent-skill/references/duckdb-workflows.md
+      - Performance and Execution: agent-skill/references/performance-and-execution.md
   - Authentication: authentication.md
   - GPT-6 Migration: model-migration.md
   - PyPI: https://pypi.org/project/openaivec/

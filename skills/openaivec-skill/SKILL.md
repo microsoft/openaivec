@@ -1,21 +1,73 @@
 ---
 name: openaivec-skill
-description: Use this skill for interpretive work repeated across many files or table rows, even when the user names only a business outcome. Examples include feedback analysis, support or maintenance routing, sales-note structuring, campaign or feature-request analysis, catalog cleanup, document extraction, translation, incident or quality triage, knowledge matching, and intelligent missing-value fill. Sources include Excel, CSV/TSV, Parquet, JSON, supported PDFs/images, and relational databases. Internally use openaivec.duckdb_ext for batched, ordered, structured results, but speak in business terms. Guide OpenAI, Azure OpenAI, Entra ID, or Fabric authentication failures without exposing secrets. Exclude ordinary ETL, database administration, workbook formatting, cloud provisioning, model training, unsupported sources, other AI SDKs, and automated employment, credit, medical, or eligibility decisions.
+description: Proactively use this skill for large tables with free-text columns, folders of many documents, or interpretation repeated across records. Activate when already-authorized inspection discovers these opportunities, or a business user asks to organize, classify, extract, summarize, translate, or match bulk data, even without naming AI, a library, or a skill. Excel comments, CSV exports, support tickets, survey responses, sales notes, product descriptions, PDF/image folders, Parquet, JSON, and supported database tables are strong cues. Guide the user through plain-language choices and a small preview; handle batching, concurrency, duplicate reuse, and ordered structured results internally with openaivec.duckdb_ext. Never require code or tuning from the user. Discovery does not authorize sending data or writing files. Exclude numeric-only analytics, ordinary ETL, workbook formatting, provisioning, unsupported sources, other AI SDKs, and automated consequential decisions.
 license: MIT
 compatibility: Requires Python 3.10+, openaivec, DuckDB, and network access to the selected OpenAI-compatible service. Excel and relational sources require support in the installed DuckDB version and an available extension; installing one requires explicit approval. Fabric built-in models require a supported Fabric notebook runtime.
 metadata:
   author: microsoft
-  version: "1.2.0"
+  version: "1.3.0"
   repository: https://github.com/microsoft/openaivec
 ---
 
-# openaivec Batch Data Processing
+# Business bulk-processing assistant
 
 Use `openaivec.duckdb_ext` internally to vectorize one OpenAI operation,
 deduplicate inputs, and materialize results once. In conversation, use the
 user's terms such as workbook, CSV, source table, or result table. Do not
 volunteer DuckDB, UDF, or internal staging details unless the user asks, a
 compatibility boundary must be explained, or troubleshooting requires it.
+
+## Automatic activation
+
+Do not wait for `/openaivec-skill`, "use openaivec", or a technical request.
+Activate for "organize this survey", "classify every ticket", "extract from
+this folder", "process all of these at once", and equivalent requests in the
+user's language.
+
+During an already-authorized source inspection, a large table with free-text
+columns or a folder containing many supported documents is also an activation
+cue. Recommend one relevant business operation and ask one outcome question
+if the outcome is unknown. Do not inspect unrelated folders to hunt for work.
+Counts such as 1,000 text rows or 25 documents are useful scale cues, not
+minimum requirements or permission to run an AI service.
+
+For example, if a workbook has 80,000 comments, offer "Classify topics and
+sentiment (recommended)", "Extract requests and next actions", or "Create
+short summaries". Do not ask which library or processing engine to use.
+High row counts alone do not justify AI for numeric-only or literal work.
+
+## Business-user interaction contract
+
+Read [guided experience](references/guided-experience.md) before the first
+business conversation and [performance and execution](references/performance-and-execution.md)
+before the pilot. The assistant, not the user, owns implementation and tuning.
+
+Use four user-visible stages:
+
+| Stage | User does | Assistant does behind the scenes |
+| --- | --- | --- |
+| Choose the outcome | Select classification, extraction, summary, translation, matching, or contextual fill | Recommend fields and an appropriate public API |
+| Choose the source | Name or select the workbook, table, or folder | Inspect locally, preserve identifiers, count unique work, check readiness |
+| Review a small preview | Approve a short result table or correct its meaning | Obtain scoped pilot consent, validate quality, retain accepted results |
+| Approve the full run | Approve the shown scope and exact new output if requested | Batch pending unique inputs, report progress, validate and restore all rows |
+
+Skip a choice already answered by the request or an approved configuration.
+Ask exactly one business-language question at a time with two to five clear
+choices and a recommended option when justified. Prefer the harness's native
+single-select question tool; its built-in free-text entry replaces an "Other"
+choice. Do not invent clickable controls if the harness has none.
+
+Never give the user SQL, Python, shell commands, package/version constraints,
+Pydantic models, cache settings, parallelism, retry settings, or raw
+tracebacks as a required step. Translate failures into their business impact
+and one actionable choice. Keep necessary service, privacy, cost, source,
+destination, setup-impact, and human-review disclosures visible.
+
+Do not turn the workflow into a long questionnaire. Propose sensible result
+fields from the outcome. Use the approved service and configured model
+without asking the user for deployment names. Ask about row grain, date,
+units, or denominators only when an actual filtering, join, or metric depends
+on them. A simple text-classification run does not need a reporting contract.
 
 ## Route from business language
 
@@ -38,10 +90,13 @@ Strong scale cues include "all branches," "every file," "each row," "monthly
 exports," "thousands of comments," or a whole workbook/table column. Do not
 require the user to say AI, OpenAI, DuckDB, UDF, embedding, or few-shot.
 
-A file or database name alone is not enough. Ordinary preview, filtering,
-sorting, copying, format conversion, arithmetic, charting, and literal
-replacement remain outside this skill. Keep automated employment, credit,
-medical, insurance, payment, or public-benefit decisions outside scope.
+A file name alone does not authorize interpretation. When authorized
+inspection reveals bulk text or documents but the outcome is unclear, use the
+guided outcome choice instead of waiting for an explicit skill invocation.
+Ordinary preview, filtering, sorting, copying, format conversion, arithmetic,
+charting, and literal replacement remain outside this skill. Keep automated
+employment, credit, medical, insurance, payment, or public-benefit decisions
+outside scope.
 
 After an interpretive request routes here, deterministic DuckDB profiling,
 cleaning, joins, grouping, and cross-tabs are valid internal steps around the
@@ -125,6 +180,8 @@ materialized AI result. They do not require a separate model call.
      Agent Skills mechanism. Explain files and scope, preserve unrelated local
      changes, verify the new source and version, and tell the user whether a
      new conversation or workspace reload is required.
+     Pin preview and installation to the exact selected Skill release tag;
+     never rely on an unversioned installer in this mixed-release repository.
      Do not ask a business user to run command-line commands. Restart this
      workflow after reload.
    - If the installed version is newer than the latest stable Release, label
@@ -159,9 +216,11 @@ materialized AI result. They do not require a separate model call.
      destination, and operation; do not broaden them.
    - Do not invoke the OpenAI-backed UDF yet.
 3. **Agree on business meaning before shaping or aggregating.**
-   - Establish what one row represents, the stable business key, included
+   - Clarify only meanings needed for the requested operation. Before a join
+     or business aggregate, establish the relevant row grain, key,
      population, dimensions, measures, business date, timezone, units,
-     missing-value meaning, join relationships, and desired denominator.
+     missing-value meaning, relationships, and denominator. Do not ask for
+     unused dimensions or metrics in a row-level classification.
    - Treat names, types, and value patterns as evidence, not definitions. Do
      not guess that `amount`, `status`, `date`, `region`, or `count` has a
      particular business meaning.
@@ -205,6 +264,9 @@ materialized AI result. They do not require a separate model call.
      receive them, the distinct-input count, and the destination.
    - Obtain confirmation before a large billable run or before sending
      sensitive data.
+   - Obtain scoped consent before sending even the small pilot. Pilot
+     approval never authorizes the full run. Show the full scope and wait for
+     pilot acceptance and full-run approval separately.
    - If no persistent write was explicitly requested, use only in-memory
      staging and do not export or modify the source.
    - For an authorized write, state the exact new destination and fail if it
@@ -248,6 +310,8 @@ materialized AI result. They do not require a separate model call.
      first, then pilot 3-10 actual missing rows with the accepted task.
    - If the prompt, schema, model, or provider changes, register a new UDF and
      discard incompatible pilot materializations. Do not mix configurations.
+   - Retain the accepted pilot's input-to-result mapping explicitly. Reuse it
+     in the full run; do not rely on a bounded UDF cache to retain it.
 10. **Globally deduplicate and materialize exactly once.**
    - Build a distinct non-NULL input table.
    - Apply the OpenAI-backed UDF once per distinct input.
@@ -268,6 +332,11 @@ materialized AI result. They do not require a separate model call.
      Never export partial work as a successful final result.
    - Use in-memory temporary run tables by default. Persistent run tables are
      outputs and require the user's explicit destination instruction.
+   - Prefer the assistant-only `scripts/bulk_runner.py` helper for pilot
+     retention, non-overlapping checkpoints, and ordered restoration. It
+     refuses unapproved pilot/full-run calls and never writes a file. Follow
+     the stateful execution and checkpoint consent rules in the performance
+     reference; process restart is not automatic resume.
 11. **Project and summarize the materialized result locally.**
    - Follow
      [data shaping and cross-tabs](references/data-shaping-and-crosstabs.md).
@@ -328,6 +397,13 @@ count that meets predeclared overall and segment-level quality gates.
   adapt batch size toward roughly 30-60 seconds of work; start with
   `max_concurrency=8`. Use a fixed positive size only for a measured provider
   limit, reproducible evaluation, or operational constraint.
+- Extract related fields in one structured operation rather than calling the
+  model independently for each field. Do not attach source IDs, filenames,
+  or timestamps to a text-only model input unless they affect its meaning;
+  irrelevant lineage would defeat duplicate reuse.
+- Choose the execution profile and checkpoint size internally from measured
+  pilot behavior. Do not ask business users to choose tuning parameters or
+  promise a speedup, cost, or ETA not supported by this run.
 - For images and binary documents, set `multimodal=True`, start with
   `batch_size=1`, and bound concurrency. These inputs are handled individually,
   not as a text batch.
@@ -366,7 +442,14 @@ count that meets predeclared overall and segment-level quality gates.
 
 ## Completion Report
 
-Report:
+Lead with the new result location (or read-only completion), preserved source
+count, and items needing human review. Keep the default report short and in
+the user's language, for example: "80,000 rows retained; 31,200 unique texts
+processed; 48,800 repeated evaluations avoided; 240 items need review. The
+source workbook is unchanged." Counts in this example are illustrative.
+
+Keep the following operational details available for questions and required
+audit, but do not dump a technical report or create an audit file silently:
 
 - installed Skill version, latest stable GitHub Skill version, publication
   date, and whether the user updated, explicitly continued, or could not
