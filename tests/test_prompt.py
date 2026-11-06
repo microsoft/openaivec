@@ -3,7 +3,6 @@ import logging
 import sys
 
 import pytest
-from openai import OpenAI
 from pydantic import BaseModel
 
 from openaivec._prompt import FewShotPrompt, FewShotPromptBuilder
@@ -13,10 +12,10 @@ logging.basicConfig(level=logging.INFO, force=True)
 
 class TestAtomicPromptBuilder:
     @pytest.fixture
-    def setup(self):
+    def setup(self, openai_client, responses_model_name):
         """Setup for tests."""
-        self.client = OpenAI()
-        self.model_name = "gpt-4.1-nano"
+        self.client = openai_client
+        self.model_name = responses_model_name
 
     @pytest.mark.requires_api
     def test_improve(self, setup):
@@ -56,7 +55,7 @@ class TestAtomicPromptBuilder:
             .example("Justice", "Ethical Principle")
             # Steve Wozniak is not boring
             .example("Steve Wozniak", "is not boring")
-            .improve(self.client, self.model_name)
+            .improve(self.client, self.model_name, reasoning={"effort": "none"})
             .explain()
             .build()
         )
@@ -76,7 +75,7 @@ class TestAtomicPromptBuilder:
             .example("東京", "都市")
             .example("ネコ", "ネコ科")
             .example("アメリカ", "国")
-            .improve(self.client, self.model_name)
+            .improve(self.client, self.model_name, reasoning={"effort": "none"})
             .explain()
             .build()
         )
