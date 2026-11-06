@@ -586,6 +586,15 @@ Install dev deps:
 uv sync --all-extras --dev
 ```
 
+The library and test tooling support Python 3.10+. Notebook and documentation
+tooling require Python 3.11+ so they can use patched Pillow and tornado releases.
+Use a recent uv version with dependency-group Python constraints:
+
+```bash
+uv sync --python 3.11 --all-extras --dev --group notebook
+uv sync --python 3.11 --all-extras --dev --group docs
+```
+
 Lint and format:
 
 ```bash
