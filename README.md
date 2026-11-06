@@ -80,7 +80,7 @@ These are previously recorded measurements, not GPT-6 results. Batching alone re
 
 ## Overview
 
-Vectorized OpenAI batch processing so you handle many inputs per call instead of one-by-one. Batching proxies dedupe inputs, enforce ordered outputs, and unblock waiters even on upstream errors. Shared-cache helpers reuse expensive prompts across pandas and async flows, while Spark UDF builders dedupe repeated inputs within each partition. Reasoning models honor SDK semantics. Requires Python 3.10+.
+Vectorized OpenAI batch processing so you handle many inputs per call instead of one-by-one. Batching proxies dedupe inputs, enforce ordered outputs, and unblock waiters even on upstream errors. Shared-cache helpers reuse expensive prompts across pandas and async flows, while Spark UDF builders dedupe repeated inputs within each partition. Reasoning models honor SDK semantics. Requires Python 3.11+.
 
 ## Core Workflows
 
@@ -580,19 +580,16 @@ We welcome contributions! Please:
 2. Add or update tests when you change code.
 3. Run formatting and tests before opening a PR.
 
-Install dev deps:
+Install dev deps with Python 3.11 or newer:
 
 ```bash
 uv sync --all-extras --dev
 ```
 
-The library and test tooling support Python 3.10+. Notebook and documentation
-tooling require Python 3.11+ so they can use patched Pillow and tornado releases.
-Use a recent uv version with dependency-group Python constraints:
+For documentation tooling, also install the `docs` dependency group:
 
 ```bash
-uv sync --python 3.11 --all-extras --dev --group notebook
-uv sync --python 3.11 --all-extras --dev --group docs
+uv sync --group docs
 ```
 
 Lint and format:

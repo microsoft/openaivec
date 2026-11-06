@@ -25,9 +25,11 @@ Keep GitHub Actions pinned to full commit SHAs when updating their versions.
 The lockfile protects repository environments, but PyPI installations use the
 package's published dependency metadata instead. Declare security minimums in
 `project.dependencies` when an upstream dependency still permits vulnerable
-transitive versions. Azure authentication requires `pyjwt>=2.15.0` and
-`urllib3>=2.8.0`; notebook tooling requires `tornado>=6.5.9` in the development
-dependency group. Keep notebook-only dependencies out of the runtime metadata.
+transitive versions. Require `certifi>=2026.10.18`, `pyjwt>=2.15.0`, and
+`urllib3>=2.8.0` at runtime; notebook tooling requires `pillow>=13.0.0` and
+`tornado>=6.6` in the development group, and documentation requires
+`nbconvert>=7.17.2`. The library and all tooling require Python 3.11 or newer.
+Keep notebook-only dependencies out of the runtime metadata.
 
 urllib3 2.8.0 separates HTTPS forwarding-proxy TLS settings from destination
 settings. Configure proxy certificates through `proxy_ssl_context` and proxy
@@ -39,7 +41,7 @@ the proxy connection.
 
 Once the intended changes are merged into `main`, create and push a `vX.Y.Z`
 tag pointing to that commit. The PyPI workflow checks the tagged commit on
-Python 3.10-3.12 with Ruff, Pyright, the full test suite, and a distribution
+Python 3.11-3.12 with Ruff, Pyright, the full test suite, and a distribution
 build before publishing. The `integration` environment must provide
 `OPENAI_API_KEY` for the full suite; the `pypi` environment supplies the
 trusted-publishing configuration. After validation, the workflow checks that

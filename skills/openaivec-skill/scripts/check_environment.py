@@ -60,8 +60,8 @@ def main() -> int:
     errors: list[str] = []
     warnings: list[str] = []
 
-    if sys.version_info < (3, 10):
-        errors.append("Python 3.10 or newer is required.")
+    if sys.version_info < (3, 11):
+        errors.append("Python 3.11 or newer is required.")
 
     for distribution in ("openaivec", "duckdb"):
         installed_version = _distribution_version(distribution)

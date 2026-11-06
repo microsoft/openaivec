@@ -29,7 +29,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.11", "3.12"]
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
@@ -79,7 +79,7 @@ jobs:
           uv run pytest
 
       - name: Validate distribution
-        if: matrix.python-version == '3.10'
+        if: matrix.python-version == '3.11'
         run: uv build
 
   build-and-publish:
@@ -113,7 +113,7 @@ jobs:
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
 
       - name: Set up Python
-        run: uv python install 3.10
+        run: uv python install 3.11
 
       - name: Install dependencies via uv
         run: uv sync --locked --all-extras --dev

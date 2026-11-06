@@ -1,6 +1,8 @@
 import ast
 import json
 import re
+import runpy
+import sys
 from pathlib import Path
 
 import pytest
@@ -19,6 +21,7 @@ def test_release_manifest_and_curated_notes_match_skill():
     assert description is not None and len(description.group(1)) <= 1024
     assert "Proactively" in description.group(1)
     assert "repository: https://github.com/microsoft/openaivec" in frontmatter
+    assert "compatibility: Requires Python 3.11+" in frontmatter
     notes = (SKILL / "RELEASE_NOTES.md").read_text()
     assert notes.startswith(f"# openaivec-skill {version.group(1)} ")
     assert "Business-user installation" in notes
@@ -75,3 +78,18 @@ def test_evaluation_cases_are_unique_and_well_formed():
     assert len({case["id"] for case in workflows}) == len(workflows)
     assert {"stateless-harness", "accepted-pilot-reuse", "business-user-install"} <= {case["id"] for case in workflows}
     assert all(case["request"] and case["required"] and case["forbidden"] for case in workflows)
+
+
+@pytest.mark.parametrize(
+    ("python_version", "status"),
+    [((3, 10), 1), ((3, 11), 0), ((3, 12), 0)],
+)
+def test_environment_checker_requires_python_311(monkeypatch, capsys, python_version, status):
+    script = runpy.run_path(str(SKILL / "scripts/check_environment.py"))
+    main = script["main"]
+    monkeypatch.setitem(main.__globals__, "_distribution_version", lambda name: "test")
+    monkeypatch.setattr(sys, "argv", ["check_environment.py", "--fabric"])
+    monkeypatch.setattr(sys, "version_info", python_version)
+
+    assert main() == status
+    assert ("Python 3.11 or newer is required." in capsys.readouterr().err) is (status == 1)

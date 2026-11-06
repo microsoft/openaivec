@@ -11,7 +11,9 @@ from openaivec import pandas_ext  # noqa: F401 — registers .ai/.aio accessors
 
 @pytest.mark.requires_api
 class TestConfig:
-    def test_configuration_methods(self, openai_client, async_openai_client):
+    def test_configuration_methods(
+        self, openai_client, async_openai_client, responses_model_name, embeddings_model_name
+    ):
         assert callable(openaivec.set_client)
         assert callable(openaivec.get_client)
         assert callable(openaivec.set_async_client)
@@ -21,17 +23,27 @@ class TestConfig:
         assert callable(openaivec.set_embeddings_model)
         assert callable(openaivec.get_embeddings_model)
 
+        original_client = openaivec.get_client()
+        original_async_client = openaivec.get_async_client()
+        original_responses_model = openaivec.get_responses_model()
+        original_embeddings_model = openaivec.get_embeddings_model()
         try:
             openaivec.set_client(openai_client)
             assert openaivec.get_client() is openai_client
             openaivec.set_async_client(async_openai_client)
             assert openaivec.get_async_client() is async_openai_client
-            openaivec.set_responses_model("gpt-4.1-mini")
-            assert openaivec.get_responses_model() == "gpt-4.1-mini"
-            openaivec.set_embeddings_model("text-embedding-3-small")
-            assert openaivec.get_embeddings_model() == "text-embedding-3-small"
-        except Exception as e:
-            pytest.fail(f"Model configuration failed unexpectedly: {e}")
+            openaivec.set_responses_model(responses_model_name)
+            assert openaivec.get_responses_model() == responses_model_name
+            openaivec.set_embeddings_model(embeddings_model_name)
+            assert openaivec.get_embeddings_model() == embeddings_model_name
+        finally:
+            openaivec.set_client(original_client)
+            openaivec.set_async_client(original_async_client)
+            openaivec.set_responses_model(original_responses_model)
+            openaivec.set_embeddings_model(original_embeddings_model)
+
+        assert openaivec.get_responses_model() == original_responses_model
+        assert openaivec.get_embeddings_model() == original_embeddings_model
 
     def test_show_progress_parameter_consistency(self):
         series = pd.Series(["test"])

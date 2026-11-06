@@ -10,12 +10,11 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
 
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "aiohttp>=3.10.0",
     "azure-identity>=1.25.1",
@@ -38,7 +37,10 @@ dependencies = [
 [dependency-groups]
 dev = [
     "httpx[http2]>=0.28.1",
+    "ipykernel>=6.29.5",
     "langdetect>=1.0.9",
+    "matplotlib>=3.10.8",
+    "pillow>=13.0.0",
     "pyarrow>=19.0.1",
     "pyright>=1.1.403",
     "pyspark>=4.0.0",
@@ -48,15 +50,9 @@ dev = [
     "python-dotenv>=1.1.0",
     "ruff>=0.11.5",
     "tabulate>=0.9.0",
-]
-notebook = [
-    "ipykernel>=6.29.5",
-    "matplotlib>=3.10.8",
-    "pillow>=13.0.0",
     "tornado>=6.6",
 ]
 docs = [
-    { include-group = "notebook" },
     "mkdocs>=1.6.1",
     "mkdocs-autorefs>=1.4.1",
     "mkdocs-jupyter>=0.25.1",
@@ -69,13 +65,9 @@ docs = [
 [project.optional-dependencies]
 spark = ["pyspark>=4.0.0"]
 
-[tool.uv.dependency-groups]
-notebook = { requires-python = ">=3.11" }
-docs = { requires-python = ">=3.11" }
-
 [tool.ruff]
 line-length = 120
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = [

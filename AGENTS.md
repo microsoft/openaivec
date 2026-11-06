@@ -27,7 +27,7 @@
 - Use `uv pip install -e .` only when external tooling requires an editable install.
 
 ## Coding Standards
-- Target Python 3.10+, rely on absolute imports, and keep helpers private with leading underscores; expose symbols via explicit `__all__` (internal modules can keep `__all__ = []` unless specific exports are required).
+- Target Python 3.11+, rely on absolute imports, and keep helpers private with leading underscores; expose symbols via explicit `__all__` (internal modules can keep `__all__ = []` unless specific exports are required).
 - Apply Google-style docstrings with `(type)` Args, Returns/Raises sections, double-backtick literals, and doctest-style `Example:` blocks (`>>>`) when useful.
 - Keep sync/async APIs behaviorally aligned (`.ai.*` vs `.aio.*`, `Batch*` vs `AsyncBatch*`), dataframe accessors descriptive (`responses`, `extract`, `fillna`), and raise narrow exceptions (`ValueError`, `TypeError`).
 
