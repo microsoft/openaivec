@@ -1,7 +1,18 @@
-from importlib.metadata import requires
+from importlib.metadata import metadata, requires
 
 import pytest
 from packaging.requirements import Requirement
+from packaging.specifiers import SpecifierSet
+
+
+@pytest.mark.parametrize(
+    ("python_version", "supported"),
+    [("3.10.0", False), ("3.11.0", True), ("3.12.0", True)],
+)
+def test_minimum_python_version(python_version: str, supported: bool) -> None:
+    requirement = metadata("openaivec")["Requires-Python"]
+    assert requirement == ">=3.11"
+    assert SpecifierSet(requirement).contains(python_version) is supported
 
 
 def test_runtime_imports_have_direct_dependencies():
@@ -28,13 +39,14 @@ def test_aiohttp_dependency_excludes_missing_timeout_exceptions():
 @pytest.mark.parametrize(
     ("package_name", "vulnerable_version", "patched_version"),
     [
+        ("certifi", "2026.7.22", "2026.10.18"),
         ("pyjwt", "2.13.0", "2.15.0"),
         ("pyjwt", "2.14.0", "2.15.0"),
         ("urllib3", "1.26.0", "2.8.0"),
         ("urllib3", "2.7.0", "2.8.0"),
     ],
 )
-def test_azure_authentication_dependencies_exclude_vulnerable_versions(
+def test_security_dependencies_exclude_vulnerable_versions(
     package_name: str, vulnerable_version: str, patched_version: str
 ) -> None:
     dependency = next(

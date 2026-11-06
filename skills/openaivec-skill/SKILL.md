@@ -2,7 +2,7 @@
 name: openaivec-skill
 description: Proactively use this skill for large tables with free-text columns, folders of many documents, or interpretation repeated across records. Activate when already-authorized inspection discovers these opportunities, or a business user asks to organize, classify, extract, summarize, translate, or match bulk data, even without naming AI, a library, or a skill. Excel comments, CSV exports, support tickets, survey responses, sales notes, product descriptions, PDF/image folders, Parquet, JSON, and supported database tables are strong cues. Guide the user through plain-language choices and a small preview; handle batching, concurrency, duplicate reuse, and ordered structured results internally with openaivec.duckdb_ext. Never require code or tuning from the user. Discovery does not authorize sending data or writing files. Exclude numeric-only analytics, ordinary ETL, workbook formatting, provisioning, unsupported sources, other AI SDKs, and automated consequential decisions.
 license: MIT
-compatibility: Requires Python 3.10+, openaivec, DuckDB, and network access to the selected OpenAI-compatible service. Excel and relational sources require support in the installed DuckDB version and an available extension; installing one requires explicit approval. Fabric built-in models require a supported Fabric notebook runtime.
+compatibility: Requires Python 3.11+, openaivec, DuckDB, and network access to the selected OpenAI-compatible service. Excel and relational sources require support in the installed DuckDB version and an available extension; installing one requires explicit approval. Fabric built-in models require a supported Fabric notebook runtime.
 metadata:
   author: microsoft
   version: "1.3.1"

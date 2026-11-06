@@ -6,7 +6,7 @@ High-throughput, batched OpenAI / Azure OpenAI Responses + Embeddings for pandas
 
 ## Dev Commands
 
-All tooling runs via **uv**. Python ≥ 3.10.
+All tooling runs via **uv**. Python ≥ 3.11.
 
 ```bash
 uv sync --all-extras --dev          # install deps + dev tools
@@ -73,7 +73,7 @@ Underscore-prefixed modules (`_responses.py`, `_cache/`, `_schema/`, `_di.py`, e
 
 ## Coding Conventions
 
-- **Ruff** lint + format, `line-length=120`, target `py310`.
+- **Ruff** lint + format, `line-length=120`, target `py311`.
 - **Absolute imports only** — enforced by Ruff TID252. Exception: `__init__.py` may use relative imports for re-exports.
 - **Modern typing** — `list[T]`, `dict[K, V]`, `X | None` (not `Optional`), `collections.abc.Callable` (not `typing.Callable`).
 - **`@dataclass`** for all classes — including wrappers, backends, and caches. Every field must have an explicit type annotation. Use **Pydantic** only at validation boundaries (API responses, task models).

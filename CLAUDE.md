@@ -9,6 +9,8 @@ This is **openaivec**, a Python library that enables AI-powered text processing 
 ## Development Commands
 
 ### Dependencies and Environment
+Use Python 3.11 or newer for the library and all development tooling.
+
 ```bash
 # Install all dependencies (development and optional extras)
 uv sync --all-extras --dev
