@@ -1,3 +1,4 @@
+import base64
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -95,3 +96,46 @@ def test_duckdb_all_null_arrow_output_uses_declared_type(monkeypatch, response_f
         assert output.type == declared_type
         assert output.to_pylist() == [None] * len(texts)
         assert parse.call_count == int("missing" in texts)
+
+
+@pytest.mark.parametrize("suffix", [".jpg", ".pdf"])
+def test_duckdb_mounted_media_uses_verified_bytes_and_cleans_uploads(tmp_path, mounted_file_probe, monkeypatch, suffix):
+    path = tmp_path / f"slip{suffix}"
+    path.write_bytes(b"first")
+    probe = mounted_file_probe(path)
+
+    def hydrate():
+        if probe.reads == 1:
+            probe.ctime += 1
+
+    probe.on_read = hydrate
+    uploads = []
+
+    def upload(*, file, purpose):
+        assert file.name == path.name
+        uploads.append(file.read())
+        return SimpleNamespace(id="uploaded-slip")
+
+    def respond(**kwargs):
+        part = kwargs["input"][0]["content"][0]
+        contents = base64.b64decode(part["image_url"].split(",", 1)[1]) if suffix == ".jpg" else uploads[-1]
+        return SimpleNamespace(output_parsed=NullableRecord(label=contents.decode()))
+
+    client = Mock(spec=AsyncOpenAI)
+    client.files = SimpleNamespace(create=AsyncMock(side_effect=upload), delete=AsyncMock())
+    client.responses = SimpleNamespace(parse=AsyncMock(side_effect=respond))
+    resolve = CONTAINER.resolve
+    monkeypatch.setattr(CONTAINER, "resolve", lambda kind: client if kind is AsyncOpenAI else resolve(kind))
+    with duckdb.connect() as connection:
+        duckdb_ext.responses_udf(
+            connection, "read_slip", instructions="Extract.", response_format=NullableRecord, multimodal=True
+        )
+        query = "SELECT read_slip(uri) FROM (VALUES (?), (?), (NULL)) AS inputs(uri)"
+        assert connection.execute(query, [str(path), str(path)]).fetchall() == [
+            ({"label": "first"},),
+            ({"label": "first"},),
+            (None,),
+        ]
+    assert client.responses.parse.call_count == 1
+    assert uploads == ([b"first"] if suffix == ".pdf" else [])
+    assert client.files.delete.call_count == (1 if suffix == ".pdf" else 0)

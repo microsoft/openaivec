@@ -1013,9 +1013,20 @@ class TestMultimodalAcceptance:
     @pytest.mark.asyncio
     @pytest.mark.parametrize("async_mode", [False, True])
     @pytest.mark.parametrize("suffix", [".txt", ".png", ".pdf"])
-    async def test_cache_tracks_local_content_and_uses_matching_bytes(self, tmp_path, suffix, async_mode):
+    @pytest.mark.parametrize("cold_mount", [False, True])
+    async def test_cache_tracks_local_content_and_uses_matching_bytes(
+        self, tmp_path, mounted_file_probe, suffix, async_mode, cold_mount
+    ):
         path = tmp_path / f"document{suffix}"
         path.write_bytes(b"first")
+        if cold_mount:
+            probe = mounted_file_probe(path)
+
+            def hydrate():
+                if probe.opens == 1:
+                    probe.ctime += 1
+
+            probe.on_open = hydrate
         uploads: dict[str, bytes] = {}
 
         def upload(*, file, purpose):

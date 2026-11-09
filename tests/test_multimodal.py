@@ -1,4 +1,5 @@
 import builtins
+import hashlib
 import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -98,6 +99,113 @@ def test_file_removed_after_cache_key_fails_closed(tmp_path):
     path.unlink()
     with pytest.raises(ValueError, match="changed"):
         read_local_file_for_cache_key(str(path), key)
+
+
+@pytest.mark.parametrize("operation", ["key", "read"])
+@pytest.mark.parametrize("phase", ["open", "read"])
+def test_one_off_ctime_transition_requires_identical_stable_reread(tmp_path, mounted_file_probe, operation, phase):
+    path = tmp_path / "document.pdf"
+    contents = b"unchanged"
+    path.write_bytes(contents)
+    key = f"{path}\0{hashlib.sha256(contents).hexdigest()}"
+    probe = mounted_file_probe(path)
+
+    def hydrate():
+        if (probe.opens if phase == "open" else probe.reads) == 1:
+            probe.ctime += 1
+
+    setattr(probe, f"on_{phase}", hydrate)
+    result = local_file_cache_key(str(path)) if operation == "key" else read_local_file_for_cache_key(str(path), key)
+    assert result == (key if operation == "key" else contents)
+    assert probe.opens == 2
+    result = local_file_cache_key(str(path)) if operation == "key" else read_local_file_for_cache_key(str(path), key)
+    assert result == (key if operation == "key" else contents)
+    assert probe.opens == 3
+
+
+@pytest.mark.parametrize("operation", ["key", "read"])
+@pytest.mark.parametrize("phase", ["open", "read"])
+def test_continuous_ctime_transitions_fail_after_one_reread(tmp_path, mounted_file_probe, operation, phase):
+    path = tmp_path / "document.pdf"
+    path.write_bytes(b"unchanged")
+    key = local_file_cache_key(str(path))
+    probe = mounted_file_probe(path)
+
+    def change_ctime():
+        probe.ctime += 1
+
+    setattr(probe, f"on_{phase}", change_ctime)
+    with pytest.raises(ValueError, match="changed"):
+        if operation == "key":
+            local_file_cache_key(str(path))
+        else:
+            read_local_file_for_cache_key(str(path), key)
+    assert probe.opens == 2
+
+
+@pytest.mark.parametrize("operation", ["key", "read"])
+def test_ctime_only_transition_cannot_hide_different_bytes_on_reread(tmp_path, mounted_file_probe, operation):
+    path = tmp_path / "document.pdf"
+    path.write_bytes(b"first")
+    key = local_file_cache_key(str(path))
+    timestamp = path.stat().st_mtime_ns
+    probe = mounted_file_probe(path)
+
+    def replace_contents():
+        if probe.reads == 1:
+            path.write_bytes(b"other")
+            os.utime(path, ns=(timestamp, timestamp))
+            probe.ctime += 1
+
+    probe.on_read = replace_contents
+    with pytest.raises(ValueError, match="changed"):
+        if operation == "key":
+            local_file_cache_key(str(path))
+        else:
+            read_local_file_for_cache_key(str(path), key)
+    assert probe.opens == 2
+
+
+def test_content_hash_detects_edits_even_when_all_metadata_is_unchanged(tmp_path, mounted_file_probe):
+    path = tmp_path / "document.pdf"
+    path.write_bytes(b"first")
+    timestamp = path.stat().st_mtime_ns
+    mounted_file_probe(path)
+    key = local_file_cache_key(str(path))
+    path.write_bytes(b"other")
+    os.utime(path, ns=(timestamp, timestamp))
+    assert local_file_cache_key(str(path)) != key
+    with pytest.raises(ValueError, match="changed"):
+        read_local_file_for_cache_key(str(path), key)
+
+
+@pytest.mark.parametrize("operation", ["key", "read"])
+@pytest.mark.parametrize("change", ["replace", "delete"])
+def test_replacement_or_deletion_during_read_is_not_stabilized(tmp_path, mounted_file_probe, operation, change):
+    path = tmp_path / "document.pdf"
+    path.write_bytes(b"first")
+    key = local_file_cache_key(str(path))
+    replacement = tmp_path / "replacement.pdf"
+    replacement.write_bytes(b"first")
+    timestamp = path.stat().st_mtime_ns
+    os.utime(replacement, ns=(timestamp, timestamp))
+    probe = mounted_file_probe(path)
+
+    def replace_file():
+        if probe.reads == 1:
+            if change == "replace":
+                replacement.replace(path)
+            else:
+                path.unlink()
+
+    probe.on_read = replace_file
+    error = (ValueError, FileNotFoundError) if operation == "key" else ValueError
+    with pytest.raises(error):
+        if operation == "key":
+            local_file_cache_key(str(path))
+        else:
+            read_local_file_for_cache_key(str(path), key)
+    assert probe.opens == 1
 
 
 def test_change_during_cache_key_read_fails_closed(tmp_path, monkeypatch):

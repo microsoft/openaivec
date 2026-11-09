@@ -90,6 +90,18 @@ through the OpenAI client or through the internal builder's standalone
 `build()` method. The cache identifies local files by their contents as well
 as path, so a changed file does not reuse an earlier result.
 
+Some mounted filesystems update only `ctime` when a cold read populates their
+local cache. This transition permits **one additional read**, which must start
+from the first read's final metadata, remain metadata-stable, and reproduce the
+same content hash or identical bytes. Changed contents, device/inode, size or
+modification time, repeated `ctime` changes, removals, and replacements still
+raise an error. Images and document uploads use the exact bytes verified against
+the cache-key hash; cache hits are also rechecked before returning results.
+
+Use an existing local mount path, such as `/lakehouse/default/Files/slip.jpg`.
+This behavior requires no Fabric-specific code or additional dependencies and
+does not add direct `abfss://` URI loading.
+
 ::: openaivec.ResponseLimits
 
 ::: openaivec.BatchEmbeddings
