@@ -8,9 +8,12 @@ This module contains:
 - Shared test utilities
 """
 
+import builtins
 import os
 import warnings
+from types import SimpleNamespace
 from typing import Any, Generator
+from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
@@ -42,6 +45,51 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.asyncio)
         if "requires_api" in item.keywords and not os.getenv("OPENAI_API_KEY"):
             item.add_marker(skip_requires_api)
+
+
+@pytest.fixture
+def mounted_file_probe(monkeypatch):
+    """Simulate read-triggered ctime changes without a platform dependency."""
+    from openaivec import _multimodal
+
+    def install(path):
+        initial = path.stat()
+        original_version = _multimodal._file_version
+        probe = SimpleNamespace(ctime=initial.st_ctime_ns, opens=0, reads=0, on_open=None, on_read=None)
+
+        def file_version(stat):
+            version = original_version(stat)
+            if (stat.st_dev, stat.st_ino) == (initial.st_dev, initial.st_ino):
+                return (*version[:4], probe.ctime)
+            return version
+
+        def tracked_open(filename, mode="r", *args, **kwargs):
+            file = builtins.open(filename, mode, *args, **kwargs)
+            if str(filename) != str(path) or mode != "rb":
+                return file
+            probe.opens += 1
+            if probe.on_open is not None:
+                probe.on_open()
+            wrapped = MagicMock(wraps=file)
+            wrapped.__enter__.return_value = wrapped
+            wrapped.__exit__.side_effect = file.__exit__
+
+            def read(*read_args):
+                contents = file.read(*read_args)
+                if contents:
+                    probe.reads += 1
+                    if probe.on_read is not None:
+                        probe.on_read()
+                return contents
+
+            wrapped.read.side_effect = read
+            return wrapped
+
+        monkeypatch.setattr(_multimodal, "_file_version", file_version)
+        monkeypatch.setattr(_multimodal, "open", tracked_open, raising=False)
+        return probe
+
+    return install
 
 
 # ===== CLIENT FIXTURES =====

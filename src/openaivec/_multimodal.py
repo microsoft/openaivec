@@ -15,10 +15,11 @@ import base64
 import hashlib
 import mimetypes
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, BinaryIO, TypeVar, cast
 from urllib.parse import urlparse
 
 from openai import AsyncOpenAI, OpenAI
@@ -158,6 +159,7 @@ _MIME_OVERRIDES: dict[str, str] = {
 }
 
 _MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
+_FileRead = TypeVar("_FileRead", str, bytes)
 
 
 # ---------------------------------------------------------------------------
@@ -309,27 +311,54 @@ def _file_version(stat: os.stat_result) -> tuple[int, int, int, int, int]:
     return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
 
 
+def _read_stable_file(path: str, reader: Callable[[BinaryIO], _FileRead]) -> _FileRead:
+    """Confirm a ctime-only transition with one identical, metadata-stable reread."""
+    previous_version: tuple[int, int, int, int, int] | None = None
+    previous_result: _FileRead | None = None
+    message = f"File changed while reading cached input: {path}"
+    for attempt in range(2):
+        before = _file_version(os.stat(path))
+        if previous_version is not None and before != previous_version:
+            raise ValueError(message)
+        with open(path, "rb") as file:
+            opened = _file_version(os.fstat(file.fileno()))
+            if opened[:4] != before[:4] or (attempt and opened != before):
+                raise ValueError(message)
+            result = reader(file)
+            after = _file_version(os.fstat(file.fileno()))
+        current = _file_version(os.stat(path))
+        if after[:4] != before[:4] or current[:4] != before[:4]:
+            raise ValueError(message)
+        if previous_version is not None and result != previous_result:
+            raise ValueError(message)
+        if before == opened == after == current:
+            return result
+        if attempt:
+            raise ValueError(message)
+        previous_version = current
+        previous_result = result
+    raise RuntimeError("unreachable file stability check")
+
+
+def _hash_file(file: BinaryIO) -> str:
+    digest = hashlib.sha256()
+    for block in iter(lambda: file.read(1024 * 1024), b""):
+        digest.update(block)
+    return digest.hexdigest()
+
+
 def local_file_cache_key(value: str) -> str:
     """Return a content-versioned key for an existing local file.
 
     The complete file is hashed, rather than its modification time, so edits
     remain visible even on filesystems with coarse timestamps. Non-files keep
-    their original key.
+    their original key. A ctime-only cold-read transition requires one identical,
+    metadata-stable reread; other metadata changes fail immediately.
     """
     if is_url(value) or not os.path.isfile(value):
         return value
-    digest = hashlib.sha256()
-    before = _file_version(os.stat(value))
-    with open(value, "rb") as file:
-        if _file_version(os.fstat(file.fileno())) != before:
-            raise ValueError(f"File changed while computing cache key: {value}")
-        for block in iter(lambda: file.read(1024 * 1024), b""):
-            digest.update(block)
-        if _file_version(os.fstat(file.fileno())) != before:
-            raise ValueError(f"File changed while computing cache key: {value}")
-    if _file_version(os.stat(value)) != before:
-        raise ValueError(f"File changed while computing cache key: {value}")
-    return f"{value}\0{digest.hexdigest()}"
+    digest = _read_stable_file(value, _hash_file)
+    return f"{value}\0{digest}"
 
 
 def read_local_file_for_cache_key(path: str, key: str) -> bytes:
@@ -349,14 +378,8 @@ def read_local_file_for_cache_key(path: str, key: str) -> bytes:
     if not key.startswith(prefix):
         raise ValueError(f"Invalid cache key for file: {path}")
     try:
-        before = _file_version(os.stat(path))
-        with open(path, "rb") as file:
-            if _file_version(os.fstat(file.fileno())) != before:
-                raise ValueError(f"File changed since computing cache key: {path}")
-            contents = file.read()
-            if _file_version(os.fstat(file.fileno())) != before:
-                raise ValueError(f"File changed while reading cached input: {path}")
-        if _file_version(os.stat(path)) != before or hashlib.sha256(contents).hexdigest() != key[len(prefix) :]:
+        contents = _read_stable_file(path, lambda file: file.read())
+        if hashlib.sha256(contents).hexdigest() != key[len(prefix) :]:
             raise ValueError(f"File changed since computing cache key: {path}")
     except (FileNotFoundError, IsADirectoryError) as error:
         raise ValueError(f"File changed since computing cache key: {path}") from error
